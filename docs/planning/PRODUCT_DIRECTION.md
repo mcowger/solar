@@ -52,9 +52,10 @@ rather than reinventing them.
   Bridged to our pi-based backend via assistant-ui's **custom data-stream
   runtime** (integration to validate early).
 - **Data layer:** **SQLite** via an ORM (evaluate **MikroORM**) so the store is
-  swappable later (e.g. Postgres). Attachments on **local disk** for now.
-  **Evaluate Turso [agentfs](https://github.com/tursodatabase/agentfs)** for
-  storage.
+  swappable later (e.g. Postgres). Attachments use
+  [**Mirage**](https://github.com/strukto-ai/mirage): begin with its local-disk
+  resource and switch to an S3-compatible resource without changing the
+  application storage API.
 - **Deployment:** a **single Docker container** (SQLite volume, compose for the
   common case) **plus an npm/binary** for local installs. Single-node target.
 

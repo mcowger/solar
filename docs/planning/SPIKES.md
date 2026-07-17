@@ -87,33 +87,36 @@ which and why.
 
 ---
 
-## Spike 3 — Turso agentfs for storage (conditional / exploratory)
+## Spike 3 — Mirage for attachment storage (conditional / exploratory)
 
-**Why:** `PRODUCT_DIRECTION` flags Turso
-[agentfs](https://github.com/tursodatabase/agentfs) as worth evaluating. This is
-exploratory, not blocking — run it only if Spike 2 raises storage concerns or if
-we want to reduce the local-disk + SQLite surface further.
+**Why:** [Mirage](https://github.com/strukto-ai/mirage) offers a unified virtual
+filesystem over local disk, S3-compatible object stores, and other backends.
+Its stable resource API avoids a costly application storage-layer migration when
+attachments move from local disk to object storage.
 
-**Question:** Does agentfs offer a materially simpler or better-aligned storage
-primitive than plain SQLite + local files for our single-node, library-first
-goals — without adding operational weight?
+**Question:** Does Mirage provide a viable, Bun-compatible attachment-storage
+interface that can begin with a filesystem backend and later use an
+S3-compatible backend? Application data remains in SQLite via the ORM; this
+spike concerns uploaded files only.
 
 **Build (minimum):**
-- Stand up agentfs in a Bun context.
-- Store and retrieve a conversation's data and one attachment through it.
+- Stand up Mirage in a Bun context using its RAM filesystem.
+- Store, retrieve, and delete one binary attachment through it.
+- Confirm the resource API used by the proof is the same API Mirage exposes for
+  filesystem and S3-compatible resources.
 
 **Must prove (success criteria):**
 1. It runs under Bun with acceptable setup effort.
-2. It genuinely simplifies something (fewer moving parts, unified data+file
-   storage, or an easier backup story) versus SQLite + local disk.
-3. It does not compromise the "single file / single node / trivial backup"
-   simplicity promise.
+2. It supports the attachment lifecycle we need (write, read, existence check,
+   and delete) through Mirage's resource API.
+3. Its API is shared by filesystem and S3-compatible resources, without forcing
+   us to introduce an application-specific storage adapter.
 
-**Decision rule:** adopt **only** if it is clearly simpler than the default.
-Absent a clear win, the default (SQLite + local files) stands. Novelty is not a
-reason to adopt.
+**Decision rule:** adopt if the shared resource API removes the need to own and
+migrate an application-specific attachment-storage layer. Package weight alone
+is not a reason to reject it when the alternative creates a future migration.
 
-**Output:** keep-default vs. adopt-agentfs recommendation with rationale.
+**Output:** keep-default vs. adopt-Mirage recommendation with rationale.
 
 ---
 
@@ -124,7 +127,7 @@ We are ready to write `ARCHITECTURE.md` when:
 - Spike 1 is **pass** or **pass-with-known-caveats**, with the pi ⇄ assistant-ui
   adapter shape understood.
 - Spike 2 has a **committed ORM choice** that runs on Bun.
-- Spike 3 has a **storage decision** (default confirmed or agentfs adopted).
+- Spike 3 has a **storage decision** (default confirmed or Mirage adopted).
 
 Anything still red blocks architecture and must be escalated as a scope or stack
 question.
