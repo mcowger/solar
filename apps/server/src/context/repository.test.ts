@@ -3,7 +3,7 @@ import { Database as BunDatabase } from "bun:sqlite";
 import { Kysely } from "kysely";
 import { BunSqliteDialect } from "kysely-bun-sqlite";
 import type { Database } from "../db/schema";
-import { up } from "../db/migrations/011_context_management";
+import { up } from "../db/migrations/012_context_management";
 import { ContextRepository } from "./repository";
 
 let sqlite: BunDatabase;

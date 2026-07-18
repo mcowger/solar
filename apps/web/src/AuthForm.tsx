@@ -13,6 +13,7 @@ export function AuthForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     setBusy(true);
     setError(null);
     const res =
