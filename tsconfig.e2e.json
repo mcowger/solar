@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["playwright.config.ts", "e2e", "scripts/prepare-e2e.ts"]
+}

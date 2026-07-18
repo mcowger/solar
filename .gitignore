@@ -23,3 +23,9 @@ apps/server/data/
 
 # Docker Compose persistent state
 data/
+
+# Browser test artifacts
+.e2e.db*
+.e2e-attachments/
+playwright-report/
+test-results/

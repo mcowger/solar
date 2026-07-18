@@ -27,13 +27,19 @@
     "codegen": "bun run --cwd apps/server codegen",
     "deploy:staging": "bun run scripts/deploy-staging.ts",
     "chat-history": "bun run scripts/chat-history.ts",
-    "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json",
-    "test": "bun test apps/server/src"
+    "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json && tsc -p tsconfig.e2e.json",
+    "test": "bun run test:server && bun run test:web",
+    "test:server": "bun test apps/server/src",
+    "test:web": "bun run --cwd apps/web test",
+    "test:e2e": "node ./node_modules/@playwright/test/cli.js test --project=chromium",
+    "test:e2e:all": "node ./node_modules/@playwright/test/cli.js test",
+    "test:e2e:install": "node ./node_modules/@playwright/test/cli.js install chromium firefox webkit"
   },
   "dependencies": {
     "@struktoai/mirage-node": "^0.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/bun": "^1.3.14",
     "agent-browser": "^0.32.2",
     "bun-types": "^1.3.14",
