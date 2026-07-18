@@ -67,6 +67,10 @@ runtime, no meta-framework SSR.
 - **All non-chat server state** (conversation list, presets, admin, auth state)
   goes through **tRPC + TanStack Query** for typed queries/mutations, caching,
   and invalidation.
+- Context management is nearly invisible while idle. When background compaction
+  is active, the chat clearly reports that it is summarizing history so the
+  added latency is not mistaken for a stalled generation. Summaries are not
+  inserted as ordinary chat messages.
 - Served as static assets by the same Bun/Hono process.
 
 ## 4. API Layer
@@ -147,13 +151,18 @@ fork or Vercel AI SDK required.
 Canonical conversation state lives in **our DB**, not in pi's internal state
 (pi is reconstructed per turn from our records).
 
-- **One row per message**, containing:
+- **One row per visible message**, containing:
   - `text` — plain text, for simple DB search (`LIKE`/FTS).
   - `parts` — **pi's native message parts stored as JSON** (text, reasoning,
     tool calls/results, attachment refs) for full fidelity on reload.
   - token/usage columns for basic per-message accounting.
-- We **do not** normalize part types into separate tables. If tools ever make
-  richer querying necessary, normalization is an additive change.
+- Intermediate assistant tool-call messages and tool results are persisted as
+  ordered, opaque **native generation steps** associated with the visible
+  assistant turn. This preserves provider protocol fidelity across turns while
+  avoiding a schema that normalizes every pi part type. Raw tool payloads live
+  for the lifetime of the conversation and cascade-delete with it.
+- We **do not** otherwise normalize part types into separate tables. If richer
+  querying becomes necessary, normalization remains an additive change.
 - Search, edit/regenerate, folders/tags, and usage tracking all operate on these
   addressable per-message rows.
 - **Conversation-level settings (M3):** the conversation row carries its selected
@@ -205,6 +214,135 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
   models, so all M3 paths verify at zero cost. UI verification never hits a live
   provider.
 
+### 6.4 Context Management
+
+Context capacity is not treated as reliable memory. Models differ in hard
+window size, quality at long lengths, prompt-cache behavior, and pricing
+thresholds. Solar therefore assembles a bounded working context for each turn
+instead of filling the advertised model window or retaining a fixed number of
+messages.
+
+#### Policy resolution
+
+Context policy is **admin-owned** and resolves in this order:
+
+1. exact model override,
+2. model-family default,
+3. provider default,
+4. a conservative fallback derived from the declared context window.
+
+The admin UI shows where each effective value came from and supports resetting
+an override to its inherited value. Each policy defines:
+
+```ts
+type ContextPolicy = {
+  enabled: boolean;
+  softTriggerTokens: number;
+  targetTokens: number;
+  hardInputTokens: number;
+  maxPinnedAttachmentTokens: number;
+  outputReserveTokens: number;
+};
+```
+
+Curated policies use absolute token values because model quality curves and
+pricing discontinuities are absolute rather than proportional to advertised
+window size. Initial defaults are:
+
+| Model family | Soft trigger | Compact to | Hard input limit | First-turn attachment cap |
+|---|---:|---:|---:|---:|
+| GPT-5.6 family | ~272K | 180K | 600K | 64K |
+| Modern 1M-context Claude | 500K | 300K | 900K | 64K |
+| Uncatalogued model | 70% of window | 45% of window | window minus reserves | derived |
+
+The GPT-5.6 trigger is deliberately soft: an occasional request above its 272K
+premium-pricing boundary is acceptable, but Solar should not sustain a long
+conversation in that band. A model's effective hard limit is also bounded by
+its context window minus the requested output reserve and provider framing.
+Policies are enabled by default, with an admin kill switch.
+
+#### Request assembly
+
+The model context is assembled in this order:
+
+1. system/developer instructions and stable tool instructions,
+2. the first user request,
+3. the current rolling structured summary, if any,
+4. the largest suffix of complete recent conversational turns that fits the
+   policy target,
+5. the current user message and current tool definitions.
+
+The first user's typed text remains verbatim. First-turn attachment contents
+remain verbatim up to `maxPinnedAttachmentTokens`; an oversized attachment is
+summarized as a whole rather than sliced at an arbitrary byte boundary. A
+message count is never used as the budget: turns vary too widely in size.
+Tool-call/result sequences are atomic and cannot be split by a cut point.
+
+Between compactions, this arrangement keeps the prefix stable enough to benefit
+from provider prompt caching. A compaction intentionally changes the prefix
+once, then leaves the replacement summary stable until the next compaction.
+
+#### Staged compaction
+
+When the soft trigger is reached, Solar starts non-blocking background
+compaction and applies the least lossy reductions first:
+
+1. omit completed old reasoning traces from future model requests,
+2. replace bulky completed tool transactions outside the protected recent tail
+   with concise outcomes,
+3. summarize older conversational turns only if the context still exceeds the
+   target.
+
+Reasoning remains available in persisted history and the UI. Provider-native or
+signed reasoning is replayed unchanged while an active tool transaction
+requires it, then omitted once that cycle is complete. A tool call and all of
+its results are always retained or compacted together.
+
+Conversation summaries are structured working memory with sections for goal,
+constraints, decisions, durable facts, progress, unresolved questions,
+critical excerpts, and tool outcomes. Repeated compaction is rolling: the
+configured **task model** receives the previous summary plus newly evicted
+complete turns and rewrites the summary. The chat model is the fallback if the
+task model is unavailable, and large source spans are chunked to the task
+model's safe working limit. Solar ships a versioned default summary prompt;
+admins may override it and reset to the default.
+
+The raw transcript remains authoritative and unchanged. Summary state stores a
+retained-message boundary and conversation revision, not audit-oriented source
+references. An edit or regeneration that touches summarized history invalidates
+the artifact and rebuilds it from the surviving raw transcript. In-flight work
+uses the revision to reject stale results. Switching models recomputes the
+effective context under the destination model's policy, compacting further or
+restoring more raw recent history as appropriate.
+
+#### Failure and overflow behavior
+
+A completed summary is activated atomically. Failed or partial summaries never
+replace the last valid context. Background failure retries with bounded backoff
+and does not block chat merely because the soft limit was crossed. At the hard
+limit, successful synchronous compaction is required before another model call;
+the UI offers retry, model switching, or starting a new conversation if it
+cannot complete.
+
+A provider context-overflow response permits one compact-and-retry attempt only
+when no output has streamed and no tool side effect has occurred. This prevents
+automatic recovery from duplicating externally visible actions.
+
+#### pi reuse and extension boundary
+
+Solar pins `@earendil-works/pi-agent-core` to the same exact release as
+`@earendil-works/pi-ai` and reuses its public token-estimation, turn-boundary,
+cut-point, and summary primitives where compatible. Solar owns policy
+resolution, SQLite persistence, request assembly, first-message pinning,
+provider-aware reasoning handling, tool compaction, and background job
+orchestration. The complete `pi-agent-core` compactor assumes pi's session-tree
+model and is not adopted wholesale; `pi-coding-agent` is not added for this
+feature.
+
+The first implementation deliberately excludes lexical or semantic retrieval
+of old raw turns. The retained canonical transcript leaves retrieval as a later,
+independent extension if summary quality measurements justify it.
+
 ## 7. Authentication & Identity
 
 - **Better Auth** provides local email/password, sessions, and
@@ -241,9 +379,16 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 ## 9. Admin & Usage
 
 - **Full admin UI** (tRPC procedures): manage users, enable/disable models, edit
-  provider/API-key config, and view usage.
-- **Basic usage tracking:** tokens recorded per message, and
-  aggregated per user/model via SQL over `solar.db`.
+  provider/API-key config, edit inherited context policies and the summary
+  prompt, select the task model, and view usage.
+- **Per-call usage tracking:** every provider call — chat, tool-loop continuation,
+  title task, and compaction — records provider/API/model, purpose, input and
+  output tokens, cache reads/writes, estimated cost, latency, context-policy
+  state, overflow/retry outcome, and compaction tokens before/after. Prompt
+  content is not copied into telemetry.
+- Conversation/message totals are aggregates over call records rather than the
+  final call in a tool loop. This makes model-specific context thresholds and
+  cache behavior measurable and tunable from production evidence.
 
 ## 10. Extension Seams (architected, not built)
 
