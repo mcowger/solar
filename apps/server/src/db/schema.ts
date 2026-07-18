@@ -20,8 +20,29 @@ export interface ConversationTable {
   /** FK -> Better Auth `user.id` (same solar.db). */
   userId: string;
   title: string;
+  /** FK -> `folder.id`; null = unfiled. */
+  folderId: string | null;
   createdAt: Generated<string>;
   updatedAt: Generated<string>;
+}
+
+export interface FolderTable {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt: Generated<string>;
+}
+
+export interface TagTable {
+  id: string;
+  userId: string;
+  name: string;
+  createdAt: Generated<string>;
+}
+
+export interface ConversationTagTable {
+  conversationId: string;
+  tagId: string;
 }
 
 export type MessageRole = "user" | "assistant";
@@ -46,4 +67,7 @@ export interface Database {
   app_meta: AppMetaTable;
   conversation: ConversationTable;
   message: MessageTable;
+  folder: FolderTable;
+  tag: TagTable;
+  conversation_tag: ConversationTagTable;
 }

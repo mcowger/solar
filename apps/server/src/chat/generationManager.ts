@@ -2,7 +2,7 @@ import type { Context } from "@earendil-works/pi-ai";
 import { db } from "../db";
 import type { MessageStatus } from "../db/schema";
 import { piEventToUiChunks, type UiChunk } from "./adapter";
-import { getDefaultModel, models, DEFAULT_MODEL } from "./models";
+import { streamChat, DEFAULT_MODEL } from "./models";
 
 interface BufferedChunk {
   id: number;
@@ -145,10 +145,7 @@ class GenerationManager {
     emit({ type: "start", messageId: gen.messageId });
 
     try {
-      const model = getDefaultModel();
-      const events = models.stream(model, context, {
-        signal: gen.controller.signal,
-      });
+      const events = streamChat(context, gen.controller.signal);
       for await (const event of events) {
         if (event.type === "text_delta") gen.text += event.delta;
         if (event.type === "done") {

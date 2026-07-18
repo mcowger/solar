@@ -39,7 +39,7 @@ integrations hold, before building features on them.
 
 ---
 
-## Milestone 1 — Walking Skeleton (end-to-end streamed chat)
+## Milestone 1 — Walking Skeleton (end-to-end streamed chat) — ✅ Complete
 
 **Goal:** a single authenticated user can send a message and watch a streamed
 reply that persists — the thinnest vertical slice through every layer.
@@ -67,7 +67,7 @@ reply that persists — the thinnest vertical slice through every layer.
 
 ---
 
-## Milestone 2 — Conversation Experience (core set)
+## Milestone 2 — Conversation Experience (core set) — 🚧 In progress
 
 **Goal:** the chat feels complete for day-to-day use.
 

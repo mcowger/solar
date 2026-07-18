@@ -126,6 +126,17 @@ capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
 
 ## Confirming Functionality
 
+- **NEVER verify against the live model.** Real provider calls cost money. For
+  any UI/flow verification, run with `SOLAR_MOCK_LLM=1`, which swaps in a local
+  echo generator (`streamChat`/`mockStream` in `apps/server/src/chat/models.ts`)
+  that streams a canned Markdown + code + `$$…$$` LaTeX reply — zero API calls,
+  zero cost. Start it with the env var inherited by the managed script:
+
+  ```bash
+  SOLAR_MOCK_LLM=1 bun run dev:start
+  ```
+
+  Only exercise the real provider when explicitly validating provider wiring.
 - **Logging** It is often more efficient to place logging statements and log to console and stdout rather than guessing at code.  Logging costs nothing.   
 - **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.
 

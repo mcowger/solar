@@ -53,6 +53,51 @@ const sseHeaders = {
   connection: "keep-alive",
 };
 
+/** Look up a message with its owning user id (for authorization). */
+async function getOwnedMessage(userId: string, messageId: string) {
+  const row = await db
+    .selectFrom("message")
+    .innerJoin("conversation", "conversation.id", "message.conversationId")
+    .select([
+      "message.id",
+      "message.conversationId",
+      "message.role",
+      "message.createdAt",
+      "conversation.userId",
+    ])
+    .where("message.id", "=", messageId)
+    .executeTakeFirst();
+  return row && row.userId === userId ? row : null;
+}
+
+/**
+ * Insert a fresh assistant placeholder, kick off a decoupled generation from
+ * the current DB-canonical context, and return its SSE stream. Callers mutate
+ * the message history first (send/edit/regenerate) so `buildContext` sees the
+ * intended state.
+ */
+async function streamNewAssistantTurn(conversationId: string): Promise<Response> {
+  const context = await buildContext(conversationId);
+  const assistantMessageId = crypto.randomUUID();
+  await db
+    .insertInto("message")
+    .values({
+      id: assistantMessageId,
+      conversationId,
+      role: "assistant",
+      text: "",
+      status: "generating",
+      createdAt: new Date().toISOString(),
+    })
+    .execute();
+
+  generationManager.start({ conversationId, messageId: assistantMessageId, context });
+
+  return new Response(generationManager.subscribe(assistantMessageId, 0), {
+    headers: { ...sseHeaders, "x-message-id": assistantMessageId },
+  });
+}
+
 // Send a message: persist user turn, start a decoupled generation, stream it.
 chatRoutes.post("/", async (c) => {
   const userId = await requireUserId(c.req.raw);
@@ -83,26 +128,66 @@ chatRoutes.post("/", async (c) => {
     })
     .execute();
 
-  const context = await buildContext(conversationId);
+  return streamNewAssistantTurn(conversationId);
+});
 
-  const assistantMessageId = crypto.randomUUID();
+// Edit a user message: rewrite its text, discard everything after it, and
+// regenerate the assistant reply from the amended history.
+chatRoutes.post("/edit", async (c) => {
+  const userId = await requireUserId(c.req.raw);
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const { messageId, text } = (await c.req.json()) as {
+    messageId: string;
+    text: string;
+  };
+  if (!messageId || !text?.trim()) {
+    return c.json({ error: "messageId and text are required" }, 400);
+  }
+
+  const msg = await getOwnedMessage(userId, messageId);
+  if (!msg) return c.json({ error: "message not found" }, 404);
+  if (msg.role !== "user") {
+    return c.json({ error: "only user messages can be edited" }, 400);
+  }
+
   await db
-    .insertInto("message")
-    .values({
-      id: assistantMessageId,
-      conversationId,
-      role: "assistant",
-      text: "",
-      status: "generating",
-      createdAt: new Date().toISOString(),
-    })
+    .deleteFrom("message")
+    .where("conversationId", "=", msg.conversationId)
+    .where("createdAt", ">", msg.createdAt)
+    .execute();
+  await db
+    .updateTable("message")
+    .set({ text })
+    .where("id", "=", messageId)
     .execute();
 
-  generationManager.start({ conversationId, messageId: assistantMessageId, context });
+  return streamNewAssistantTurn(msg.conversationId);
+});
 
-  return new Response(generationManager.subscribe(assistantMessageId, 0), {
-    headers: { ...sseHeaders, "x-message-id": assistantMessageId },
-  });
+// Regenerate a reply. `messageId` may be the assistant message to replace
+// (discard it and anything after) or its parent user message (assistant-ui's
+// onReload passes the parent — discard everything after it). Either way, a
+// fresh reply is generated from the resulting history.
+chatRoutes.post("/regenerate", async (c) => {
+  const userId = await requireUserId(c.req.raw);
+  if (!userId) return c.json({ error: "unauthorized" }, 401);
+
+  const { messageId } = (await c.req.json()) as { messageId: string };
+  if (!messageId) return c.json({ error: "messageId required" }, 400);
+
+  const msg = await getOwnedMessage(userId, messageId);
+  if (!msg) return c.json({ error: "message not found" }, 404);
+
+  const q = db
+    .deleteFrom("message")
+    .where("conversationId", "=", msg.conversationId);
+  await (msg.role === "assistant"
+    ? q.where("createdAt", ">=", msg.createdAt)
+    : q.where("createdAt", ">", msg.createdAt)
+  ).execute();
+
+  return streamNewAssistantTurn(msg.conversationId);
 });
 
 // Resume streaming an in-progress (or just-finished) generation after reconnect.

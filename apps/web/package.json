@@ -12,17 +12,24 @@
   "dependencies": {
     "@assistant-ui/react": "^0.14.27",
     "@assistant-ui/react-data-stream": "^0.12.19",
+    "@assistant-ui/react-markdown": "^0.14.6",
     "@solar/server": "workspace:*",
     "@solar/shared": "workspace:*",
     "@tanstack/react-query": "^5.60.0",
     "@trpc/client": "^11.0.0",
     "@trpc/tanstack-react-query": "^11.0.0",
     "better-auth": "^1.6.23",
+    "katex": "^0.18.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-syntax-highlighter": "^16.1.1",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "@types/react-syntax-highlighter": "^15.5.13"
   }
 }

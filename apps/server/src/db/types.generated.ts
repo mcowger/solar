@@ -33,9 +33,22 @@ export interface AppMeta {
 
 export interface Conversation {
   createdAt: Generated<string>;
+  folderId: string | null;
   id: string | null;
   title: string;
   updatedAt: Generated<string>;
+  userId: string;
+}
+
+export interface ConversationTag {
+  conversationId: string;
+  tagId: string;
+}
+
+export interface Folder {
+  createdAt: Generated<string>;
+  id: string | null;
+  name: string;
   userId: string;
 }
 
@@ -63,6 +76,13 @@ export interface Session {
   userId: string;
 }
 
+export interface Tag {
+  createdAt: Generated<string>;
+  id: string | null;
+  name: string;
+  userId: string;
+}
+
 export interface User {
   createdAt: string;
   email: string;
@@ -87,8 +107,11 @@ export interface DB {
   account: Account;
   app_meta: AppMeta;
   conversation: Conversation;
+  conversation_tag: ConversationTag;
+  folder: Folder;
   message: Message;
   session: Session;
+  tag: Tag;
   user: User;
   verification: Verification;
 }
