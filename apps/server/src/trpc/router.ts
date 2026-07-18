@@ -7,6 +7,7 @@ import {
   getAdminDefault,
   getModelCapabilities,
   getTaskModel,
+  getTitlePrompt,
   getUserDefault,
   listAvailableModels,
   parseAllowlist,
@@ -14,6 +15,7 @@ import {
   resolveSelection,
   setAdminDefault,
   setTaskModel,
+  setTitlePrompt,
   setUserDefault,
   SUPPORTED_PROVIDERS,
 } from "../chat/catalog";
@@ -663,6 +665,14 @@ const modelRouter = router({
     }),
 
   taskModel: adminProcedure.query(() => getTaskModel()),
+
+  titlePrompt: adminProcedure.query(() => getTitlePrompt()),
+
+  setTitlePrompt: adminProcedure
+    .input(z.object({ prompt: z.string().trim().min(1).max(20_000) }))
+    .mutation(async ({ input }) => {
+      await setTitlePrompt(input.prompt);
+    }),
 
   setTaskModel: adminProcedure
     .input(modelSelectionSchema)

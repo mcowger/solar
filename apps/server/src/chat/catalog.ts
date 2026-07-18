@@ -175,6 +175,21 @@ export async function listAvailableModels(isAdmin = false): Promise<ModelDescrip
 
 const ADMIN_DEFAULT_KEY = "default_model";
 const TASK_MODEL_KEY = "task_model";
+const TITLE_PROMPT_KEY = "title_prompt";
+
+export const DEFAULT_TITLE_PROMPT = `### Task: Generate a concise, 3-5 word title with an emoji summarizing the first user message.
+### Guidelines:
+- The title should clearly represent the main theme or subject of the conversation.
+- Use emojis that enhance understanding of the topic, but avoid quotation marks or special formatting.
+- Write the title in the chat's primary language; default to English if multilingual.
+- Prioritize accuracy over excessive creativity; keep it clear and simple.
+- Your entire response must consist solely of the JSON object, without any introductory or concluding text.
+- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text.
+- Ensure no conversational text, affirmations, or explanations precede or follow the raw JSON output, as this will cause direct parsing failure.
+### Output: JSON format: { "title": "your concise title here" }
+### First User Message: <first_user_message>
+{{first_message}}
+</first_user_message>`;
 
 function toSelection(sel: Partial<ModelSelection>): ModelSelection | null {
   return sel.provider && sel.modelId && sel.api
@@ -266,6 +281,25 @@ export async function setTaskModel(sel: ModelSelection): Promise<void> {
   await setAppMetaSelection(TASK_MODEL_KEY, sel);
 }
 
+/** Admin-authored prompt for automatic chat titles. */
+export async function getTitlePrompt(): Promise<string> {
+  const row = await db
+    .selectFrom("app_meta")
+    .select("value")
+    .where("key", "=", TITLE_PROMPT_KEY)
+    .executeTakeFirst();
+  return row?.value ?? DEFAULT_TITLE_PROMPT;
+}
+
+/** Persist the prompt used for automatic chat titles. */
+export async function setTitlePrompt(prompt: string): Promise<void> {
+  await db
+    .insertInto("app_meta")
+    .values({ key: TITLE_PROMPT_KEY, value: prompt })
+    .onConflict((oc) => oc.column("key").doUpdateSet({ value: prompt }))
+    .execute();
+}
+
 /** Resolve the configured task model, rejecting a model removed from the allowlist. */
 export async function resolveTaskModel(): Promise<ModelSelection> {
   const configured = await getTaskModel();
@@ -275,6 +309,15 @@ export async function resolveTaskModel(): Promise<ModelSelection> {
     throw new Error("No task model is configured. Select one in admin settings.");
   }
   return taskModel;
+}
+
+/** Use the configured task model when it remains available, otherwise the chat model. */
+export async function resolveTaskModelOrFallback(
+  fallback: ModelSelection,
+): Promise<ModelSelection> {
+  const configured = await getTaskModel();
+  const available = await listAvailableModels();
+  return findAvailable(available, configured) ?? fallback;
 }
 
 async function getAppMetaSelection(key: string): Promise<ModelSelection | null> {

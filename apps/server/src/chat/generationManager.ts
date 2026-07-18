@@ -3,7 +3,7 @@ import { db } from "../db";
 import type { MessageStatus } from "../db/schema";
 import { piEventToUiChunks, type UiChunk } from "./adapter";
 import type { GenerationParams, ModelSelection } from "./catalog";
-import { streamChat } from "./models";
+import { generateTitle, streamChat } from "./models";
 import { logger } from "../logger";
 import type { ResolvedTool } from "./mcp";
 
@@ -31,6 +31,12 @@ interface Generation {
   text: string;
   parts: unknown | null;
   usage: { inputTokens: number; outputTokens: number } | null;
+}
+
+interface TitleGeneration {
+  firstMessage: string;
+  prompt: string;
+  selection: ModelSelection;
 }
 
 const encoder = new TextEncoder();
@@ -64,6 +70,7 @@ class GenerationManager {
     selection: ModelSelection;
     params: GenerationParams;
     tools?: ResolvedTool[];
+    titleGeneration?: TitleGeneration;
   }): void {
     const gen: Generation = {
       messageId: opts.messageId,
@@ -82,7 +89,7 @@ class GenerationManager {
     };
     this.generations.set(opts.messageId, gen);
     logger.withMetadata({ conversationId: opts.conversationId, messageId: opts.messageId, model: gen.model }).info("generation started");
-    void this.run(gen, opts.context, opts.tools);
+    void this.run(gen, opts.context, opts.tools, opts.titleGeneration);
   }
 
   isActive(messageId: string): boolean {
@@ -146,7 +153,12 @@ class GenerationManager {
     });
   }
 
-  private async run(gen: Generation, context: Context, tools: ResolvedTool[] = []): Promise<void> {
+  private async run(
+    gen: Generation,
+    context: Context,
+    tools: ResolvedTool[] = [],
+    titleGeneration?: TitleGeneration,
+  ): Promise<void> {
     const emit = (chunk: UiChunk) => {
       const bc: BufferedChunk = { id: gen.nextId++, chunk };
       gen.chunks.push(bc);
@@ -154,6 +166,10 @@ class GenerationManager {
     };
 
     emit({ type: "start", messageId: gen.messageId });
+
+    const titlePromise = titleGeneration
+      ? this.generateTitle(gen.conversationId, titleGeneration)
+      : null;
 
     try {
       const events = streamChat(context, gen.selection, gen.params, gen.controller.signal, tools);
@@ -173,6 +189,8 @@ class GenerationManager {
         }
         for (const chunk of piEventToUiChunks(event)) emit(chunk);
       }
+      const title = await titlePromise;
+      if (title) emit({ type: "title-update", title });
       gen.status = "done";
       await this.persist(gen, "complete");
       logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).trace(gen.text);
@@ -202,6 +220,30 @@ class GenerationManager {
     }
   }
 
+  private async generateTitle(
+    conversationId: string,
+    generation: TitleGeneration,
+  ): Promise<string | null> {
+    try {
+      const response = await generateTitle(
+        generation.prompt.replaceAll("{{first_message}}", generation.firstMessage),
+        generation.selection,
+      );
+      const title = parseTitle(response);
+      if (!title) return null;
+      const result = await db
+        .updateTable("conversation")
+        .set({ title })
+        .where("id", "=", conversationId)
+        .where("title", "=", "New conversation")
+        .executeTakeFirst();
+      return result.numUpdatedRows > 0 ? title : null;
+    } catch (error) {
+      logger.withError(error).withMetadata({ conversationId }).warn("title generation failed");
+      return null;
+    }
+  }
+
   private async persist(gen: Generation, status: MessageStatus): Promise<void> {
     await db
       .updateTable("message")
@@ -222,6 +264,20 @@ class GenerationManager {
       .where("id", "=", gen.conversationId)
       .execute();
   }
+}
+
+function parseTitle(response: string): string | null {
+  const raw = response.trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { title?: unknown };
+    if (typeof parsed.title === "string" && parsed.title.trim()) {
+      return parsed.title.trim().slice(0, 200);
+    }
+  } catch {
+    // A raw model response is the agreed fallback for invalid JSON.
+  }
+  return raw.slice(0, 200);
 }
 
 export const generationManager = new GenerationManager();

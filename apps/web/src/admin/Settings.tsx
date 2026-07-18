@@ -33,9 +33,19 @@ function TaskModel() {
   const qc = useQueryClient();
   const available = useQuery(trpc.model.available.queryOptions());
   const taskModel = useQuery(trpc.model.taskModel.queryOptions());
+  const titlePrompt = useQuery(trpc.model.titlePrompt.queryOptions());
+  const [prompt, setPrompt] = useState("");
+  useEffect(() => {
+    if (titlePrompt.data !== undefined) setPrompt(titlePrompt.data);
+  }, [titlePrompt.data]);
   const setTaskModel = useMutation(
     trpc.model.setTaskModel.mutationOptions({
       onSuccess: () => qc.invalidateQueries({ queryKey: trpc.model.taskModel.queryKey() }),
+    }),
+  );
+  const saveTitlePrompt = useMutation(
+    trpc.model.setTitlePrompt.mutationOptions({
+      onSuccess: () => qc.invalidateQueries({ queryKey: trpc.model.titlePrompt.queryKey() }),
     }),
   );
   const models = available.data ?? [];
@@ -43,7 +53,10 @@ function TaskModel() {
 
   return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-4 p-5"><h3 className="card-title">Task model</h3><p className="text-sm opacity-70">Used for future lightweight work such as title generation and context management.</p>
     <fieldset className="fieldset max-w-lg"><legend className="fieldset-legend">Selected model</legend><select className="select w-full" value={selected} disabled={!models.length || setTaskModel.isPending} onChange={(event) => { const model = models.find((item) => modelKey(item) === event.target.value); if (model) setTaskModel.mutate(model); }}><option value="" disabled>{models.length ? "Select a task model" : "No models configured"}</option>{models.map((model) => <option key={modelKey(model)} value={modelKey(model)}>{model.name} · {model.provider}</option>)}</select></fieldset>
-    {setTaskModel.isError && <div role="alert" className="alert alert-error alert-soft">{setTaskModel.error.message}</div>}
+    <fieldset className="fieldset gap-2"><legend className="fieldset-legend">Chat title prompt</legend><textarea className="textarea min-h-64 w-full font-mono text-sm" value={prompt} disabled={titlePrompt.isLoading || saveTitlePrompt.isPending} onChange={(event) => setPrompt(event.target.value)} placeholder="Use {{first_message}} where the first user message belongs." /><p className="label">Use <code>{"{{first_message}}"}</code> to include the first user message.</p></fieldset>
+    {!prompt.includes("{{first_message}}") && <div role="alert" className="alert alert-warning alert-soft text-sm">The prompt does not include {"{{first_message}}"}; titles will be generated without the first user message.</div>}
+    <div className="card-actions items-center justify-end"><button className="btn btn-primary" disabled={!prompt.trim() || saveTitlePrompt.isPending} onClick={() => saveTitlePrompt.mutate({ prompt })}>{saveTitlePrompt.isPending ? "Saving…" : "Save title prompt"}</button></div>
+    {(setTaskModel.isError || saveTitlePrompt.isError) && <div role="alert" className="alert alert-error alert-soft">{setTaskModel.error?.message ?? saveTitlePrompt.error?.message}</div>}
   </div></section>;
 }
 

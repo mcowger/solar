@@ -19,6 +19,7 @@ export type UiChunk =
       finishReason: string;
       usage: { inputTokens: number; outputTokens: number };
     }
+  | { type: "title-update"; title: string }
   | { type: "error"; errorText: string };
 
 /**

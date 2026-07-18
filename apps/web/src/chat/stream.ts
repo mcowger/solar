@@ -7,6 +7,7 @@ export type UiChunk =
   | { type: "tool-call-delta"; argsText: string }
   | { type: "tool-call-end" }
   | { type: "finish"; finishReason: string; usage: { inputTokens: number; outputTokens: number } }
+  | { type: "title-update"; title: string }
   | { type: "error"; errorText: string };
 
 /**

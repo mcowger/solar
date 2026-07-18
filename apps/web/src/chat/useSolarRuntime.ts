@@ -5,6 +5,8 @@ import {
   type AppendMessage,
 } from "@assistant-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
 import { SolarAttachmentAdapter } from "./attachmentAdapter";
 import { readChunkStream } from "./stream";
@@ -69,6 +71,8 @@ const jsonHeaders = { "content-type": "application/json" };
  * for subsequent edit/regenerate, which key off canonical message ids).
  */
 export function useSolarRuntime(conversationId: string, allowImages: boolean) {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<SolarMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const assistantIdRef = useRef<string | null>(null);
@@ -111,6 +115,8 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
           } else if (chunk.type === "error") {
             text += `\n\n_Error: ${chunk.errorText}_`;
             upsertAssistant(displayId, text, reasoning || undefined);
+          } else if (chunk.type === "title-update") {
+            queryClient.invalidateQueries({ queryKey: trpc.conversation.list.queryKey() });
           }
         });
       } finally {
@@ -119,7 +125,7 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
         abortRef.current = null;
       }
     },
-    [upsertAssistant],
+    [queryClient, trpc.conversation.list, upsertAssistant],
   );
 
   // Reload the canonical history from the server, replacing local state so ids

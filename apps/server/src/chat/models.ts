@@ -145,3 +145,20 @@ async function* mockStream(
 }
 
 export { MOCK };
+
+export async function generateTitle(
+  prompt: string,
+  selection: ModelSelection,
+): Promise<string> {
+  const context: Context = {
+    messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+  };
+  let text = "";
+  for await (const event of streamChat(context, selection, {}, new AbortController().signal)) {
+    if (event.type === "error") {
+      throw new Error(event.error.errorMessage ?? "Title generation failed");
+    }
+    if (event.type === "text_delta") text += event.delta;
+  }
+  return text;
+}

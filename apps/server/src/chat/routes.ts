@@ -12,7 +12,12 @@ import {
   linkAttachments,
   loadAttachmentContentParts,
 } from "./attachments";
-import { resolveSelection, type GenerationParams } from "./catalog";
+import {
+  getTitlePrompt,
+  resolveSelection,
+  resolveTaskModelOrFallback,
+  type GenerationParams,
+} from "./catalog";
 import { generationManager } from "./generationManager";
 import { toolProvider } from "./tools";
 
@@ -130,6 +135,7 @@ async function streamNewAssistantTurn(
   conversationId: string,
   userId: string,
   isAdmin: boolean,
+  titleGeneration?: { firstMessage: string },
 ): Promise<Response> {
   // Resolve the model for this turn, then persist it so the conversation
   // remembers the effective selection (defaults are resolved lazily).
@@ -171,6 +177,13 @@ async function streamNewAssistantTurn(
     reasoningSummary: Boolean(convo?.reasoningSummary),
     verbosity: convo?.verbosity ?? undefined,
   };
+  const titleTask = titleGeneration
+    ? {
+        firstMessage: titleGeneration.firstMessage,
+        prompt: await getTitlePrompt(),
+        selection: await resolveTaskModelOrFallback(selection),
+      }
+    : undefined;
   await db
     .updateTable("conversation")
     .set({
@@ -201,6 +214,7 @@ async function streamNewAssistantTurn(
     selection,
     params,
     tools: resolvedTools,
+    titleGeneration: titleTask,
   });
 
   return new Response(generationManager.subscribe(assistantMessageId, 0), {
@@ -247,7 +261,19 @@ chatRoutes.post("/", async (c) => {
     await linkAttachments(attachmentIds, user.id, userMessageId);
   }
 
-  return streamNewAssistantTurn(conversationId, user.id, user.isAdmin);
+  const firstUserMessage = await db
+    .selectFrom("message")
+    .select("id")
+    .where("conversationId", "=", conversationId)
+    .where("role", "=", "user")
+    .limit(2)
+    .execute();
+  return streamNewAssistantTurn(
+    conversationId,
+    user.id,
+    user.isAdmin,
+    firstUserMessage.length === 1 ? { firstMessage: text ?? "" } : undefined,
+  );
 });
 
 // Edit a user message: rewrite its text, discard everything after it, and
