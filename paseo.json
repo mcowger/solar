@@ -1,15 +1,14 @@
 {
   "worktree": {
     "setup": [
-      "bun install",
-      "cp \"$PASEO_SOURCE_CHECKOUT_PATH/.env\" .env"
+      "bun install"
     ],
-    "teardown": "rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
+    "teardown": "bun run dev:stop && rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
   },
   "scripts": {
     "web": {
       "type": "service",
-      "command": "PORT=\"$PASEO_PORT\" bun --env-file=.env run --cwd apps/server dev",
+      "command": "bun run dev:foreground",
       "port": 3000
     },
     "typecheck": { "command": "bun run typecheck" },

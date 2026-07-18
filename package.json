@@ -14,8 +14,8 @@
     "dist"
   ],
   "scripts": {
-    "dev": "bun run --cwd apps/server dev",
     "dev:start": "bash scripts/dev-server.sh start",
+    "dev:foreground": "bash scripts/dev-server.sh start --foreground",
     "dev:stop": "bash scripts/dev-server.sh stop",
     "dev:restart": "bash scripts/dev-server.sh restart",
     "dev:status": "bash scripts/dev-server.sh status",

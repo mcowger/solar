@@ -12,6 +12,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PIDFILE="$ROOT/.dev-server.pid"
 LOGFILE="$ROOT/.dev-server.log"
+SERVER_PORT="${PASEO_PORT:-3000}"
 
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
@@ -23,14 +24,18 @@ case "${1:-}" in
       echo "dev server already running (pid $(cat "$PIDFILE"))"
       exit 0
     fi
+    if [ "${2:-}" = "--foreground" ]; then
+      cd "$ROOT/apps/server"
+      exec env PORT="$SERVER_PORT" bun --env-file=../../.env run dev
+    fi
     : > "$LOGFILE"
-    setsid bash -c 'cd "'"$ROOT"'/apps/server" && exec bun --env-file=../../.env run dev' \
+    PORT="$SERVER_PORT" setsid bash -c 'cd "'"$ROOT"'/apps/server" && exec bun --env-file=../../.env run dev' \
       >> "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     # Give it a moment to bind or fail fast.
     sleep 3
     if is_running; then
-      echo "dev server started (pid $(cat "$PIDFILE")) -> http://localhost:3000  logs: $LOGFILE"
+      echo "dev server started (pid $(cat "$PIDFILE")) -> http://localhost:$SERVER_PORT  logs: $LOGFILE"
     else
       echo "dev server failed to start; last log lines:"
       tail -n 20 "$LOGFILE"
@@ -68,7 +73,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: $0 {start|stop|restart|status|logs [N]}"
+    echo "usage: $0 {start [--foreground]|stop|restart|status|logs [N]}"
     exit 1
     ;;
 esac
