@@ -3,10 +3,12 @@ import { DiskResource, PathSpec } from "@struktoai/mirage-node";
 import { config } from "../config";
 import { db } from "../db";
 import type { AttachmentKind } from "../db/schema";
+import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
+import { extractDocumentText } from "./documentTextExtraction";
 
 /**
- * Attachment storage (M3): images + plain-text, never locally parsed/extracted
- * (see ARCHITECTURE §6.2). Backed by Mirage's local-disk resource today; the
+ * Attachment storage (M3): images + plain-text, plus request-scoped extraction
+ * for selected Office formats. Backed by Mirage's local-disk resource today; the
  * same resource API swaps in an S3-compatible mount later with no call-site
  * changes.
  */
@@ -206,7 +208,10 @@ export async function removeOrphanAttachment(
  * extraction, ever — see ARCHITECTURE §6.2). */
 export async function loadAttachmentContentParts(
   messageId: string,
-  documentMimeTypes: readonly string[] = [],
+  documentInput: DocumentInputCapabilities = {
+    nativeMimeTypes: [],
+    extractedTextMimeTypes: [],
+  },
 ): Promise<{ parts: (TextContent | ImageContent)[]; documents: NativeDocumentInput[] }> {
   const rows = await attachmentsForMessage(messageId);
   if (rows.length === 0) return { parts: [], documents: [] };
@@ -227,7 +232,7 @@ export async function loadAttachmentContentParts(
         type: "text",
         text: `<attachment name="${r.filename}">\n${text}\n</attachment>`,
       });
-    } else if (documentMimeTypes.includes(r.mimeType)) {
+    } else if (documentInput.nativeMimeTypes.includes(r.mimeType)) {
       const marker = `[[solar-document:${r.id}]]`;
       parts.push({ type: "text", text: marker });
       documents.push({
@@ -235,6 +240,12 @@ export async function loadAttachmentContentParts(
         data: Buffer.from(bytes).toString("base64"),
         mimeType: r.mimeType,
         filename: r.filename,
+      });
+    } else if (documentInput.extractedTextMimeTypes.includes(r.mimeType)) {
+      const text = await extractDocumentText(bytes, r.mimeType);
+      parts.push({
+        type: "text",
+        text: `<attachment name="${r.filename}">\n${text}\n</attachment>`,
       });
     }
   }

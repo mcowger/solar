@@ -15,12 +15,14 @@ import {
 } from "./attachments";
 import {
   getTitlePrompt,
+  documentInputCapabilities,
   resolveSelection,
   resolveTaskModelOrFallback,
   documentInputMimeTypes,
   type GenerationParams,
 } from "./catalog";
 import { generationManager } from "./generationManager";
+import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
 import { toolProvider } from "./tools";
 
 export const chatRoutes = new Hono();
@@ -54,7 +56,10 @@ async function ownsConversation(userId: string, conversationId: string) {
 async function buildContext(
   conversationId: string,
   systemPrompt?: string | null,
-  documentMimeTypes: readonly string[] = [],
+  documentInput: DocumentInputCapabilities = {
+    nativeMimeTypes: [],
+    extractedTextMimeTypes: [],
+  },
 ): Promise<{ context: PiContext; documents: import("./attachments").NativeDocumentInput[] }> {
   const rows = await db
     .selectFrom("message")
@@ -68,7 +73,7 @@ async function buildContext(
   const documents: import("./attachments").NativeDocumentInput[] = [];
   for (const r of rows) {
     if (r.role === "user") {
-      const attachmentContent = await loadAttachmentContentParts(r.id, documentMimeTypes);
+      const attachmentContent = await loadAttachmentContentParts(r.id, documentInput);
       documents.push(...attachmentContent.documents);
       const content =
         attachmentContent.parts.length === 0
@@ -172,11 +177,11 @@ async function streamNewAssistantTurn(
     userId,
     isAdmin,
   );
-  const documentMimeTypes = await documentInputMimeTypes(selection);
+  const documentInput = await documentInputCapabilities(selection);
   const { context, documents } = await buildContext(
     conversationId,
     convo?.systemPrompt,
-    documentMimeTypes,
+    documentInput,
   );
   const resolvedTools = convo?.autoExecuteTools
     ? await toolProvider.resolve({ userId, conversationId })

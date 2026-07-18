@@ -11,7 +11,7 @@ const document = {
 describe("native attachment adapters", () => {
   test("injects OpenAI Responses input_file blocks", () => {
     const adapter = nativeAttachmentAdapter({ api: "openai-responses" });
-    expect(adapter?.documentMimeTypes).toContain("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(adapter?.nativeMimeTypes).toContain("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
     const payload = {
       input: [{ role: "user", content: [{ type: "input_text", text: document.marker }] }],
@@ -30,7 +30,11 @@ describe("native attachment adapters", () => {
 
   test("injects Claude PDF document blocks", () => {
     const adapter = nativeAttachmentAdapter({ api: "anthropic-messages" });
-    expect(adapter?.documentMimeTypes).toEqual(["application/pdf"]);
+    expect(adapter?.nativeMimeTypes).toEqual(["application/pdf"]);
+    expect(adapter?.extractedTextMimeTypes).toEqual([
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]);
 
     const payload = { messages: [{ role: "user", content: document.marker }] };
     expect(adapter?.injectDocuments(payload, [document])).toEqual({

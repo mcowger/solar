@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { writeXlsx } from "openjsxl";
 
 type AttachmentRow = {
   id: string;
@@ -219,9 +220,34 @@ describe("attachments", () => {
     files.set("/user-1/document", new Uint8Array([0, 1, 2]));
 
     await expect(attachments.loadAttachmentContentParts("message-1")).resolves.toEqual({ parts: [], documents: [] });
-    await expect(attachments.loadAttachmentContentParts("message-1", ["application/pdf"])).resolves.toEqual({
+    await expect(attachments.loadAttachmentContentParts("message-1", {
+      nativeMimeTypes: ["application/pdf"],
+      extractedTextMimeTypes: [],
+    })).resolves.toEqual({
       parts: [{ type: "text", text: "[[solar-document:document]]" }],
       documents: [{ marker: "[[solar-document:document]]", data: "AAEC", mimeType: "application/pdf", filename: "report.pdf" }],
+    });
+  });
+
+  test("extracts spreadsheet text only for a configured fallback capability", async () => {
+    const bytes = await writeXlsx({
+      sheets: [{ name: "Inventory", rows: [["Item"], ["Solar"]] }],
+    });
+    rows.set("spreadsheet", row({
+      id: "spreadsheet",
+      filename: "inventory.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      kind: "document",
+      storageKey: "user-1/spreadsheet",
+    }));
+    files.set("/user-1/spreadsheet", bytes);
+
+    await expect(attachments.loadAttachmentContentParts("message-1", {
+      nativeMimeTypes: [],
+      extractedTextMimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    })).resolves.toEqual({
+      parts: [{ type: "text", text: "<attachment name=\"inventory.xlsx\">\n[Sheet: Inventory]\nItem\nSolar\n</attachment>" }],
+      documents: [],
     });
   });
 });

@@ -4,9 +4,22 @@ interface ModelApiSelection {
   api: string;
 }
 
-interface NativeAttachmentAdapter {
+export interface DocumentInputCapabilities {
+  nativeMimeTypes: readonly string[];
+  extractedTextMimeTypes: readonly string[];
+}
+
+export const FALLBACK_DOCUMENT_INPUT: DocumentInputCapabilities = {
+  nativeMimeTypes: [],
+  extractedTextMimeTypes: [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
+};
+
+interface NativeAttachmentAdapter extends DocumentInputCapabilities {
   api: string;
-  documentMimeTypes: readonly string[];
   injectDocuments(payload: unknown, documents: NativeDocumentInput[]): unknown;
 }
 
@@ -71,18 +84,23 @@ function injectAnthropicDocuments(payload: unknown, documents: NativeDocumentInp
 const adapters: NativeAttachmentAdapter[] = [
   {
     api: "openai-responses",
-    documentMimeTypes: [
+    nativeMimeTypes: [
       "application/pdf",
       "application/msword",
       "application/vnd.ms-excel",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ],
+    extractedTextMimeTypes: [],
     injectDocuments: injectOpenAIResponsesDocuments,
   },
   {
     api: "anthropic-messages",
-    documentMimeTypes: ["application/pdf"],
+    nativeMimeTypes: ["application/pdf"],
+    extractedTextMimeTypes: [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
     injectDocuments: injectAnthropicDocuments,
   },
 ];

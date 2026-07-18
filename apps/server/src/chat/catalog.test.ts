@@ -75,6 +75,29 @@ function configureModels(...configs: ProviderConfig[]) {
 }
 
 describe("catalog model policy", () => {
+  test("enables text extraction for configured models without a native attachment adapter", async () => {
+    configureModels({
+      provider: "other",
+      apiKey: null,
+      baseUrl: null,
+      enabledModels: [{ id: "text-model", endpointId: "openai-completions", api: "openai-completions", visibility: "public", documents: true }],
+    });
+
+    await expect(catalog.documentInputCapabilities({
+      provider: "other",
+      endpointId: "openai-completions",
+      modelId: "text-model",
+      api: "openai-completions",
+    })).resolves.toEqual({
+      nativeMimeTypes: [],
+      extractedTextMimeTypes: [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ],
+    });
+  });
+
   test("shows private models only to admins and conservatively describes unknown models", async () => {
     configureModels(
       {

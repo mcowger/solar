@@ -13,7 +13,11 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { db } from "../db";
 import { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 import type { NativeDocumentInput } from "./attachments";
-import { nativeAttachmentAdapter } from "./nativeAttachmentAdapters";
+import {
+  FALLBACK_DOCUMENT_INPUT,
+  nativeAttachmentAdapter,
+  type DocumentInputCapabilities,
+} from "./nativeAttachmentAdapters";
 
 export { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 
@@ -305,9 +309,15 @@ export async function getModelCapabilities(selection: ModelSelection) {
   return { reasoningLevels, supportsVerbosity: selection.api === "openai-responses" };
 }
 
-export async function documentInputMimeTypes(selection: ModelSelection): Promise<readonly string[]> {
+const NO_DOCUMENT_INPUT: DocumentInputCapabilities = {
+  nativeMimeTypes: [],
+  extractedTextMimeTypes: [],
+};
+
+export async function documentInputCapabilities(
+  selection: ModelSelection,
+): Promise<DocumentInputCapabilities> {
   const adapter = nativeAttachmentAdapter(selection);
-  if (!adapter) return [];
   const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === selection.provider);
   const enabled = Boolean(
     config?.enabledModels.find(
@@ -317,7 +327,18 @@ export async function documentInputMimeTypes(selection: ModelSelection): Promise
         candidate.api === selection.api,
     )?.documents,
   );
-  return enabled ? adapter.documentMimeTypes : [];
+  if (!enabled) return NO_DOCUMENT_INPUT;
+  return adapter
+    ? {
+        nativeMimeTypes: adapter.nativeMimeTypes,
+        extractedTextMimeTypes: adapter.extractedTextMimeTypes,
+      }
+    : FALLBACK_DOCUMENT_INPUT;
+}
+
+export async function documentInputMimeTypes(selection: ModelSelection): Promise<readonly string[]> {
+  const capabilities = await documentInputCapabilities(selection);
+  return [...capabilities.nativeMimeTypes, ...capabilities.extractedTextMimeTypes];
 }
 
 function runtimeProviderId(selection: ModelSelection) {
