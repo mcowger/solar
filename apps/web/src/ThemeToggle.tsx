@@ -38,9 +38,7 @@ export function ThemeToggle() {
 
   return (
     <>
-      <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={open} title="Change theme">
-        <Palette size={18} />
-      </button>
+      <div className="tooltip tooltip-bottom" data-tip="Change theme"><button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={open}><Palette size={18} /></button></div>
       <dialog ref={dialogRef} className="modal modal-bottom sm:modal-middle">
         <div className="modal-box max-h-[85dvh] w-full max-w-2xl overflow-hidden p-0">
           <div className="flex items-center justify-between border-b border-base-300 px-5 py-4">

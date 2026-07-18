@@ -1,7 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Menu } from "lucide-react";
+import { LogOut, Menu, MessageCircle, Server, Settings2, SlidersHorizontal } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { ThemeToggle } from "../ThemeToggle";
@@ -83,19 +83,15 @@ export function ChatApp() {
       <div className="drawer-content solar-main flex min-h-0 flex-col bg-base-100">
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="btn btn-ghost btn-sm btn-circle lg:hidden"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
-         <div className="navbar-end gap-1 sm:gap-2">
-         <span className="hidden max-w-48 truncate text-sm opacity-60 sm:inline">{session?.user.email}</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setShowPresets((s) => !s); setShowSettings(false); setShowMcpServers(false); }}>
-           {showPresets ? "Back to chat" : "Presets"}
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setShowMcpServers((s) => !s); setShowSettings(false); setShowPresets(false); }}>{showMcpServers ? "Back to chat" : "MCP servers"}</button>
-         {isAdmin && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setShowSettings((s) => !s); setShowPresets(false); setShowMcpServers(false); }}>
-             {showSettings ? "Back to chat" : "Settings"}
-           </button>
-         )}
-         <ThemeToggle />
-         <button className="btn btn-ghost btn-sm" onClick={() => signOut()}>Sign out</button>
+          <div className="navbar-end gap-1 sm:gap-2">
+          <span className="hidden max-w-48 truncate text-sm opacity-60 sm:inline">{session?.user.email}</span>
+           <div className="tooltip tooltip-bottom" data-tip={showPresets ? "Back to chat" : "Presets"}><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowPresets((s) => !s); setShowSettings(false); setShowMcpServers(false); }}>{showPresets ? <MessageCircle size={18} /> : <SlidersHorizontal size={18} />}</button></div>
+           <div className="tooltip tooltip-bottom" data-tip={showMcpServers ? "Back to chat" : "MCP servers"}><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowMcpServers((s) => !s); setShowSettings(false); setShowPresets(false); }}>{showMcpServers ? <MessageCircle size={18} /> : <Server size={18} />}</button></div>
+          {isAdmin && (
+             <div className="tooltip tooltip-bottom" data-tip={showSettings ? "Back to chat" : "Settings"}><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowSettings((s) => !s); setShowPresets(false); setShowMcpServers(false); }}>{showSettings ? <MessageCircle size={18} /> : <Settings2 size={18} />}</button></div>
+          )}
+          <ThemeToggle />
+          <div className="tooltip tooltip-bottom" data-tip="Sign out"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => signOut()}><LogOut size={18} /></button></div>
          </div>
        </header>
        <div className="flex min-h-0 flex-1">
