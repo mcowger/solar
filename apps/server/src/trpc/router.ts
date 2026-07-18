@@ -16,6 +16,7 @@ import {
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
 import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
+import { testMcpServer } from "../chat/mcp";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -741,6 +742,96 @@ const presetRouter = router({
     }),
 });
 
+const mcpHeadersSchema = z.record(z.string().trim().min(1), z.string()).default({});
+const mcpInputSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  url: z.string().url().max(2000),
+  headers: mcpHeadersSchema,
+  enabled: z.boolean().default(true),
+  global: z.boolean().default(false),
+});
+
+async function getMcpServer(id: string) {
+  const server = await db.selectFrom("mcp_server").selectAll().where("id", "=", id).executeTakeFirst();
+  if (!server) throw new TRPCError({ code: "NOT_FOUND", message: "MCP server not found" });
+  return server;
+}
+
+function canManageMcp(userId: string, isAdmin: boolean, ownerId: string | null) {
+  if (!isAdmin && ownerId !== userId) throw new TRPCError({ code: "FORBIDDEN" });
+}
+
+const mcpRouter = router({
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const isAdmin = (ctx.user as { role?: string }).role === "admin";
+    const rows = await db.selectFrom("mcp_server").leftJoin("user_mcp_server_preference", (join) => join.onRef("user_mcp_server_preference.serverId", "=", "mcp_server.id").on("user_mcp_server_preference.userId", "=", ctx.user.id)).select(["mcp_server.id", "mcp_server.userId", "mcp_server.name", "mcp_server.url", "mcp_server.enabled", "mcp_server.createdAt", "mcp_server.updatedAt", "user_mcp_server_preference.enabled as preferenceEnabled"]).where((eb) => isAdmin ? eb("mcp_server.id", "is not", null) : eb.or([eb("mcp_server.userId", "is", null), eb("mcp_server.userId", "=", ctx.user.id)])).orderBy("mcp_server.name", "asc").execute();
+    return rows.map((row) => ({ ...row, enabled: Boolean(row.enabled), defaultEnabled: Boolean(row.preferenceEnabled ?? 1), global: row.userId === null, owned: row.userId === ctx.user.id }));
+  }),
+
+  create: protectedProcedure.input(mcpInputSchema).mutation(async ({ ctx, input }) => {
+    const isAdmin = (ctx.user as { role?: string }).role === "admin";
+    if (input.global && !isAdmin) throw new TRPCError({ code: "FORBIDDEN" });
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await db.insertInto("mcp_server").values({ id, userId: input.global ? null : ctx.user.id, name: input.name, url: input.url, headers: JSON.stringify(input.headers), enabled: input.enabled ? 1 : 0, createdAt: now, updatedAt: now }).execute();
+    return { id };
+  }),
+
+  update: protectedProcedure.input(mcpInputSchema.extend({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const isAdmin = (ctx.user as { role?: string }).role === "admin";
+    const server = await getMcpServer(input.id);
+    canManageMcp(ctx.user.id, isAdmin, server.userId);
+    if (input.global && !isAdmin) throw new TRPCError({ code: "FORBIDDEN" });
+    await db.updateTable("mcp_server").set({ userId: input.global ? null : server.userId ?? ctx.user.id, name: input.name, url: input.url, headers: JSON.stringify(input.headers), enabled: input.enabled ? 1 : 0, updatedAt: new Date().toISOString() }).where("id", "=", input.id).execute();
+  }),
+
+  remove: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ ctx, input }) => {
+    const server = await getMcpServer(input.id);
+    canManageMcp(ctx.user.id, (ctx.user as { role?: string }).role === "admin", server.userId);
+    await db.deleteFrom("mcp_server").where("id", "=", input.id).execute();
+  }),
+
+  test: protectedProcedure.input(z.object({ id: z.string().optional(), url: z.string().url().max(2000).optional(), headers: mcpHeadersSchema })).mutation(async ({ ctx, input }) => {
+    let url = input.url;
+    let headers = input.headers;
+    if (input.id) {
+      const server = await getMcpServer(input.id);
+      canManageMcp(ctx.user.id, (ctx.user as { role?: string }).role === "admin", server.userId);
+      url = url ?? server.url;
+      headers = Object.keys(headers).length ? headers : JSON.parse(server.headers);
+    }
+    if (!url) throw new TRPCError({ code: "BAD_REQUEST", message: "URL is required" });
+    try { return await testMcpServer(url, headers); } catch (error) { throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "MCP connection failed" }); }
+  }),
+
+  setDefault: protectedProcedure.input(z.object({ serverId: z.string(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+    const server = await getMcpServer(input.serverId);
+    if (server.userId !== null && server.userId !== ctx.user.id && (ctx.user as { role?: string }).role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+    await db.insertInto("user_mcp_server_preference").values({ userId: ctx.user.id, serverId: input.serverId, enabled: input.enabled ? 1 : 0 }).onConflict((oc) => oc.columns(["userId", "serverId"]).doUpdateSet({ enabled: input.enabled ? 1 : 0 })).execute();
+  }),
+
+  forConversation: protectedProcedure.input(z.object({ conversationId: z.string() })).query(async ({ ctx, input }) => {
+    await assertOwnsConversation(ctx.user.id, input.conversationId);
+    const [conversation, servers] = await Promise.all([
+      db.selectFrom("conversation").select("autoExecuteTools").where("id", "=", input.conversationId).executeTakeFirstOrThrow(),
+      db.selectFrom("mcp_server").leftJoin("user_mcp_server_preference", (join) => join.onRef("user_mcp_server_preference.serverId", "=", "mcp_server.id").on("user_mcp_server_preference.userId", "=", ctx.user.id)).leftJoin("conversation_mcp_server", (join) => join.onRef("conversation_mcp_server.serverId", "=", "mcp_server.id").on("conversation_mcp_server.conversationId", "=", input.conversationId)).select(["mcp_server.id", "mcp_server.name", "mcp_server.enabled", "user_mcp_server_preference.enabled as preferenceEnabled", "conversation_mcp_server.enabled as conversationEnabled"]).where("mcp_server.enabled", "=", 1).where((eb) => eb.or([eb("mcp_server.userId", "is", null), eb("mcp_server.userId", "=", ctx.user.id)])).execute(),
+    ]);
+    return { autoExecuteTools: Boolean(conversation.autoExecuteTools), servers: servers.map((server) => ({ id: server.id, name: server.name, enabled: Boolean(server.conversationEnabled ?? server.preferenceEnabled ?? 1) })) };
+  }),
+
+  setConversation: protectedProcedure.input(z.object({ conversationId: z.string(), serverId: z.string(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+    await assertOwnsConversation(ctx.user.id, input.conversationId);
+    const server = await getMcpServer(input.serverId);
+    if (server.userId !== null && server.userId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+    await db.insertInto("conversation_mcp_server").values({ conversationId: input.conversationId, serverId: input.serverId, enabled: input.enabled ? 1 : 0 }).onConflict((oc) => oc.columns(["conversationId", "serverId"]).doUpdateSet({ enabled: input.enabled ? 1 : 0 })).execute();
+  }),
+
+  setAutoExecute: protectedProcedure.input(z.object({ conversationId: z.string(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+    await assertOwnsConversation(ctx.user.id, input.conversationId);
+    await db.updateTable("conversation").set({ autoExecuteTools: input.enabled ? 1 : 0 }).where("id", "=", input.conversationId).execute();
+  }),
+});
+
 const folderRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return db
@@ -841,6 +932,7 @@ export const appRouter = router({
   tag: tagRouter,
   model: modelRouter,
   preset: presetRouter,
+  mcp: mcpRouter,
   admin: adminRouter,
 });
 

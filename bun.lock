@@ -19,6 +19,7 @@
       "dependencies": {
         "@earendil-works/pi-ai": "^0.80.10",
         "@hono/trpc-server": "^0.3.4",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "@solar/shared": "workspace:*",
         "@solar/web": "workspace:*",
         "@struktoai/mirage-node": "^0.0.3",

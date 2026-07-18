@@ -132,6 +132,7 @@ async function streamNewAssistantTurn(
       "reasoningEffort",
       "reasoningSummary",
       "verbosity",
+      "autoExecuteTools",
     ])
     .where("id", "=", conversationId)
     .executeTakeFirst();
@@ -144,7 +145,10 @@ async function streamNewAssistantTurn(
     userId,
   );
   const context = await buildContext(conversationId, convo?.systemPrompt);
-  context.tools = await toolProvider.resolve({ userId, conversationId });
+  const resolvedTools = convo?.autoExecuteTools
+    ? await toolProvider.resolve({ userId, conversationId })
+    : [];
+  context.tools = resolvedTools.map(({ tool }) => tool);
   const prompt = [...context.messages].reverse().find((message) => message.role === "user");
   if (prompt && typeof prompt.content === "string") {
     logger.withMetadata({ conversationId, userId }).trace(prompt.content);
@@ -184,6 +188,7 @@ async function streamNewAssistantTurn(
     context,
     selection,
     params,
+    tools: resolvedTools,
   });
 
   return new Response(generationManager.subscribe(assistantMessageId, 0), {

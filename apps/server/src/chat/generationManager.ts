@@ -5,6 +5,7 @@ import { piEventToUiChunks, type UiChunk } from "./adapter";
 import type { GenerationParams, ModelSelection } from "./catalog";
 import { streamChat } from "./models";
 import { logger } from "../logger";
+import type { ResolvedTool } from "./mcp";
 
 interface BufferedChunk {
   id: number;
@@ -62,6 +63,7 @@ class GenerationManager {
     context: Context;
     selection: ModelSelection;
     params: GenerationParams;
+    tools?: ResolvedTool[];
   }): void {
     const gen: Generation = {
       messageId: opts.messageId,
@@ -80,7 +82,7 @@ class GenerationManager {
     };
     this.generations.set(opts.messageId, gen);
     logger.withMetadata({ conversationId: opts.conversationId, messageId: opts.messageId, model: gen.model }).info("generation started");
-    void this.run(gen, opts.context);
+    void this.run(gen, opts.context, opts.tools);
   }
 
   isActive(messageId: string): boolean {
@@ -144,7 +146,7 @@ class GenerationManager {
     });
   }
 
-  private async run(gen: Generation, context: Context): Promise<void> {
+  private async run(gen: Generation, context: Context, tools: ResolvedTool[] = []): Promise<void> {
     const emit = (chunk: UiChunk) => {
       const bc: BufferedChunk = { id: gen.nextId++, chunk };
       gen.chunks.push(bc);
@@ -154,7 +156,7 @@ class GenerationManager {
     emit({ type: "start", messageId: gen.messageId });
 
     try {
-      const events = await streamChat(context, gen.selection, gen.params, gen.controller.signal);
+      const events = streamChat(context, gen.selection, gen.params, gen.controller.signal, tools);
       for await (const event of events) {
         if (event.type === "error") {
           throw new Error(event.error.errorMessage ?? "Generation failed");
