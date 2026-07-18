@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Solar</title>
+    <link rel="stylesheet" href="./src/app.css" />
+    <script>const p=localStorage.getItem("solar-theme")||"system";document.documentElement.dataset.theme=p==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"solar-dark":"solar-light"):`solar-${p}`;</script>
   </head>
   <body>
     <div id="root"></div>

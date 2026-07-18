@@ -26,7 +26,8 @@ before treating any of them as permanent policy.
 - Data: **Kysely** + **SQLite** (`solar.db`), hand-written migrations +
   `kysely-codegen`.
 - Auth: **Better Auth** (Kysely adapter).
-- Frontend: **React + assistant-ui**, **tRPC + TanStack Query**.
+- Frontend: **React + assistant-ui**, **tRPC + TanStack Query**, **Tailwind CSS
+  4 + DaisyUI 5**.
 
 ## Command reference
 
@@ -76,7 +77,7 @@ seeds a convenience account (`apps/server/src/db/seed-dev.ts`):
 | Field | Value |
 | --- | --- |
 | Email | `admin@solar.local` |
-| Password | `solar-dev-password` |
+| Password | `password` |
 
 Because it is the first account created, it becomes the **admin** (see the
 first-user-admin rule below). The seed never runs in production and never runs
@@ -108,6 +109,13 @@ capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
   API *and* bundles/serves the React app with HMR. There is **no separate web
   dev server and no Vite** — don't add one. `apps/web` has no `dev` script by
   design.
+- **Tailwind + DaisyUI are compiled by Bun.** Keep
+  `apps/server/bunfig.toml` with its `[serve.static]` `bun-plugin-tailwind`
+  entry: Bun resolves `bunfig.toml` from the server's cwd, not the workspace
+  root. The web HTML imports `src/app.css` directly; do not add a Tailwind CLI
+  watcher, generated stylesheet, or a separate frontend dev server. CSS saves
+  trigger Bun HMR; `apps/web/src/main.tsx` reloads the page after an update as
+  a compatibility fallback for CSS plugin updates.
 - **Server is started with an explicit `Bun.serve(...)` call**, not a
   `export default { fetch, routes }`. A default-export server object did **not**
   keep the process alive here — it started and immediately exited. If you
@@ -117,7 +125,8 @@ capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
   `/healthz`) must be registered as their own routes that delegate to Hono
   (`(req) => app.fetch(req)`). If you rely on Hono's top-level `fetch` with a
   `"/*"` HTML route present, the catch-all swallows the API routes.
-- **Production web build:** `bun run build` → `bun build ./index.html` into
+- **Production web build:** `bun run build` runs `apps/web/build.ts`, which
+  passes `bun-plugin-tailwind` to `Bun.build` and writes to
   `apps/server/dist/web`. In dev the HTML is bundled on the fly; `dist/` is
   gitignored.
 - **Typecheck:** `bun run typecheck` runs `tsc` per package. Do this before

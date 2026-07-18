@@ -5,6 +5,10 @@ import { App } from "./App";
 import { trpcClient } from "./trpcClient";
 import { TRPCProvider } from "./trpc";
 
+if (import.meta.hot) {
+  import.meta.hot.on("bun:afterUpdate", () => window.location.reload());
+}
+
 function Root() {
   const [queryClient] = useState(() => new QueryClient());
 

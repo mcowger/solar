@@ -10,7 +10,7 @@ import { sqlite } from "./index";
  * (admin) user through the sign-up form.
  */
 export const DEV_EMAIL = "admin@solar.local";
-export const DEV_PASSWORD = "solar-dev-password";
+export const DEV_PASSWORD = "password";
 
 export async function seedDevUser(): Promise<void> {
   if (process.env.NODE_ENV === "production") return;

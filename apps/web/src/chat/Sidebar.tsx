@@ -92,13 +92,13 @@ export function Sidebar({
   const ConversationRow = (c: (typeof list)[number]) => (
     <div
       key={c.id}
+      className={`solar-conversation-row${c.id === activeId ? " bg-secondary/15" : ""}`}
       style={{
         display: "flex",
         flexDirection: "column",
         gap: 2,
         padding: "6px 8px",
         borderRadius: 8,
-        background: c.id === activeId ? "#e6f0ff" : "transparent",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -221,12 +221,12 @@ export function Sidebar({
               <button
                 key={r.id}
                 onClick={() => onSelect(r.id)}
+                className={r.id === activeId ? "bg-secondary/15" : undefined}
                 style={{
                   display: "block",
                   width: "100%",
                   textAlign: "left",
                   border: "none",
-                  background: r.id === activeId ? "#e6f0ff" : "transparent",
                   cursor: "pointer",
                   fontSize: 14,
                   padding: "6px 8px",
