@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
+import { Settings } from "../admin/Settings";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
 import { useSolarRuntime } from "./useSolarRuntime";
@@ -22,7 +23,9 @@ export function ChatApp() {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string })?.role === "admin";
   const [activeId, setActiveId] = useState<string | undefined>();
+  const [showSettings, setShowSettings] = useState(false);
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
 
@@ -59,18 +62,29 @@ export function ChatApp() {
         <strong>Solar</strong>
         <span style={{ flex: 1 }} />
         <span style={{ color: "#666" }}>{session?.user.email}</span>
+        {isAdmin && (
+          <button onClick={() => setShowSettings((s) => !s)}>
+            {showSettings ? "Back to chat" : "Settings"}
+          </button>
+        )}
         <button onClick={() => signOut()}>Sign out</button>
       </header>
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <Sidebar
-          activeId={activeId}
-          onSelect={setActiveId}
-          onNew={() => create.mutate({})}
-        />
-        {activeId ? (
-          <ConversationView key={activeId} conversationId={activeId} />
+        {showSettings && isAdmin ? (
+          <Settings onClose={() => setShowSettings(false)} />
         ) : (
-          <p style={{ padding: "1rem" }}>Loading…</p>
+          <>
+            <Sidebar
+              activeId={activeId}
+              onSelect={setActiveId}
+              onNew={() => create.mutate({})}
+            />
+            {activeId ? (
+              <ConversationView key={activeId} conversationId={activeId} />
+            ) : (
+              <p style={{ padding: "1rem" }}>Loading…</p>
+            )}
+          </>
         )}
       </div>
     </div>

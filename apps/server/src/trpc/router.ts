@@ -2,6 +2,11 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { db } from "../db";
 import { generationManager } from "../chat/generationManager";
+import {
+  listAvailableModels,
+  PROVIDER_APIS,
+  SUPPORTED_PROVIDERS,
+} from "../chat/catalog";
 import type { TrpcContext } from "./context";
 
 const t = initTRPC.context<TrpcContext>().create();
@@ -13,6 +18,14 @@ export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.user) throw new TRPCError({ code: "UNAUTHORIZED" });
   return next({ ctx: { ...ctx, user: ctx.user } });
+});
+
+/** Gate: requires an authenticated user with the admin role. */
+export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if ((ctx.user as { role?: string }).role !== "admin") {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+  return next({ ctx });
 });
 
 /** Asserts the conversation exists and belongs to the user; else NOT_FOUND. */
@@ -30,7 +43,16 @@ const conversationRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const conversations = await db
       .selectFrom("conversation")
-      .select(["id", "title", "folderId", "createdAt", "updatedAt"])
+      .select([
+        "id",
+        "title",
+        "folderId",
+        "provider",
+        "modelId",
+        "modelApi",
+        "createdAt",
+        "updatedAt",
+      ])
       .where("userId", "=", ctx.user.id)
       .orderBy("updatedAt", "desc")
       .execute();
@@ -92,6 +114,37 @@ const conversationRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertOwnsConversation(ctx.user.id, input.id);
       await db.deleteFrom("conversation").where("id", "=", input.id).execute();
+    }),
+
+  setModel: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        provider: z.string(),
+        modelId: z.string(),
+        api: z.string(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnsConversation(ctx.user.id, input.id);
+      // Only allow selecting a model the user actually has access to.
+      const available = await listAvailableModels();
+      const ok = available.some(
+        (m) =>
+          m.provider === input.provider &&
+          m.modelId === input.modelId &&
+          m.api === input.api,
+      );
+      if (!ok) throw new TRPCError({ code: "BAD_REQUEST", message: "model unavailable" });
+      await db
+        .updateTable("conversation")
+        .set({
+          provider: input.provider,
+          modelId: input.modelId,
+          modelApi: input.api,
+        })
+        .where("id", "=", input.id)
+        .execute();
     }),
 
   move: protectedProcedure
@@ -168,6 +221,90 @@ const conversationRouter = router({
         isActive: m.status === "generating" && generationManager.isActive(m.id),
       }));
     }),
+});
+
+const allowlistEntrySchema = z.object({
+  id: z.string().trim().min(1),
+  api: z.string().trim().min(1),
+});
+
+const adminRouter = router({
+  // Provider credentials + model allowlists (global, admin-owned). API keys are
+  // stored plaintext by design (see ARCHITECTURE §8) and returned to the admin UI.
+  listProviders: adminProcedure.query(async () => {
+    const rows = await db
+      .selectFrom("provider_config")
+      .select(["provider", "apiKey", "baseUrl", "enabledModels"])
+      .execute();
+    const byProvider = new Map(rows.map((r) => [r.provider, r]));
+    return SUPPORTED_PROVIDERS.map((provider) => {
+      const row = byProvider.get(provider);
+      let enabledModels: { id: string; api: string }[] = [];
+      if (row?.enabledModels) {
+        try {
+          const parsed = JSON.parse(row.enabledModels);
+          if (Array.isArray(parsed)) enabledModels = parsed;
+        } catch {
+          /* ignore malformed */
+        }
+      }
+      return {
+        provider,
+        apiKey: row?.apiKey ?? "",
+        baseUrl: row?.baseUrl ?? "",
+        enabledModels,
+        apis: PROVIDER_APIS[provider] ?? [],
+      };
+    });
+  }),
+
+  setProvider: adminProcedure
+    .input(
+      z.object({
+        provider: z.enum(SUPPORTED_PROVIDERS as [string, ...string[]]),
+        apiKey: z.string().trim().nullish(),
+        baseUrl: z.string().trim().nullish(),
+        enabledModels: z.array(allowlistEntrySchema),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      // Reject allowlist entries whose api is not valid for the provider.
+      const validApis = PROVIDER_APIS[input.provider] ?? [];
+      for (const e of input.enabledModels) {
+        if (!validApis.includes(e.api)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `api "${e.api}" is not valid for ${input.provider}`,
+          });
+        }
+      }
+      const values = {
+        provider: input.provider,
+        apiKey: input.apiKey || null,
+        baseUrl: input.baseUrl || null,
+        enabledModels: JSON.stringify(input.enabledModels),
+        updatedAt: new Date().toISOString(),
+      };
+      await db
+        .insertInto("provider_config")
+        .values(values)
+        .onConflict((oc) =>
+          oc.column("provider").doUpdateSet({
+            apiKey: values.apiKey,
+            baseUrl: values.baseUrl,
+            enabledModels: values.enabledModels,
+            updatedAt: values.updatedAt,
+          }),
+        )
+        .execute();
+    }),
+});
+
+const modelRouter = router({
+  /** Models the current user may select (allowlist + mock). */
+  available: protectedProcedure.query(async () => {
+    return listAvailableModels();
+  }),
 });
 
 const folderRouter = router({
@@ -268,6 +405,8 @@ export const appRouter = router({
   conversation: conversationRouter,
   folder: folderRouter,
   tag: tagRouter,
+  model: modelRouter,
+  admin: adminRouter,
 });
 
 /** Exported for the web app's type-only tRPC client. */

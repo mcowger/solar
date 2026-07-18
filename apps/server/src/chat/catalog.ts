@@ -67,6 +67,13 @@ const PROVIDER_BASE_URLS: Record<string, string> = {
 /** Providers the M3 slice knows how to talk to (excludes the mock provider). */
 export const SUPPORTED_PROVIDERS = Object.keys(PROVIDER_BASE_URLS);
 
+/** The stream APIs each provider's allowlist entries may use. */
+export const PROVIDER_APIS: Record<string, string[]> = {
+  openai: ["openai-responses", "openai-completions"],
+  anthropic: ["anthropic-messages"],
+  openrouter: ["openai-completions"],
+};
+
 /** Mock models surfaced when SOLAR_MOCK_LLM is set (zero API cost). */
 const MOCK_MODELS: ModelDescriptor[] = [
   {
