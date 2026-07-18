@@ -1,7 +1,8 @@
 {
   "worktree": {
     "setup": [
-      "bun install"
+      "bun install",
+      "bunx skills experimental_install"
     ],
     "teardown": "bun run dev:stop && rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
   },
