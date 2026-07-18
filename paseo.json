@@ -14,6 +14,7 @@
     },
     "typecheck": { "command": "bun run typecheck" },
     "build": { "command": "bun run build" },
+    "deploy:staging": { "command": "bun run deploy:staging" },
     "migrate": { "command": "bun run migrate" },
     "migrate:auth": { "command": "bun run migrate:auth" },
     "codegen": { "command": "bun run codegen" }
