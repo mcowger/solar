@@ -5,6 +5,7 @@ import { auth } from "./auth";
 import { db } from "./db";
 import { migrateAuth } from "./db/migrate-auth";
 import { migrateToLatest } from "./db/migrate";
+import { chatRoutes } from "./chat/routes";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 import index from "@solar/web/index.html";
@@ -25,6 +26,9 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 // Better Auth handles all of /api/auth/*.
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
+// Decoupled chat streaming (SSE) — see chat/generationManager.ts.
+app.route("/api/chat", chatRoutes);
+
 app.use(
   "/trpc/*",
   trpcServer({
@@ -42,6 +46,8 @@ const server = Bun.serve({
   routes: {
     "/trpc/*": (req) => app.fetch(req),
     "/api/auth/*": (req) => app.fetch(req),
+    "/api/chat/*": (req) => app.fetch(req),
+    "/api/chat": (req) => app.fetch(req),
     "/healthz": (req) => app.fetch(req),
     "/*": index,
   },

@@ -31,6 +31,27 @@ export interface AppMeta {
   value: string;
 }
 
+export interface Conversation {
+  createdAt: Generated<string>;
+  id: string | null;
+  title: string;
+  updatedAt: Generated<string>;
+  userId: string;
+}
+
+export interface Message {
+  conversationId: string;
+  createdAt: Generated<string>;
+  id: string | null;
+  inputTokens: number | null;
+  model: string | null;
+  outputTokens: number | null;
+  parts: string | null;
+  role: string;
+  status: Generated<string>;
+  text: Generated<string>;
+}
+
 export interface Session {
   createdAt: string;
   expiresAt: string;
@@ -64,6 +85,8 @@ export interface Verification {
 export interface DB {
   account: Account;
   app_meta: AppMeta;
+  conversation: Conversation;
+  message: Message;
   session: Session;
   user: User;
   verification: Verification;

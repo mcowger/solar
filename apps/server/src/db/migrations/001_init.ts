@@ -1,4 +1,4 @@
-import type { Kysely } from "kysely";
+import { sql, type Kysely } from "kysely";
 
 /**
  * First app migration. Better Auth manages its own tables separately; this
@@ -11,7 +11,7 @@ export async function up(db: Kysely<unknown>): Promise<void> {
     .addColumn("key", "text", (col) => col.primaryKey())
     .addColumn("value", "text", (col) => col.notNull())
     .addColumn("updatedAt", "text", (col) =>
-      col.notNull().defaultTo("CURRENT_TIMESTAMP"),
+      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
     )
     .execute();
 }

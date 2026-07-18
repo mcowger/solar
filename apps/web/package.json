@@ -10,11 +10,14 @@
     "build": "bun build ./index.html --outdir ../server/dist/web --minify"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.14.27",
+    "@assistant-ui/react-data-stream": "^0.12.19",
     "@solar/server": "workspace:*",
     "@solar/shared": "workspace:*",
     "@tanstack/react-query": "^5.60.0",
     "@trpc/client": "^11.0.0",
     "@trpc/tanstack-react-query": "^11.0.0",
+    "better-auth": "^1.6.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

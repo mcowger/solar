@@ -95,3 +95,31 @@ before treating any of them as permanent policy.
   generated `dist/`. `types.generated.ts` *is* committed.
 - Set a real `BETTER_AUTH_SECRET` (≥32 chars) in `.env`; the dev fallback logs
   low-entropy warnings.
+- **`defaultTo("CURRENT_TIMESTAMP")` stores the literal string** in Kysely. Use
+  ``defaultTo(sql`CURRENT_TIMESTAMP`)`` for a real SQL default.
+- **SQLite `CURRENT_TIMESTAMP` is second-resolution**, so rows inserted in the
+  same second collide and can't be ordered. For anything order-sensitive
+  (message sequence), write an explicit ms-resolution ISO timestamp from the app
+  at insert time.
+
+## Chat / generation gotchas (M1)
+
+- **Generation is decoupled from the request** (`chat/generationManager.ts`):
+  the pi stream runs on the generation's *own* `AbortController`, never the HTTP
+  request signal. A client disconnect only detaches an SSE subscriber; the
+  message still completes and persists. Only `POST /api/chat/stop` (explicit
+  Stop) aborts.
+- **Resume** replays buffered chunks after `Last-Event-ID` then attaches live;
+  finished generations stay in memory for `RETENTION_MS` so a reload can still
+  replay. Buffers are in-memory/single-node — they don't survive a restart.
+- **pi context reconstruction:** assistant history items must be full pi
+  `AssistantMessage` objects (role/api/provider/model/usage/stopReason), not
+  `{role, content}`. We persist the *entire* pi assistant message JSON in
+  `message.parts` and replay it verbatim on later turns; user turns are rebuilt
+  from `text`.
+- **Frontend uses `useExternalStoreRuntime`, not the data-stream runtime.** We
+  own message state (load history via tRPC, stream via `fetch` + our SSE parser,
+  Stop via the stop endpoint, resume on load). The data-stream runtime can't
+  seed persisted history, which our reload/resume flow needs.
+- pi-ai reads provider API keys from the environment (M1: `OPENAI_API_KEY`).
+  Run the server with `bun --env-file=../../.env run dev`.
