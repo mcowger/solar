@@ -68,7 +68,7 @@ const jsonHeaders = { "content-type": "application/json" };
  * reply; after every turn we reload history so local ids match the DB (required
  * for subsequent edit/regenerate, which key off canonical message ids).
  */
-export function useSolarRuntime(conversationId: string) {
+export function useSolarRuntime(conversationId: string, allowImages: boolean) {
   const [messages, setMessages] = useState<SolarMessage[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const assistantIdRef = useRef<string | null>(null);
@@ -244,7 +244,10 @@ export function useSolarRuntime(conversationId: string) {
     abortRef.current?.abort();
   }, []);
 
-  const attachmentAdapter = useMemo(() => new SolarAttachmentAdapter(), []);
+  const attachmentAdapter = useMemo(
+    () => new SolarAttachmentAdapter(allowImages),
+    [allowImages],
+  );
 
   return useExternalStoreRuntime({
     messages,

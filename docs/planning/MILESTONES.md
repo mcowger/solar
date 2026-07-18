@@ -87,7 +87,7 @@ reply that persists — the thinnest vertical slice through every layer.
 
 ---
 
-## Milestone 3 — Multi-Provider & Presets — 🔒 Decisions locked
+## Milestone 3 — Multi-Provider & Presets — ✅ Complete
 
 **Goal:** users choose models and save reusable assistants.
 

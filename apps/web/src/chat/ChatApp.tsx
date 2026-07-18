@@ -11,7 +11,11 @@ import { Thread } from "./Thread";
 import { useSolarRuntime } from "./useSolarRuntime";
 
 function ConversationView({ conversationId }: { conversationId: string }) {
-  const runtime = useSolarRuntime(conversationId);
+  const trpc = useTRPC();
+  const current = useQuery(
+    trpc.model.forConversation.queryOptions({ conversationId }),
+  );
+  const runtime = useSolarRuntime(conversationId, current.data?.vision ?? false);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>

@@ -415,7 +415,8 @@ const modelRouter = router({
     return listAvailableModels();
   }),
 
-  /** The effective model for a conversation (stored selection or resolved default). */
+  /** The effective model for a conversation (stored selection or resolved
+   * default), with its catalog capabilities (reasoning/vision). */
   forConversation: protectedProcedure
     .input(z.object({ conversationId: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -425,7 +426,7 @@ const modelRouter = router({
         .select(["provider", "modelId", "modelApi"])
         .where("id", "=", input.conversationId)
         .executeTakeFirst();
-      return resolveSelection(
+      const selection = await resolveSelection(
         {
           provider: convo?.provider ?? undefined,
           modelId: convo?.modelId ?? undefined,
@@ -433,6 +434,14 @@ const modelRouter = router({
         },
         ctx.user.id,
       );
+      const available = await listAvailableModels();
+      const descriptor = available.find(
+        (m) =>
+          m.provider === selection.provider &&
+          m.modelId === selection.modelId &&
+          m.api === selection.api,
+      );
+      return descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false };
     }),
 
   /** The current user's personal default model, if any. */
