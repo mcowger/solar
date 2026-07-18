@@ -3,8 +3,13 @@ import { z } from "zod";
 import { db } from "../db";
 import { generationManager } from "../chat/generationManager";
 import {
+  getAdminDefault,
+  getUserDefault,
   listAvailableModels,
   PROVIDER_APIS,
+  resolveSelection,
+  setAdminDefault,
+  setUserDefault,
   SUPPORTED_PROVIDERS,
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
@@ -300,11 +305,58 @@ const adminRouter = router({
     }),
 });
 
+const modelSelectionSchema = z.object({
+  provider: z.string(),
+  modelId: z.string(),
+  api: z.string(),
+});
+
 const modelRouter = router({
   /** Models the current user may select (allowlist + mock). */
   available: protectedProcedure.query(async () => {
     return listAvailableModels();
   }),
+
+  /** The effective model for a conversation (stored selection or resolved default). */
+  forConversation: protectedProcedure
+    .input(z.object({ conversationId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertOwnsConversation(ctx.user.id, input.conversationId);
+      const convo = await db
+        .selectFrom("conversation")
+        .select(["provider", "modelId", "modelApi"])
+        .where("id", "=", input.conversationId)
+        .executeTakeFirst();
+      return resolveSelection(
+        {
+          provider: convo?.provider ?? undefined,
+          modelId: convo?.modelId ?? undefined,
+          api: convo?.modelApi ?? undefined,
+        },
+        ctx.user.id,
+      );
+    }),
+
+  /** The current user's personal default model, if any. */
+  userDefault: protectedProcedure.query(async ({ ctx }) => {
+    return getUserDefault(ctx.user.id);
+  }),
+
+  setUserDefault: protectedProcedure
+    .input(modelSelectionSchema)
+    .mutation(async ({ ctx, input }) => {
+      await setUserDefault(ctx.user.id, input);
+    }),
+
+  adminDefault: adminProcedure.query(async () => {
+    return getAdminDefault();
+  }),
+
+  setAdminDefault: adminProcedure
+    .input(modelSelectionSchema)
+    .mutation(async ({ input }) => {
+      await setAdminDefault(input);
+    }),
 });
 
 const folderRouter = router({

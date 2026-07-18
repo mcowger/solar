@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { Settings } from "../admin/Settings";
+import { ModelPicker } from "./ModelPicker";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
 import { useSolarRuntime } from "./useSolarRuntime";
@@ -12,8 +13,11 @@ function ConversationView({ conversationId }: { conversationId: string }) {
   const runtime = useSolarRuntime(conversationId);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <Thread />
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+        <ModelPicker conversationId={conversationId} />
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <Thread />
+        </div>
       </div>
     </AssistantRuntimeProvider>
   );

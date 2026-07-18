@@ -105,6 +105,14 @@ export interface User {
   updatedAt: string;
 }
 
+export interface UserSetting {
+  defaultApi: string | null;
+  defaultModelId: string | null;
+  defaultProvider: string | null;
+  updatedAt: Generated<string>;
+  userId: string | null;
+}
+
 export interface Verification {
   createdAt: string;
   expiresAt: string;
@@ -125,5 +133,6 @@ export interface DB {
   session: Session;
   tag: Tag;
   user: User;
+  user_setting: UserSetting;
   verification: Verification;
 }

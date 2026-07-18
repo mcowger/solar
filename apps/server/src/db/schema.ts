@@ -78,8 +78,18 @@ export interface MessageTable {
   createdAt: Generated<string>;
 }
 
+/** Per-user preferences (M3): currently the personal default model. */
+export interface UserSettingTable {
+  userId: string;
+  defaultProvider: string | null;
+  defaultModelId: string | null;
+  defaultApi: string | null;
+  updatedAt: Generated<string>;
+}
+
 export interface Database {
   app_meta: AppMetaTable;
+  user_setting: UserSettingTable;
   conversation: ConversationTable;
   message: MessageTable;
   folder: FolderTable;

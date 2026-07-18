@@ -77,7 +77,10 @@ async function getOwnedMessage(userId: string, messageId: string) {
  * the message history first (send/edit/regenerate) so `buildContext` sees the
  * intended state.
  */
-async function streamNewAssistantTurn(conversationId: string): Promise<Response> {
+async function streamNewAssistantTurn(
+  conversationId: string,
+  userId: string,
+): Promise<Response> {
   const context = await buildContext(conversationId);
 
   // Resolve the model for this turn, then persist it so the conversation
@@ -87,11 +90,14 @@ async function streamNewAssistantTurn(conversationId: string): Promise<Response>
     .select(["provider", "modelId", "modelApi"])
     .where("id", "=", conversationId)
     .executeTakeFirst();
-  const selection = await resolveSelection({
-    provider: convo?.provider ?? undefined,
-    modelId: convo?.modelId ?? undefined,
-    api: convo?.modelApi ?? undefined,
-  });
+  const selection = await resolveSelection(
+    {
+      provider: convo?.provider ?? undefined,
+      modelId: convo?.modelId ?? undefined,
+      api: convo?.modelApi ?? undefined,
+    },
+    userId,
+  );
   await db
     .updateTable("conversation")
     .set({
@@ -157,7 +163,7 @@ chatRoutes.post("/", async (c) => {
     })
     .execute();
 
-  return streamNewAssistantTurn(conversationId);
+  return streamNewAssistantTurn(conversationId, userId);
 });
 
 // Edit a user message: rewrite its text, discard everything after it, and
@@ -191,7 +197,7 @@ chatRoutes.post("/edit", async (c) => {
     .where("id", "=", messageId)
     .execute();
 
-  return streamNewAssistantTurn(msg.conversationId);
+  return streamNewAssistantTurn(msg.conversationId, userId);
 });
 
 // Regenerate a reply. `messageId` may be the assistant message to replace
@@ -216,7 +222,7 @@ chatRoutes.post("/regenerate", async (c) => {
     : q.where("createdAt", ">", msg.createdAt)
   ).execute();
 
-  return streamNewAssistantTurn(msg.conversationId);
+  return streamNewAssistantTurn(msg.conversationId, userId);
 });
 
 // Resume streaming an in-progress (or just-finished) generation after reconnect.

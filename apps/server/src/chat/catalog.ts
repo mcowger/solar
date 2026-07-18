@@ -163,27 +163,119 @@ export async function listAvailableModels(): Promise<ModelDescriptor[]> {
   return available;
 }
 
+const ADMIN_DEFAULT_KEY = "default_model";
+
+function toSelection(sel: Partial<ModelSelection>): ModelSelection | null {
+  return sel.provider && sel.modelId && sel.api
+    ? { provider: sel.provider, modelId: sel.modelId, api: sel.api }
+    : null;
+}
+
+function findAvailable(
+  available: ModelDescriptor[],
+  sel: ModelSelection | null,
+): ModelSelection | null {
+  if (!sel) return null;
+  const match = available.find(
+    (m) => m.provider === sel.provider && m.modelId === sel.modelId && m.api === sel.api,
+  );
+  return match ? { provider: match.provider, modelId: match.modelId, api: match.api } : null;
+}
+
+/** The user's personal default model, if set. */
+export async function getUserDefault(
+  userId: string,
+): Promise<ModelSelection | null> {
+  const row = await db
+    .selectFrom("user_setting")
+    .select(["defaultProvider", "defaultModelId", "defaultApi"])
+    .where("userId", "=", userId)
+    .executeTakeFirst();
+  return row
+    ? toSelection({
+        provider: row.defaultProvider ?? undefined,
+        modelId: row.defaultModelId ?? undefined,
+        api: row.defaultApi ?? undefined,
+      })
+    : null;
+}
+
+/** Persist the user's personal default model. */
+export async function setUserDefault(
+  userId: string,
+  sel: ModelSelection,
+): Promise<void> {
+  await db
+    .insertInto("user_setting")
+    .values({
+      userId,
+      defaultProvider: sel.provider,
+      defaultModelId: sel.modelId,
+      defaultApi: sel.api,
+      updatedAt: new Date().toISOString(),
+    })
+    .onConflict((oc) =>
+      oc.column("userId").doUpdateSet({
+        defaultProvider: sel.provider,
+        defaultModelId: sel.modelId,
+        defaultApi: sel.api,
+        updatedAt: new Date().toISOString(),
+      }),
+    )
+    .execute();
+}
+
+/** The admin-wide default model, if set. */
+export async function getAdminDefault(): Promise<ModelSelection | null> {
+  const row = await db
+    .selectFrom("app_meta")
+    .select("value")
+    .where("key", "=", ADMIN_DEFAULT_KEY)
+    .executeTakeFirst();
+  if (!row) return null;
+  try {
+    return toSelection(JSON.parse(row.value));
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the admin-wide default model. */
+export async function setAdminDefault(sel: ModelSelection): Promise<void> {
+  const value = JSON.stringify(sel);
+  await db
+    .insertInto("app_meta")
+    .values({ key: ADMIN_DEFAULT_KEY, value })
+    .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
+    .execute();
+}
+
 /**
- * Resolve the model to use for a conversation. Uses the stored selection when
- * present and still available; otherwise falls back to the first available
- * model (personal/admin defaults arrive in a later step).
+ * Resolve the model to use for a conversation. Preference order: the stored
+ * conversation selection → the user's personal default → the admin default →
+ * the first available model. Only selections still present in the allowlist are
+ * honored.
  */
 export async function resolveSelection(
   stored: Partial<ModelSelection>,
+  userId?: string,
 ): Promise<ModelSelection> {
   const available = await listAvailableModels();
   if (available.length === 0) {
     throw new Error("No models are configured. Add a provider in admin settings.");
   }
-  if (stored.provider && stored.modelId && stored.api) {
-    const match = available.find(
-      (m) =>
-        m.provider === stored.provider &&
-        m.modelId === stored.modelId &&
-        m.api === stored.api,
-    );
-    if (match) return { provider: match.provider, modelId: match.modelId, api: match.api };
+
+  const fromStored = findAvailable(available, toSelection(stored));
+  if (fromStored) return fromStored;
+
+  if (userId) {
+    const fromUser = findAvailable(available, await getUserDefault(userId));
+    if (fromUser) return fromUser;
   }
+
+  const fromAdmin = findAvailable(available, await getAdminDefault());
+  if (fromAdmin) return fromAdmin;
+
   const first = available[0]!;
   return { provider: first.provider, modelId: first.modelId, api: first.api };
 }
