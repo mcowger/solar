@@ -61,7 +61,7 @@ export interface ProviderConfigTable {
   provider: string;
   apiKey: string | null;
   baseUrl: string | null;
-  /** JSON array of `{ id, api }` allowlist entries. */
+  /** JSON array of `{ id, api, visibility }` allowlist entries. */
   enabledModels: Generated<string>;
   updatedAt: Generated<string>;
 }

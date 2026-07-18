@@ -5,7 +5,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { Hono } from "hono";
 import { auth } from "../auth";
-import { db } from "../db";
+import { db, sqlite } from "../db";
 import { logger } from "../logger";
 import {
   deleteAttachmentFilesForMessages,
@@ -18,9 +18,19 @@ import { toolProvider } from "./tools";
 
 export const chatRoutes = new Hono();
 
-async function requireUserId(req: Request): Promise<string | null> {
+interface AuthenticatedUser {
+  id: string;
+  isAdmin: boolean;
+}
+
+async function requireUser(req: Request): Promise<AuthenticatedUser | null> {
   const session = await auth.api.getSession({ headers: req.headers });
-  return session?.user?.id ?? null;
+  if (!session) return null;
+  const user = sqlite.query("SELECT role, isDisabled FROM user WHERE id = ?").get(session.user.id) as
+    | { role: string; isDisabled: number }
+    | null;
+  if (!user || user.isDisabled) return null;
+  return { id: session.user.id, isAdmin: user.role === "admin" };
 }
 
 async function ownsConversation(userId: string, conversationId: string) {
@@ -119,6 +129,7 @@ async function getOwnedMessage(userId: string, messageId: string) {
 async function streamNewAssistantTurn(
   conversationId: string,
   userId: string,
+  isAdmin: boolean,
 ): Promise<Response> {
   // Resolve the model for this turn, then persist it so the conversation
   // remembers the effective selection (defaults are resolved lazily).
@@ -142,6 +153,7 @@ async function streamNewAssistantTurn(
       api: convo?.modelApi ?? undefined,
     },
     userId,
+    isAdmin,
   );
   const context = await buildContext(conversationId, convo?.systemPrompt);
   context.tools = await toolProvider.resolve({ userId, conversationId });
@@ -193,8 +205,8 @@ async function streamNewAssistantTurn(
 
 // Send a message: persist user turn, start a decoupled generation, stream it.
 chatRoutes.post("/", async (c) => {
-  const userId = await requireUserId(c.req.raw);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  const user = await requireUser(c.req.raw);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
 
   const { conversationId, text, attachmentIds } = (await c.req.json()) as {
     conversationId: string;
@@ -208,7 +220,7 @@ chatRoutes.post("/", async (c) => {
       400,
     );
   }
-  if (!(await ownsConversation(userId, conversationId))) {
+  if (!(await ownsConversation(user.id, conversationId))) {
     return c.json({ error: "conversation not found" }, 404);
   }
 
@@ -227,17 +239,17 @@ chatRoutes.post("/", async (c) => {
     })
     .execute();
   if (attachmentIds?.length) {
-    await linkAttachments(attachmentIds, userId, userMessageId);
+    await linkAttachments(attachmentIds, user.id, userMessageId);
   }
 
-  return streamNewAssistantTurn(conversationId, userId);
+  return streamNewAssistantTurn(conversationId, user.id, user.isAdmin);
 });
 
 // Edit a user message: rewrite its text, discard everything after it, and
 // regenerate the assistant reply from the amended history.
 chatRoutes.post("/edit", async (c) => {
-  const userId = await requireUserId(c.req.raw);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  const user = await requireUser(c.req.raw);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
 
   const { messageId, text } = (await c.req.json()) as {
     messageId: string;
@@ -247,7 +259,7 @@ chatRoutes.post("/edit", async (c) => {
     return c.json({ error: "messageId and text are required" }, 400);
   }
 
-  const msg = await getOwnedMessage(userId, messageId);
+  const msg = await getOwnedMessage(user.id, messageId);
   if (!msg) return c.json({ error: "message not found" }, 404);
   if (msg.role !== "user") {
     return c.json({ error: "only user messages can be edited" }, 400);
@@ -260,7 +272,7 @@ chatRoutes.post("/edit", async (c) => {
     .where("id", "=", messageId)
     .execute();
 
-  return streamNewAssistantTurn(msg.conversationId, userId);
+  return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
 
 // Regenerate a reply. `messageId` may be the assistant message to replace
@@ -268,13 +280,13 @@ chatRoutes.post("/edit", async (c) => {
 // onReload passes the parent — discard everything after it). Either way, a
 // fresh reply is generated from the resulting history.
 chatRoutes.post("/regenerate", async (c) => {
-  const userId = await requireUserId(c.req.raw);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  const user = await requireUser(c.req.raw);
+  if (!user) return c.json({ error: "unauthorized" }, 401);
 
   const { messageId } = (await c.req.json()) as { messageId: string };
   if (!messageId) return c.json({ error: "messageId required" }, 400);
 
-  const msg = await getOwnedMessage(userId, messageId);
+  const msg = await getOwnedMessage(user.id, messageId);
   if (!msg) return c.json({ error: "message not found" }, 404);
 
   await deleteMessages(
@@ -283,13 +295,12 @@ chatRoutes.post("/regenerate", async (c) => {
     msg.role === "assistant" ? ">=" : ">",
   );
 
-  return streamNewAssistantTurn(msg.conversationId, userId);
+  return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
 
 // Resume streaming an in-progress (or just-finished) generation after reconnect.
 chatRoutes.get("/stream", async (c) => {
-  const userId = await requireUserId(c.req.raw);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  if (!(await requireUser(c.req.raw))) return c.json({ error: "unauthorized" }, 401);
 
   const messageId = c.req.query("messageId");
   if (!messageId) return c.json({ error: "messageId required" }, 400);
@@ -305,8 +316,7 @@ chatRoutes.get("/stream", async (c) => {
 
 // Explicit user Stop — the only signal that cancels a generation.
 chatRoutes.post("/stop", async (c) => {
-  const userId = await requireUserId(c.req.raw);
-  if (!userId) return c.json({ error: "unauthorized" }, 401);
+  if (!(await requireUser(c.req.raw))) return c.json({ error: "unauthorized" }, 401);
 
   const { messageId } = (await c.req.json()) as { messageId: string };
   const stopped = generationManager.stop(messageId);

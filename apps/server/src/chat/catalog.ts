@@ -30,9 +30,12 @@ export interface ModelDescriptor extends ModelSelection {
 }
 
 /** One allowlist entry stored in `provider_config.enabledModels`. */
-interface AllowlistEntry {
+export type ModelVisibility = "public" | "private";
+
+export interface AllowlistEntry {
   id: string;
   api: string;
+  visibility: ModelVisibility;
 }
 
 /**
@@ -114,14 +117,20 @@ async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
   }));
 }
 
-function parseAllowlist(json: string): AllowlistEntry[] {
+export function parseAllowlist(json: string): AllowlistEntry[] {
   try {
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (e): e is AllowlistEntry =>
-        e && typeof e.id === "string" && typeof e.api === "string",
-    );
+    return parsed.flatMap((entry) => {
+      if (!entry || typeof entry.id !== "string" || typeof entry.api !== "string") {
+        return [];
+      }
+      return [{
+        id: entry.id,
+        api: entry.api,
+        visibility: entry.visibility === "private" ? "private" : "public",
+      }];
+    });
   } catch {
     return [];
   }
@@ -148,14 +157,15 @@ function describe(
 }
 
 /**
- * Models a user may pick: every allowlisted model across configured providers,
- * plus the mock models when SOLAR_MOCK_LLM is set.
+ * Models a user may pick: public models, plus private models for admins, and
+ * the mock models when SOLAR_MOCK_LLM is set.
  */
-export async function listAvailableModels(): Promise<ModelDescriptor[]> {
+export async function listAvailableModels(isAdmin = false): Promise<ModelDescriptor[]> {
   const configs = await loadProviderConfigs();
   const available: ModelDescriptor[] = [];
   for (const cfg of configs) {
     for (const entry of cfg.enabledModels) {
+      if (entry.visibility === "private" && !isAdmin) continue;
       available.push(describe(cfg.provider, entry));
     }
   }
@@ -259,8 +269,9 @@ export async function setAdminDefault(sel: ModelSelection): Promise<void> {
 export async function resolveSelection(
   stored: Partial<ModelSelection>,
   userId?: string,
+  isAdmin = false,
 ): Promise<ModelSelection> {
-  const available = await listAvailableModels();
+  const available = await listAvailableModels(isAdmin);
   if (available.length === 0) {
     throw new Error("No models are configured. Add a provider in admin settings.");
   }

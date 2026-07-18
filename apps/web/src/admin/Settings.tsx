@@ -6,6 +6,7 @@ import { useTRPC } from "../trpc";
 interface AllowlistEntry {
   id: string;
   api: string;
+  visibility: "public" | "private";
 }
 
 interface ProviderForm {
@@ -31,7 +32,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
       },
     }),
   );
-  const addModel = () => setModels((models) => [...models, { id: "", api: initial.apis[0] ?? "" }]);
+  const addModel = () => setModels((models) => [...models, { id: "", api: initial.apis[0] ?? "", visibility: "public" }]);
   const updateModel = (index: number, patch: Partial<AllowlistEntry>) =>
     setModels((models) => models.map((model, modelIndex) => modelIndex === index ? { ...model, ...patch } : model));
   const removeModel = (index: number) => setModels((models) => models.filter((_, modelIndex) => modelIndex !== index));
@@ -55,12 +56,19 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
         <fieldset className="fieldset gap-2">
           <legend className="fieldset-legend">Enabled models</legend>
           {models.map((model, index) => (
-            <div key={index} className="flex flex-col gap-2 sm:flex-row">
-              <input className="input flex-1" value={model.id} onChange={(event) => updateModel(index, { id: event.target.value })} placeholder="Model ID" />
-              <select className="select sm:w-44" value={model.api} onChange={(event) => updateModel(index, { api: event.target.value })}>
-                {initial.apis.map((api) => <option key={api} value={api}>{api}</option>)}
-              </select>
-              <button className="btn btn-ghost btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
+            <div key={index} className="rounded-box bg-base-200 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input className="input flex-1" value={model.id} onChange={(event) => updateModel(index, { id: event.target.value })} placeholder="Model ID" />
+                <select className="select sm:w-44" value={model.api} onChange={(event) => updateModel(index, { api: event.target.value })}>
+                  {initial.apis.map((api) => <option key={api} value={api}>{api}</option>)}
+                </select>
+                <button className="btn btn-ghost btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
+              </div>
+              <label className="mt-3 flex items-center gap-2 text-sm">
+                <input className="toggle toggle-sm" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
+                <span>Visible to all users</span>
+                <span className={`badge badge-sm ${model.visibility === "public" ? "badge-success badge-soft" : "badge-warning badge-soft"}`}>{model.visibility}</span>
+              </label>
             </div>
           ))}
           <button className="btn btn-sm btn-outline w-fit" onClick={addModel}>Add model</button>

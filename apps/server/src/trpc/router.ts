@@ -8,6 +8,7 @@ import {
   getModelCapabilities,
   getUserDefault,
   listAvailableModels,
+  parseAllowlist,
   PROVIDER_APIS,
   resolveSelection,
   setAdminDefault,
@@ -140,6 +141,10 @@ const conversationRouter = router({
           preset &&
           (preset.scope === "shared" || preset.userId === ctx.user.id)
         ) {
+          await assertCanUseModel(
+            { provider: preset.provider, modelId: preset.modelId, api: preset.modelApi },
+            ctx.user.role === "admin",
+          );
           snapshot = {
             provider: preset.provider,
             modelId: preset.modelId,
@@ -200,7 +205,7 @@ const conversationRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertOwnsConversation(ctx.user.id, input.id);
       // Only allow selecting a model the user actually has access to.
-      const available = await listAvailableModels();
+      const available = await listAvailableModels(ctx.user.role === "admin");
       const ok = available.some(
         (m) =>
           m.provider === input.provider &&
@@ -241,6 +246,7 @@ const conversationRouter = router({
           api: conversation.modelApi ?? undefined,
         },
         ctx.user.id,
+        ctx.user.role === "admin",
       );
       const capabilities = await getModelCapabilities(selection);
       if (
@@ -379,6 +385,7 @@ const conversationRouter = router({
 const allowlistEntrySchema = z.object({
   id: z.string().trim().min(1),
   api: z.string().trim().min(1),
+  visibility: z.enum(["public", "private"]).default("public"),
 });
 
 const adminRouter = router({
@@ -398,15 +405,7 @@ const adminRouter = router({
     const byProvider = new Map(rows.map((r) => [r.provider, r]));
     return SUPPORTED_PROVIDERS.map((provider) => {
       const row = byProvider.get(provider);
-      let enabledModels: { id: string; api: string }[] = [];
-      if (row?.enabledModels) {
-        try {
-          const parsed = JSON.parse(row.enabledModels);
-          if (Array.isArray(parsed)) enabledModels = parsed;
-        } catch {
-          /* ignore malformed */
-        }
-      }
+      const enabledModels = row?.enabledModels ? parseAllowlist(row.enabledModels) : [];
       return {
         provider,
         hasApiKey: Boolean(row?.apiKey),
@@ -564,10 +563,24 @@ const modelSelectionSchema = z.object({
   api: z.string(),
 });
 
+async function assertCanUseModel(
+  selection: z.infer<typeof modelSelectionSchema>,
+  isAdmin: boolean,
+) {
+  const available = await listAvailableModels(isAdmin);
+  const selected = available.some(
+    (model) =>
+      model.provider === selection.provider &&
+      model.modelId === selection.modelId &&
+      model.api === selection.api,
+  );
+  if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "model unavailable" });
+}
+
 const modelRouter = router({
   /** Models the current user may select (allowlist + mock). */
-  available: protectedProcedure.query(async () => {
-    return listAvailableModels();
+  available: protectedProcedure.query(async ({ ctx }) => {
+    return listAvailableModels(ctx.user.role === "admin");
   }),
 
   /** The effective model for a conversation (stored selection or resolved
@@ -596,8 +609,9 @@ const modelRouter = router({
           api: convo?.modelApi ?? undefined,
         },
         ctx.user.id,
+        ctx.user.role === "admin",
       );
-      const available = await listAvailableModels();
+      const available = await listAvailableModels(ctx.user.role === "admin");
       const descriptor = available.find(
         (m) =>
           m.provider === selection.provider &&
@@ -623,6 +637,7 @@ const modelRouter = router({
   setUserDefault: protectedProcedure
     .input(modelSelectionSchema)
     .mutation(async ({ ctx, input }) => {
+      await assertCanUseModel(input, ctx.user.role === "admin");
       await setUserDefault(ctx.user.id, input);
     }),
 
@@ -633,6 +648,14 @@ const modelRouter = router({
   setAdminDefault: adminProcedure
     .input(modelSelectionSchema)
     .mutation(async ({ input }) => {
+      const publicModels = await listAvailableModels();
+      const selected = publicModels.some(
+        (model) =>
+          model.provider === input.provider &&
+          model.modelId === input.modelId &&
+          model.api === input.api,
+      );
+      if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "admin default must be public" });
       await setAdminDefault(input);
     }),
 });
@@ -680,7 +703,13 @@ const presetRouter = router({
       )
       .orderBy("name", "asc")
       .execute();
-    return rows.map((r) => ({
+    const available = await listAvailableModels(ctx.user.role === "admin");
+    return rows.filter((preset) => available.some(
+      (model) =>
+        model.provider === preset.provider &&
+        model.modelId === preset.modelId &&
+        model.api === preset.modelApi,
+    )).map((r) => ({
       ...r,
       reasoningSummary: Boolean(r.reasoningSummary),
       owned: r.userId === ctx.user.id,
@@ -690,6 +719,9 @@ const presetRouter = router({
   create: protectedProcedure
     .input(presetInputSchema)
     .mutation(async ({ ctx, input }) => {
+      const isAdmin = ctx.user.role === "admin";
+      await assertCanUseModel(input, isAdmin);
+      if (input.scope === "shared") await assertCanUseModel(input, false);
       const id = crypto.randomUUID();
       await db
         .insertInto("preset")
@@ -715,6 +747,8 @@ const presetRouter = router({
     .mutation(async ({ ctx, input }) => {
       const isAdmin = (ctx.user as { role?: string }).role === "admin";
       await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
+      await assertCanUseModel(input, isAdmin);
+      if (input.scope === "shared") await assertCanUseModel(input, false);
       await db
         .updateTable("preset")
         .set({
