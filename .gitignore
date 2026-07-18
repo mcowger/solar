@@ -1,3 +1,11 @@
 .env
 
 .spikes/
+
+node_modules/
+dist/
+
+# SQLite database + WAL sidecars
+solar.db
+solar.db-shm
+solar.db-wal

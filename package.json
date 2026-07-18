@@ -1,0 +1,22 @@
+{
+  "name": "solar",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --cwd apps/server dev",
+    "build": "bun run --cwd apps/web build",
+    "migrate": "bun run --cwd apps/server migrate",
+    "migrate:auth": "bun run --cwd apps/server migrate:auth",
+    "codegen": "bun run --cwd apps/server codegen",
+    "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "bun-types": "^1.3.14",
+    "typescript": "^5.6.3"
+  }
+}

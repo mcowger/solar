@@ -1,0 +1,25 @@
+{
+  "name": "@solar/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./index.html": "./index.html"
+  },
+  "scripts": {
+    "build": "bun build ./index.html --outdir ../server/dist/web --minify"
+  },
+  "dependencies": {
+    "@solar/server": "workspace:*",
+    "@solar/shared": "workspace:*",
+    "@tanstack/react-query": "^5.60.0",
+    "@trpc/client": "^11.0.0",
+    "@trpc/tanstack-react-query": "^11.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}
