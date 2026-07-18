@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderPlus, Menu, SquarePen } from "lucide-react";
+import { FolderInput, FolderPlus, Menu, SquarePen } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
@@ -124,18 +124,19 @@ export function Sidebar({
         </button>
         <button style={rowButton} title="Rename" onClick={() => renameConversation(c.id, c.title)}>✎</button>
         <button style={rowButton} title="Tags" onClick={() => editTags(c.id, c.tags)}>#</button>
-        <select
-          className="select select-xs w-15"
-          value={c.folderId ?? ""}
-          onChange={(e) => move.mutate({ id: c.id, folderId: e.target.value || null })}
-          title="Move to folder"
-          style={{ cursor: "pointer" }}
-        >
-          <option value="">—</option>
-          {folderList.map((f) => (
-            <option key={f.id} value={f.id}>{f.name}</option>
-          ))}
-        </select>
+        <div style={{ position: "relative", width: 20, height: 20 }} title="Move to folder">
+          <FolderInput size={16} color="#888" style={{ position: "absolute", inset: 2, pointerEvents: "none" }} />
+          <select
+            value={c.folderId ?? ""}
+            onChange={(e) => move.mutate({ id: c.id, folderId: e.target.value || null })}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
+          >
+            <option value="">No folder</option>
+            {folderList.map((f) => (
+              <option key={f.id} value={f.id}>{f.name}</option>
+            ))}
+          </select>
+        </div>
         <button style={rowButton} title="Delete" onClick={() => deleteConversation(c.id)}>🗑</button>
       </div>
       {c.tags.length > 0 && (

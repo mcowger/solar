@@ -7,7 +7,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, Server, SquarePen, X } from "lucide-react";
+import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, Send, Server, Square, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
@@ -129,7 +129,7 @@ function UserMessage() {
       <MessagePrimitive.Attachments>
         {() => <AttachmentChip />}
       </MessagePrimitive.Attachments>
-      <div style={{ background: "#e6f0ff", padding: "8px 12px", borderRadius: 12 }}>
+      <div className="solar-user-output" style={{ background: "#e6f0ff", padding: "8px 12px", borderRadius: 12 }}>
         <MessagePrimitive.Content />
       </div>
       <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
@@ -305,10 +305,14 @@ export function Thread({ conversationId }: { conversationId: string }) {
             className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"
           />
           <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send className="btn btn-ghost btn-sm rounded-xl px-3">Send</ComposerPrimitive.Send>
+            <ComposerPrimitive.Send className="btn btn-ghost btn-sm btn-square rounded-xl" title="Send">
+              <Send size={18} />
+            </ComposerPrimitive.Send>
           </ThreadPrimitive.If>
           <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel className="btn btn-ghost btn-sm rounded-xl px-3">Stop</ComposerPrimitive.Cancel>
+            <ComposerPrimitive.Cancel className="btn btn-ghost btn-sm btn-square rounded-xl" title="Stop">
+              <Square size={16} />
+            </ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>
         </div>
       </ComposerPrimitive.Root>

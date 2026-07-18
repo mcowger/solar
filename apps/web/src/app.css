@@ -89,9 +89,9 @@
 .solar-sidebar button, .solar-sidebar input, .solar-sidebar select { color: var(--color-base-content) !important; }
 .solar-sidebar input, .solar-sidebar select { background: var(--color-base-100) !important; border-color: var(--color-base-300) !important; }
 .solar-main { min-width: 0; }
-.solar-message > div { color: var(--color-base-content) !important; }
-.solar-message[style*="flex-end"] > div { background: color-mix(in oklch, var(--color-primary) 18%, var(--color-base-100)) !important; }
-.solar-message[style*="flex-start"] > .solar-assistant-output { background: var(--color-base-200) !important; }
+.solar-user-output, .solar-assistant-output { color: var(--color-base-content) !important; }
+.solar-user-output { background: color-mix(in oklch, var(--color-primary) 18%, var(--color-base-100)) !important; }
+.solar-assistant-output { background: var(--color-base-200) !important; }
 .solar-action-btn, .solar-reasoning-toggle, .solar-attachment-remove { color: var(--color-base-content) !important; }
 .solar-reasoning-body, .solar-attachment-chip { background: var(--color-base-300) !important; color: var(--color-base-content) !important; }
 .solar-auth { background: radial-gradient(circle at top, color-mix(in oklch, var(--color-accent) 30%, transparent), transparent 30rem); }
