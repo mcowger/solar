@@ -57,6 +57,16 @@ sketched adapter interface.
 
 ## Spike 2 — Persistence stack: Bun + ORM + SQLite
 
+> **Superseded by an architecture decision (see `ARCHITECTURE.md`).** Spike 2
+> passed (MikroORM + SQLite runs on Bun), but during architecture grilling we
+> chose **Kysely** as the single data layer instead of MikroORM — to unify with
+> Better Auth (which uses Kysely), enable real auth⇄app SQL joins in a single
+> `solar.db`, avoid the Bun decorator-metadata caveat, and better fit the
+> simplicity/library-first ethos. Migrations are hand-written with
+> `kysely-codegen` for type sync. The MikroORM finding stands as valid but is no
+> longer the chosen path. A quick Kysely + `bun:sqlite` + Better Auth adapter
+> smoke-check is tracked as a build-time validation item.
+
 **Why:** SQLite-via-ORM is the backbone of the "simple, single-file" promise. We
 need to confirm the ORM runs cleanly on **Bun** (not just Node) and models our
 data comfortably.
