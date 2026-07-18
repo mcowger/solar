@@ -1,0 +1,21 @@
+{
+  "worktree": {
+    "setup": [
+      "bun install",
+      "cp \"$PASEO_SOURCE_CHECKOUT_PATH/.env\" .env"
+    ],
+    "teardown": "rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
+  },
+  "scripts": {
+    "web": {
+      "type": "service",
+      "command": "PORT=\"$PASEO_PORT\" bun --env-file=.env run --cwd apps/server dev",
+      "port": 3000
+    },
+    "typecheck": { "command": "bun run typecheck" },
+    "build": { "command": "bun run build" },
+    "migrate": { "command": "bun run migrate" },
+    "migrate:auth": { "command": "bun run migrate:auth" },
+    "codegen": { "command": "bun run codegen" }
+  }
+}
