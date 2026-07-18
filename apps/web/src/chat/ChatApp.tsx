@@ -10,6 +10,7 @@ import { ModelPicker } from "./ModelPicker";
 import { Presets } from "./Presets";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
+import { McpServers } from "./McpServers";
 import { useSolarRuntime } from "./useSolarRuntime";
 
 function ConversationView({ conversationId }: { conversationId: string }) {
@@ -38,6 +39,7 @@ export function ChatApp() {
   const [activeId, setActiveId] = useState<string | undefined>();
   const [showSettings, setShowSettings] = useState(false);
   const [showPresets, setShowPresets] = useState(false);
+  const [showMcpServers, setShowMcpServers] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
@@ -83,11 +85,12 @@ export function ChatApp() {
          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="btn btn-ghost btn-sm btn-circle lg:hidden"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
          <div className="navbar-end gap-1 sm:gap-2">
          <span className="hidden max-w-48 truncate text-sm opacity-60 sm:inline">{session?.user.email}</span>
-         <button className="btn btn-ghost btn-sm" onClick={() => { setShowPresets((s) => !s); setShowSettings(false); }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setShowPresets((s) => !s); setShowSettings(false); setShowMcpServers(false); }}>
            {showPresets ? "Back to chat" : "Presets"}
-         </button>
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => { setShowMcpServers((s) => !s); setShowSettings(false); setShowPresets(false); }}>{showMcpServers ? "Back to chat" : "MCP servers"}</button>
          {isAdmin && (
-           <button className="btn btn-ghost btn-sm" onClick={() => { setShowSettings((s) => !s); setShowPresets(false); }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setShowSettings((s) => !s); setShowPresets(false); setShowMcpServers(false); }}>
              {showSettings ? "Back to chat" : "Settings"}
            </button>
          )}
@@ -96,8 +99,10 @@ export function ChatApp() {
          </div>
        </header>
        <div className="flex min-h-0 flex-1">
-         {showSettings && isAdmin ? (
-           <Settings onClose={() => setShowSettings(false)} />
+          {showSettings && isAdmin ? (
+            <Settings onClose={() => setShowSettings(false)} />
+          ) : showMcpServers ? (
+            <McpServers onClose={() => setShowMcpServers(false)} />
          ) : showPresets ? (
            <Presets onClose={() => setShowPresets(false)} />
          ) : (

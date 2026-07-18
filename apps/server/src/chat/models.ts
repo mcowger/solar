@@ -3,6 +3,7 @@ import type {
   AssistantMessageEvent,
   Context,
 } from "@earendil-works/pi-ai";
+import type { ResolvedTool } from "./mcp";
 import {
   MOCK,
   resolveModel,
@@ -19,15 +20,46 @@ import {
  * used for local development and UI verification only. All other providers are
  * streamed through pi-ai with the DB-configured key/baseURL.
  */
-export async function streamChat(
+export async function* streamChat(
   context: Context,
   selection: ModelSelection,
   params: GenerationParams,
   signal: AbortSignal,
-): Promise<AsyncIterable<AssistantMessageEvent>> {
-  if (selection.provider === "mock") return mockStream(context, selection, params, signal);
+  resolvedTools: ResolvedTool[] = [],
+): AsyncIterable<AssistantMessageEvent> {
+  if (selection.provider === "mock") {
+    yield* mockStream(context, selection, params, signal);
+    return;
+  }
   const resolved = await resolveModel(selection);
-  return streamModel(resolved, context, signal, params);
+  const executors = new Map(resolvedTools.map(({ tool, execute }) => [tool.name, execute]));
+  let turnContext = context;
+  while (true) {
+    const events = streamModel(resolved, turnContext, signal, params);
+    let message: AssistantMessage | undefined;
+    let reason: string | undefined;
+    for await (const event of events) {
+      yield event;
+      if (event.type === "done") {
+        message = event.message;
+        reason = event.reason;
+      }
+    }
+    if (!message || reason !== "toolUse") return;
+    const calls = message.content.filter((part) => part.type === "toolCall");
+    if (calls.length === 0) return;
+    const results = await Promise.all(calls.map(async (call) => {
+      const execute = executors.get(call.name);
+      if (!execute) return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: "Tool is unavailable." }], isError: true, timestamp: Date.now() };
+      try {
+        const result = await execute(call.arguments);
+        return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: result.content }], isError: result.isError, timestamp: Date.now() };
+      } catch (error) {
+        return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: error instanceof Error ? error.message : String(error) }], isError: true, timestamp: Date.now() };
+      }
+    }));
+    turnContext = { ...turnContext, messages: [...turnContext.messages, message, ...results] };
+  }
 }
 
 function mockMessage(
