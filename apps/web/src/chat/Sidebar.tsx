@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Menu } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
@@ -16,6 +17,7 @@ interface SidebarProps {
   activeId: string | undefined;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onClose: () => void;
   presets: { id: string; name: string }[];
   onNewWithPreset: (presetId: string) => void;
 }
@@ -24,6 +26,7 @@ export function Sidebar({
   activeId,
   onSelect,
   onNew,
+  onClose,
   presets,
   onNewWithPreset,
 }: SidebarProps) {
@@ -150,6 +153,7 @@ export function Sidebar({
   return (
     <aside style={{ width: 280, borderRight: "1px solid #ddd", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: 8, display: "flex", gap: 6 }}>
+        <button type="button" className="btn btn-ghost btn-sm btn-circle lg:hidden" onClick={onClose} title="Close menu"><Menu size={19} /></button>
         <button onClick={onNew} style={{ flex: 1, padding: "6px 8px", cursor: "pointer" }}>+ New chat</button>
         <button
           onClick={() => {

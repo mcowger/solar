@@ -116,6 +116,7 @@ export function ChatApp() {
         <label htmlFor="solar-drawer" className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
         <Sidebar
           activeId={activeId}
+          onClose={() => setDrawerOpen(false)}
           onSelect={(id) => { setActiveId(id); setDrawerOpen(false); }}
           onNew={() => { newChat(); setDrawerOpen(false); }}
           presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
