@@ -147,7 +147,7 @@ capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
 
   Only exercise the real provider when explicitly validating provider wiring.
 - **Logging** It is often more efficient to place logging statements and log to console and stdout rather than guessing at code.  Logging costs nothing.   
-- **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.
+- **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.  If you cannot initiall find a skill, manually search in .agents/skills/
 
 ## Imports & workspace gotchas
 
