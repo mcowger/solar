@@ -1,0 +1,12 @@
+services:
+  solar:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_PATH: /data/solar.db
+      SOLAR_ATTACHMENTS_DIR: /data/attachments
+    volumes:
+      - ./data:/data

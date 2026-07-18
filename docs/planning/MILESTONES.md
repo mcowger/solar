@@ -191,23 +191,19 @@ reply that persists — the thinnest vertical slice through every layer.
 
 ---
 
-## Milestone 4 — Multi-User, Roles & Admin
+## Milestone 4 — Multi-User, Roles & Admin — ✅ Complete
 
 **Goal:** ready for a team to self-host.
 
 **Includes:**
-- **OAuth** provider(s) via Better Auth, in addition to local accounts.
 - **Roles:** `admin` and `user`; route/procedure guards.
 - **Full admin UI:** manage users, enable/disable models, edit provider/API-key
   config (stored plaintext in DB per decision), view settings.
-- **Basic usage/cost tracking:** tokens + estimated cost per message; per
-  user/model aggregation via SQL (single-DB join with `user`).
 
 **Exit criteria:**
-- OAuth login works alongside local login.
+- Admin can manage local accounts, including roles and account access.
 - Admin can manage users, models, and provider keys from the UI.
 - Non-admins are correctly restricted.
-- Admin can view per-user/per-model usage.
 
 ---
 
@@ -219,17 +215,15 @@ reply that persists — the thinnest vertical slice through every layer.
 - **MCP boundary:** tool-provider interface resolved per agent turn (returns
   empty toolset); tool-call parts already representable in `parts` JSON. No MCP
   client/config UI.
-- **WS-ready subscriber abstraction** confirmed (SSE remains the only transport).
-- **Postgres seam** sanity-checked at the Kysely dialect layer (not shipped).
 - **Deployment:** single Docker container (SQLite + attachments volume) with
-  compose; runnable npm/binary for local installs.
-- Baseline error handling, logging, and config via env.
+  compose; published Bun bundle runnable with `bunx @mcowger/solar`.
+- Baseline error handling, structured logging, and config via env.
 
 **Exit criteria:**
 - Agent turn calls through the tool-provider boundary with an empty toolset,
   proving the seam without shipping tools.
 - `docker compose up` yields a working instance with persistent data.
-- Local `bun`/npm run works for a single-user install.
+- `bunx @mcowger/solar` runs a local single-user install.
 
 ---
 

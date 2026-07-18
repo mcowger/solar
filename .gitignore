@@ -20,3 +20,6 @@ solar.db-wal
 
 # Uploaded attachment files (Mirage DiskResource data dir)
 apps/server/data/
+
+# Docker Compose persistent state
+data/

@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { config } from "./config";
 import { dialect, sqlite } from "./db";
 
@@ -8,8 +9,8 @@ import { dialect, sqlite } from "./db";
  * tables co-locate in one `solar.db`. Better Auth owns and migrates its own
  * tables (`user`, `session`, `account`, `verification`).
  *
- * M0 enables email/password only to prove the wiring; OAuth and roles land in
- * later milestones.
+ * Local email/password accounts are the only sign-in method for now; OAuth is
+ * explicitly deferred. Roles and account state are server-assigned fields.
  */
 export const auth = betterAuth({
   database: { dialect, type: "sqlite" },
@@ -26,6 +27,7 @@ export const auth = betterAuth({
       // Admin/user roles (full enforcement + admin UI land in M4). Assigned by
       // the server, never accepted from client input.
       role: { type: "string", defaultValue: "user", input: false },
+      isDisabled: { type: "boolean", defaultValue: false, input: false },
     },
   },
   databaseHooks: {
@@ -38,6 +40,18 @@ export const auth = betterAuth({
             .get() as { c: number };
           const role = row.c === 0 ? "admin" : "user";
           return { data: { ...user, role } };
+        },
+      },
+    },
+    session: {
+      create: {
+        before: async (session) => {
+          const user = sqlite
+            .query("SELECT isDisabled FROM user WHERE id = ?")
+            .get(session.userId) as { isDisabled: number } | null;
+          if (user?.isDisabled) {
+            throw new APIError("FORBIDDEN", { message: "This account is disabled" });
+          }
         },
       },
     },

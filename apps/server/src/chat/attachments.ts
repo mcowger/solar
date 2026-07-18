@@ -142,6 +142,18 @@ export async function deleteAttachmentFilesForMessages(
   );
 }
 
+/** Frees every disk object owned by a user before their FK-cascaded rows go away. */
+export async function deleteAttachmentFilesForUser(userId: string): Promise<void> {
+  const rows = await db
+    .selectFrom("attachment")
+    .select("storageKey")
+    .where("userId", "=", userId)
+    .execute();
+  if (rows.length === 0) return;
+  await ensureOpen();
+  await Promise.all(rows.map((row) => disk.unlink(path(row.storageKey)).catch(() => {})));
+}
+
 /** Removes an orphaned (never sent) upload — used by the composer's "remove
  * attachment" action. */
 export async function removeOrphanAttachment(

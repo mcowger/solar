@@ -15,15 +15,17 @@
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.10",
-    "@struktoai/mirage-node": "^0.0.3",
     "@hono/trpc-server": "^0.3.4",
     "@solar/shared": "workspace:*",
     "@solar/web": "workspace:*",
+    "@struktoai/mirage-node": "^0.0.3",
     "@trpc/server": "^11.0.0",
     "better-auth": "^1.2.0",
     "hono": "^4.6.0",
     "kysely": "^0.27.4",
     "kysely-bun-sqlite": "^0.4.0",
+    "loglayer": "^9.4.0",
+    "serialize-error": "^13.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

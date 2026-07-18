@@ -1,0 +1,9 @@
+.env
+.git
+.dev-server.log
+.dev-server.pid
+apps/server/data
+data
+dist
+node_modules
+**/node_modules

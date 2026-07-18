@@ -4,6 +4,7 @@ import type { MessageStatus } from "../db/schema";
 import { piEventToUiChunks, type UiChunk } from "./adapter";
 import type { GenerationParams, ModelSelection } from "./catalog";
 import { streamChat } from "./models";
+import { logger } from "../logger";
 
 interface BufferedChunk {
   id: number;
@@ -78,6 +79,7 @@ class GenerationManager {
       usage: null,
     };
     this.generations.set(opts.messageId, gen);
+    logger.withMetadata({ conversationId: opts.conversationId, messageId: opts.messageId, model: gen.model }).info("generation started");
     void this.run(gen, opts.context);
   }
 
@@ -168,16 +170,21 @@ class GenerationManager {
       }
       gen.status = "done";
       await this.persist(gen, "complete");
+      logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).trace(gen.text);
+      logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).info("generation completed");
     } catch (err) {
       if (gen.controller.signal.aborted) {
         // Explicit user Stop: keep the partial text, mark complete.
         gen.status = "done";
         emit({ type: "finish", finishReason: "stop", usage: gen.usage ?? { inputTokens: 0, outputTokens: 0 } });
         await this.persist(gen, "complete");
+        logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).trace(gen.text);
+        logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).info("generation stopped");
       } else {
         gen.status = "error";
         emit({ type: "error", errorText: err instanceof Error ? err.message : String(err) });
         await this.persist(gen, "error");
+        logger.withError(err).withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).error("generation failed");
       }
     } finally {
       for (const s of gen.subscribers) s.end();

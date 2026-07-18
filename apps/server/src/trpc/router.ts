@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { db } from "../db";
-import { deleteAttachmentFilesForMessages } from "../chat/attachments";
+import { db, sqlite } from "../db";
+import { deleteAttachmentFilesForMessages, deleteAttachmentFilesForUser } from "../chat/attachments";
 import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
@@ -14,6 +14,7 @@ import {
   SUPPORTED_PROVIDERS,
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
+import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -332,8 +333,14 @@ const allowlistEntrySchema = z.object({
 });
 
 const adminRouter = router({
-  // Provider credentials + model allowlists (global, admin-owned). API keys are
-  // stored plaintext by design (see ARCHITECTURE §8) and returned to the admin UI.
+  logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
+
+  setLogLevel: adminProcedure
+    .input(z.object({ level: z.enum(["trace", "debug", "info", "warn", "error"]) }))
+    .mutation(({ input }) => {
+      setLogLevel(input.level as SolarLogLevel);
+    }),
+
   listProviders: adminProcedure.query(async () => {
     const rows = await db
       .selectFrom("provider_config")
@@ -353,7 +360,7 @@ const adminRouter = router({
       }
       return {
         provider,
-        apiKey: row?.apiKey ?? "",
+        hasApiKey: Boolean(row?.apiKey),
         baseUrl: row?.baseUrl ?? "",
         enabledModels,
         apis: PROVIDER_APIS[provider] ?? [],
@@ -381,9 +388,14 @@ const adminRouter = router({
           });
         }
       }
+      const existing = await db
+        .selectFrom("provider_config")
+        .select("apiKey")
+        .where("provider", "=", input.provider)
+        .executeTakeFirst();
       const values = {
         provider: input.provider,
-        apiKey: input.apiKey || null,
+        apiKey: input.apiKey || existing?.apiKey || null,
         baseUrl: input.baseUrl || null,
         enabledModels: JSON.stringify(input.enabledModels),
         updatedAt: new Date().toISOString(),
@@ -401,6 +413,100 @@ const adminRouter = router({
         )
         .execute();
     }),
+
+  listUsers: adminProcedure.query(() =>
+    sqlite.query(
+      "SELECT id, name, email, role, isDisabled, createdAt FROM user ORDER BY createdAt ASC",
+    ).all() as {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      isDisabled: number;
+      createdAt: string;
+    }[],
+  ),
+
+  setUserRole: adminProcedure
+    .input(z.object({ userId: z.string(), role: z.enum(["admin", "user"]) }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot change your own role" });
+      }
+      const target = sqlite.query("SELECT role, isDisabled FROM user WHERE id = ?").get(input.userId) as
+        | { role: string; isDisabled: number }
+        | null;
+      if (!target) throw new TRPCError({ code: "NOT_FOUND" });
+      if (target.role === "admin" && input.role === "user" && !target.isDisabled) {
+        const admins = sqlite.query("SELECT COUNT(*) AS count FROM user WHERE role = 'admin' AND isDisabled = 0").get() as { count: number };
+        if (admins.count <= 1) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "At least one active admin is required" });
+        }
+      }
+      sqlite.query("UPDATE user SET role = ? WHERE id = ?").run(input.role, input.userId);
+    }),
+
+  setUserDisabled: adminProcedure
+    .input(z.object({ userId: z.string(), isDisabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot disable your own account" });
+      }
+      const target = sqlite.query("SELECT role, isDisabled FROM user WHERE id = ?").get(input.userId) as
+        | { role: string; isDisabled: number }
+        | null;
+      if (!target) throw new TRPCError({ code: "NOT_FOUND" });
+      if (input.isDisabled && target.role === "admin" && !target.isDisabled) {
+        const admins = sqlite.query("SELECT COUNT(*) AS count FROM user WHERE role = 'admin' AND isDisabled = 0").get() as { count: number };
+        if (admins.count <= 1) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "At least one active admin is required" });
+        }
+      }
+      sqlite.query("UPDATE user SET isDisabled = ? WHERE id = ?").run(input.isDisabled ? 1 : 0, input.userId);
+      if (input.isDisabled) sqlite.query("DELETE FROM session WHERE userId = ?").run(input.userId);
+    }),
+
+  deleteUser: adminProcedure
+    .input(z.object({ userId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.userId === ctx.user.id) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot delete your own account" });
+      }
+      const target = sqlite.query("SELECT role, isDisabled FROM user WHERE id = ?").get(input.userId) as
+        | { role: string; isDisabled: number }
+        | null;
+      if (!target) throw new TRPCError({ code: "NOT_FOUND" });
+      if (target.role === "admin" && !target.isDisabled) {
+        const admins = sqlite.query("SELECT COUNT(*) AS count FROM user WHERE role = 'admin' AND isDisabled = 0").get() as { count: number };
+        if (admins.count <= 1) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "At least one active admin is required" });
+        }
+      }
+      await deleteAttachmentFilesForUser(input.userId);
+      sqlite.query("DELETE FROM user WHERE id = ?").run(input.userId);
+    }),
+
+  usage: adminProcedure.query(() =>
+    sqlite.query(`
+      SELECT u.id AS userId, u.name, u.email, COALESCE(m.model, 'unknown') AS model,
+        COUNT(*) AS messageCount, COALESCE(SUM(m.inputTokens), 0) AS inputTokens,
+        COALESCE(SUM(m.outputTokens), 0) AS outputTokens
+      FROM message m
+      JOIN conversation c ON c.id = m.conversationId
+      JOIN user u ON u.id = c.userId
+      WHERE m.role = 'assistant'
+      GROUP BY u.id, u.name, u.email, m.model
+      ORDER BY u.email ASC, model ASC
+    `).all() as {
+      userId: string;
+      name: string;
+      email: string;
+      model: string;
+      messageCount: number;
+      inputTokens: number;
+      outputTokens: number;
+    }[],
+  ),
 });
 
 const modelSelectionSchema = z.object({

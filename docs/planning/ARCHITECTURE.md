@@ -206,7 +206,7 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 
 ## 7. Authentication & Identity
 
-- **Better Auth** provides local email/password + OAuth, sessions, and
+- **Better Auth** provides local email/password, sessions, and
   admin/user roles, via its **built-in Kysely adapter** against `solar.db`.
 - Better Auth **owns and migrates its own tables** (`user`, `session`, `account`,
   `verification`) through its adapter; our Kysely migrations own the app tables.
@@ -226,7 +226,7 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 
 ## 8. Secrets & Configuration
 
-- Runtime config (DB path, port, OAuth client secrets, Better Auth secret) via
+- Runtime config (DB path, port, Better Auth secret) via
   **environment variables**.
 - **Provider configuration** is **global and admin-owned**, stored **in
   `solar.db` as plaintext**: one `provider_config` row per provider holding
@@ -241,7 +241,7 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 
 - **Full admin UI** (tRPC procedures): manage users, enable/disable models, edit
   provider/API-key config, and view usage.
-- **Basic usage tracking:** tokens + estimated cost recorded per message, and
+- **Basic usage tracking:** tokens recorded per message, and
   aggregated per user/model via SQL over `solar.db`.
 
 ## 10. Extension Seams (architected, not built)
@@ -275,7 +275,8 @@ The server serves `web`'s build output for single-process deployment.
 
 - **Single Docker container** (SQLite volume for `solar.db` + attachments dir),
   with compose for the common case.
-- Also runnable as an **npm package / binary** for local installs.
+- Also runnable as a published Bun bundle via **`bunx @mcowger/solar`** for local
+  installs.
 - Single-node target; horizontal scale is explicitly out of scope for v1.
 
 ## 13. Open Validation Items

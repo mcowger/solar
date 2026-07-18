@@ -1,10 +1,17 @@
 {
-  "name": "solar",
-  "private": true,
+  "name": "@mcowger/solar",
+  "version": "0.1.0",
   "type": "module",
   "workspaces": [
     "apps/*",
     "packages/*"
+  ],
+  "bin": {
+    "solar": "./bin/solar.js"
+  },
+  "files": [
+    "bin",
+    "dist"
   ],
   "scripts": {
     "dev": "bun run --cwd apps/server dev",
@@ -14,10 +21,14 @@
     "dev:status": "bash scripts/dev-server.sh status",
     "dev:logs": "bash scripts/dev-server.sh logs",
     "build": "bun run --cwd apps/web build",
+    "package": "bun run build && bun build apps/server/src/index.ts --outdir dist --target bun --external @struktoai/mirage-node",
     "migrate": "bun run --cwd apps/server migrate",
     "migrate:auth": "bun run --cwd apps/server migrate:auth",
     "codegen": "bun run --cwd apps/server codegen",
     "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json"
+  },
+  "dependencies": {
+    "@struktoai/mirage-node": "^0.0.3"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

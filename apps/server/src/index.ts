@@ -1,6 +1,7 @@
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { logger } from "./logger";
 import { config } from "./config";
 import { auth } from "./auth";
 import { db, sqlite } from "./db";
@@ -13,6 +14,13 @@ import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 import index from "@solar/web/index.html";
 
+if (
+  process.env.NODE_ENV === "production" &&
+  (config.authSecret === "dev-insecure-secret-change-me" || config.authSecret.length < 32)
+) {
+  logger.warn("BETTER_AUTH_SECRET is missing, short, or uses the development fallback");
+}
+
 // Provision the single solar.db: our app migrations + Better Auth's own tables.
 await migrateToLatest();
 await migrateAuth();
@@ -24,6 +32,24 @@ await db
 await seedDevUser();
 
 const app = new Hono();
+
+app.use("*", async (c, next) => {
+  const requestId = c.req.header("x-request-id") ?? crypto.randomUUID();
+  const startedAt = performance.now();
+  c.header("x-request-id", requestId);
+  try {
+    await next();
+    logger.withMetadata({ requestId, method: c.req.method, path: c.req.path, status: c.res.status, durationMs: Math.round(performance.now() - startedAt) }).debug("request completed");
+  } catch (error) {
+    logger.withError(error).withMetadata({ requestId, method: c.req.method, path: c.req.path }).error("request failed");
+    throw error;
+  }
+});
+
+app.onError((error, c) => {
+  logger.withError(error).withMetadata({ method: c.req.method, path: c.req.path }).error("unhandled request error");
+  return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+});
 
 // Dev-only permissive CORS: accept any origin. We reflect the request origin
 // (rather than a literal "*") so credentialed requests — cookie-based Better
@@ -74,12 +100,12 @@ const server = Bun.serve({
   development: process.env.NODE_ENV !== "production" ? { hmr: true } : false,
 });
 
-console.log(`solar server listening on ${server.url}`);
+logger.withMetadata({ url: server.url.toString() }).info("solar server listening");
 
 // Graceful shutdown (Bun exits immediately on SIGTERM by default, dropping
 // in-flight requests). Stop accepting connections, drain, close the DB, exit.
 const shutdown = async (signal: string) => {
-  console.log(`received ${signal}, shutting down`);
+  logger.withMetadata({ signal }).info("solar server shutting down");
   await server.stop();
   sqlite.close();
   process.exit(0);

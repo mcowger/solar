@@ -1,6 +1,7 @@
 import { FileMigrationProvider, Migrator } from "kysely";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
+import { logger } from "../logger";
 import { db } from "./index";
 
 /**
@@ -21,20 +22,20 @@ export async function migrateToLatest(): Promise<void> {
 
   for (const r of results ?? []) {
     if (r.status === "Success") {
-      console.log(`migration applied: ${r.migrationName}`);
+      logger.withMetadata({ migration: r.migrationName }).info("migration applied");
     } else if (r.status === "Error") {
-      console.error(`migration failed: ${r.migrationName}`);
+      logger.withMetadata({ migration: r.migrationName }).error("migration failed");
     }
   }
 
   if (error) {
-    console.error("migration error:", error);
+    logger.withError(error).error("migration error");
     throw error;
   }
 }
 
 if (import.meta.main) {
   await migrateToLatest();
-  console.log("migrations up to date");
+  logger.info("migrations up to date");
   process.exit(0);
 }

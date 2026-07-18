@@ -131,6 +131,7 @@ export interface User {
   emailVerified: number;
   id: string;
   image: string | null;
+  isDisabled: Generated<number>;
   name: string;
   role: string;
   updatedAt: string;

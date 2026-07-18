@@ -6,6 +6,7 @@ import type {
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db } from "../db";
+import { logger } from "../logger";
 import {
   deleteAttachmentFilesForMessages,
   linkAttachments,
@@ -13,6 +14,7 @@ import {
 } from "./attachments";
 import { resolveSelection, type GenerationParams } from "./catalog";
 import { generationManager } from "./generationManager";
+import { toolProvider } from "./tools";
 
 export const chatRoutes = new Hono();
 
@@ -142,6 +144,11 @@ async function streamNewAssistantTurn(
     userId,
   );
   const context = await buildContext(conversationId, convo?.systemPrompt);
+  context.tools = await toolProvider.resolve({ userId, conversationId });
+  const prompt = [...context.messages].reverse().find((message) => message.role === "user");
+  if (prompt && typeof prompt.content === "string") {
+    logger.withMetadata({ conversationId, userId }).trace(prompt.content);
+  }
   const params: GenerationParams = {
     systemPrompt: convo?.systemPrompt ?? undefined,
     reasoningEffort: convo?.reasoningEffort ?? undefined,

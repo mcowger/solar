@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { auth } from "../auth";
+import { sqlite } from "../db";
 
 /**
  * Per-request tRPC context. Resolves the Better Auth session (if any) so
@@ -7,9 +8,13 @@ import { auth } from "../auth";
  */
 export async function createContext(_opts: unknown, c: Context) {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return { user: null, session: null };
+  const user = sqlite
+    .query("SELECT role, isDisabled FROM user WHERE id = ?")
+    .get(session.user.id) as { role: string; isDisabled: number } | null;
   return {
-    user: session?.user ?? null,
-    session: session?.session ?? null,
+    user: user?.isDisabled ? null : { ...session.user, role: user?.role ?? "user" },
+    session: user?.isDisabled ? null : session.session,
   };
 }
 
