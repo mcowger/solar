@@ -14,7 +14,7 @@ interface SolarMessage {
 }
 
 function convertMessage(m: SolarMessage): ThreadMessageLike {
-  return { role: m.role, content: [{ type: "text", text: m.content }] };
+  return { id: m.id, role: m.role, content: [{ type: "text", text: m.content }] };
 }
 
 function appendText(message: AppendMessage): string {
@@ -35,34 +35,34 @@ export function useSolarRuntime(conversationId: string) {
   const assistantIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const updateAssistant = useCallback((id: string, text: string) => {
-    setMessages((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, content: text } : m)),
-    );
+  const upsertAssistant = useCallback((id: string, text: string) => {
+    setMessages((prev) => {
+      const exists = prev.some((m) => m.id === id);
+      if (exists) {
+        return prev.map((m) => (m.id === id ? { ...m, content: text } : m));
+      }
+      return [...prev, { id, role: "assistant", content: text }];
+    });
   }, []);
 
   const consume = useCallback(
-    async (response: Response, assistantId: string) => {
+    async (response: Response, displayId: string) => {
+      // The server's canonical message id (for Stop) comes from the response
+      // header; the visible message keeps a stable `displayId` so assistant-ui
+      // reconciliation isn't disrupted mid-stream. The assistant bubble is added
+      // on first content (empty trailing assistant messages are not rendered).
+      assistantIdRef.current =
+        response.headers.get("x-message-id") ?? assistantIdRef.current;
       let text = "";
-      assistantIdRef.current = assistantId;
       setIsRunning(true);
       try {
         await readChunkStream(response, (chunk) => {
-          if (chunk.type === "start") {
-            // Server's canonical assistant message id; adopt it.
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId ? { ...m, id: chunk.messageId } : m,
-              ),
-            );
-            assistantId = chunk.messageId;
-            assistantIdRef.current = chunk.messageId;
-          } else if (chunk.type === "text-delta") {
+          if (chunk.type === "text-delta") {
             text += chunk.textDelta;
-            updateAssistant(assistantId, text);
+            upsertAssistant(displayId, text);
           } else if (chunk.type === "error") {
             text += `\n\n_Error: ${chunk.errorText}_`;
-            updateAssistant(assistantId, text);
+            upsertAssistant(displayId, text);
           }
         });
       } finally {
@@ -71,7 +71,7 @@ export function useSolarRuntime(conversationId: string) {
         abortRef.current = null;
       }
     },
-    [updateAssistant],
+    [upsertAssistant],
   );
 
   // Load history; resume an in-progress generation if the server has one.
@@ -84,6 +84,7 @@ export function useSolarRuntime(conversationId: string) {
 
       const active = rows.find((r) => r.isActive);
       if (active) {
+        assistantIdRef.current = active.id;
         const res = await fetch(
           `/api/chat/stream?messageId=${encodeURIComponent(active.id)}`,
         );
@@ -105,7 +106,6 @@ export function useSolarRuntime(conversationId: string) {
       setMessages((prev) => [
         ...prev,
         { id: userId, role: "user", content: text },
-        { id: placeholderId, role: "assistant", content: "" },
       ]);
 
       const abort = new AbortController();
