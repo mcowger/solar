@@ -4,6 +4,10 @@
 
 node_modules/
 dist/
+.agents/skills/
+.claude/skills/
+
+
 
 # dev-server.sh pidfile + logfile
 .dev-server.pid
