@@ -89,10 +89,10 @@ describe("catalog model policy", () => {
     );
 
     expect(await catalog.listAvailableModels()).toEqual([
-      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false },
+      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false, documents: false },
     ]);
     expect(await catalog.listAvailableModels(true)).toEqual([
-      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false },
+      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false, documents: false },
       {
         provider: "openai",
         endpointId: "openai-completions",
@@ -101,6 +101,7 @@ describe("catalog model policy", () => {
         name: "private-openai",
         reasoning: false,
         vision: false,
+        documents: false,
       },
     ]);
   });

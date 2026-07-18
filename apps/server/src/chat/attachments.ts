@@ -12,6 +12,20 @@ import type { AttachmentKind } from "../db/schema";
  */
 
 const MAX_BYTES = 20 * 1024 * 1024;
+const DOCUMENT_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+export interface NativeDocumentInput {
+  marker: string;
+  data: string;
+  mimeType: string;
+  filename: string;
+}
 
 const disk = new DiskResource({ root: config.attachmentsDataDir });
 let opened: Promise<void> | null = null;
@@ -29,6 +43,7 @@ export class AttachmentError extends Error {}
 function classify(mimeType: string): AttachmentKind | null {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("text/")) return "text";
+  if (DOCUMENT_MIME_TYPES.has(mimeType)) return "document";
   return null;
 }
 
@@ -119,6 +134,18 @@ export async function attachmentsForMessage(messageId: string) {
     .execute();
 }
 
+export async function attachmentMetadata(ids: string[], userId: string): Promise<{ kind: AttachmentKind; mimeType: string }[]> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .selectFrom("attachment")
+    .select(["kind", "mimeType"])
+    .where("id", "in", ids)
+    .where("userId", "=", userId)
+    .where("messageId", "is", null)
+    .execute();
+  return rows;
+}
+
 async function attachmentsForMessages(messageIds: string[]) {
   if (messageIds.length === 0) return [];
   return db
@@ -179,11 +206,13 @@ export async function removeOrphanAttachment(
  * extraction, ever — see ARCHITECTURE §6.2). */
 export async function loadAttachmentContentParts(
   messageId: string,
-): Promise<(TextContent | ImageContent)[]> {
+  documentMimeTypes: readonly string[] = [],
+): Promise<{ parts: (TextContent | ImageContent)[]; documents: NativeDocumentInput[] }> {
   const rows = await attachmentsForMessage(messageId);
-  if (rows.length === 0) return [];
+  if (rows.length === 0) return { parts: [], documents: [] };
   await ensureOpen();
   const parts: (TextContent | ImageContent)[] = [];
+  const documents: NativeDocumentInput[] = [];
   for (const r of rows) {
     const bytes = await disk.readFile(path(r.storageKey));
     if (r.kind === "image") {
@@ -192,13 +221,22 @@ export async function loadAttachmentContentParts(
         data: Buffer.from(bytes).toString("base64"),
         mimeType: r.mimeType,
       });
-    } else {
+    } else if (r.kind === "text") {
       const text = Buffer.from(bytes).toString("utf-8");
       parts.push({
         type: "text",
         text: `<attachment name="${r.filename}">\n${text}\n</attachment>`,
       });
+    } else if (documentMimeTypes.includes(r.mimeType)) {
+      const marker = `[[solar-document:${r.id}]]`;
+      parts.push({ type: "text", text: marker });
+      documents.push({
+        marker,
+        data: Buffer.from(bytes).toString("base64"),
+        mimeType: r.mimeType,
+        filename: r.filename,
+      });
     }
   }
-  return parts;
+  return { parts, documents };
 }

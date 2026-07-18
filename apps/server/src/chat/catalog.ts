@@ -12,6 +12,8 @@ import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.l
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { db } from "../db";
 import { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
+import type { NativeDocumentInput } from "./attachments";
+import { nativeAttachmentAdapter } from "./nativeAttachmentAdapters";
 
 export { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 
@@ -57,6 +59,7 @@ export interface ModelDescriptor extends ModelSelection {
   name: string;
   reasoning: boolean;
   vision: boolean;
+  documents: boolean;
 }
 
 export interface ProviderConfigRow {
@@ -79,8 +82,8 @@ export interface DiscoveredModel {
 }
 
 const MOCK_MODELS: ModelDescriptor[] = [
-  { provider: "mock", endpointId: "mock", modelId: "mock-reasoning", api: "mock", name: "Mock (reasoning)", reasoning: true, vision: false },
-  { provider: "mock", endpointId: "mock", modelId: "mock-vision", api: "mock", name: "Mock (vision)", reasoning: false, vision: true },
+  { provider: "mock", endpointId: "mock", modelId: "mock-reasoning", api: "mock", name: "Mock (reasoning)", reasoning: true, vision: false, documents: false },
+  { provider: "mock", endpointId: "mock", modelId: "mock-vision", api: "mock", name: "Mock (vision)", reasoning: false, vision: true, documents: false },
 ];
 
 function parseEndpoints(json: string | null | undefined, baseUrl: string | null, entries: AllowlistEntry[]) {
@@ -141,6 +144,7 @@ function describe(provider: string, entry: AllowlistEntry): ModelDescriptor {
     name: entry.name ?? known?.name ?? entry.id,
     reasoning: entry.reasoning ?? known?.reasoning ?? false,
     vision: entry.vision ?? known?.input.includes("image") ?? false,
+    documents: entry.documents ?? false,
   };
 }
 
@@ -301,6 +305,21 @@ export async function getModelCapabilities(selection: ModelSelection) {
   return { reasoningLevels, supportsVerbosity: selection.api === "openai-responses" };
 }
 
+export async function documentInputMimeTypes(selection: ModelSelection): Promise<readonly string[]> {
+  const adapter = nativeAttachmentAdapter(selection);
+  if (!adapter) return [];
+  const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === selection.provider);
+  const enabled = Boolean(
+    config?.enabledModels.find(
+      (candidate) =>
+        candidate.id === selection.modelId &&
+        candidate.endpointId === selection.endpointId &&
+        candidate.api === selection.api,
+    )?.documents,
+  );
+  return enabled ? adapter.documentMimeTypes : [];
+}
+
 function runtimeProviderId(selection: ModelSelection) {
   return `solar:${selection.provider}:${selection.endpointId}`;
 }
@@ -347,6 +366,7 @@ export interface GenerationParams {
   reasoningEffort?: string;
   reasoningSummary?: boolean;
   verbosity?: string;
+  documents?: NativeDocumentInput[];
 }
 
 export function streamModel(resolved: ResolvedModel, context: Parameters<Provider<Api>["stream"]>[1], signal: AbortSignal, params: GenerationParams = {}) {
@@ -354,14 +374,16 @@ export function streamModel(resolved: ResolvedModel, context: Parameters<Provide
   const api = resolved.model.api;
   const wantSummary = params.reasoningSummary;
   const wantVerbosity = params.verbosity && api === "openai-responses";
-  const onPayload = wantSummary || wantVerbosity
+  const onPayload = wantSummary || wantVerbosity || params.documents?.length
     ? (payload: unknown) => {
         const next = payload as Record<string, unknown>;
         if (api === "openai-responses") {
           if (wantSummary) next.reasoning = { ...(next.reasoning as object), summary: "auto" };
           if (wantVerbosity) next.text = { ...(next.text as object), verbosity: params.verbosity };
         }
-        return next;
+        return params.documents?.length
+          ? nativeAttachmentAdapter({ api })?.injectDocuments(next, params.documents) ?? next
+          : next;
       }
     : undefined;
   if (params.reasoningEffort) {

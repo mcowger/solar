@@ -12,14 +12,26 @@ import type {
  */
 const TEXT_ACCEPT = "text/plain,text/markdown,text/csv,text/xml,application/json";
 const IMAGE_ACCEPT = "image/*";
+const DOCUMENT_ACCEPT = "application/pdf,application/msword,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const DOCUMENT_MIME_TYPES = new Set(DOCUMENT_ACCEPT.split(","));
+
+export function isDocumentFile(file: File): boolean {
+  return isDocumentMimeType(file.type);
+}
+
+export function isDocumentMimeType(mimeType: string | undefined): boolean {
+  return Boolean(mimeType && DOCUMENT_MIME_TYPES.has(mimeType));
+}
 
 export class SolarAttachmentAdapter implements AttachmentAdapter {
   public readonly accept: string;
 
-  /** `allowImages` gates image attachments by the current model's vision
-   * capability (ARCHITECTURE §6.2) — plain-text attachments are always fine. */
-  constructor(allowImages: boolean) {
-    this.accept = allowImages ? `${IMAGE_ACCEPT},${TEXT_ACCEPT}` : TEXT_ACCEPT;
+  constructor(allowImages: boolean, documentMimeTypes: readonly string[]) {
+    this.accept = [
+      allowImages ? IMAGE_ACCEPT : "",
+      TEXT_ACCEPT,
+      documentMimeTypes.length ? documentMimeTypes.join(",") : "",
+    ].filter(Boolean).join(",");
   }
 
   public async add({ file }: { file: File }): Promise<PendingAttachment> {
@@ -48,7 +60,10 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
     const content =
       attachment.type === "image"
         ? [{ type: "image" as const, image: await readAsDataURL(attachment.file) }]
-        : [{ type: "text" as const, text: await readAsText(attachment.file) }];
+        : [{
+            type: "text" as const,
+            text: isDocumentFile(attachment.file) ? "" : await readAsText(attachment.file),
+          }];
     return { ...attachment, status: { type: "complete" }, content };
   }
 

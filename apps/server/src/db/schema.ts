@@ -133,7 +133,7 @@ export interface MessageTable {
   createdAt: Generated<string>;
 }
 
-export type AttachmentKind = "image" | "text";
+export type AttachmentKind = "image" | "text" | "document";
 
 /**
  * Uploaded file (M3): stored on disk via Mirage, never locally parsed. Rows are

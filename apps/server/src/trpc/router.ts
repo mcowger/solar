@@ -6,6 +6,7 @@ import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
   getModelCapabilities,
+  documentInputMimeTypes,
   getTaskModel,
   getTitlePrompt,
   getUserDefault,
@@ -413,6 +414,7 @@ const allowlistEntrySchema = z.object({
   endpointId: z.string().trim().min(1),
   api: z.string().trim().min(1),
   visibility: z.enum(["public", "private"]).default("public"),
+  documents: z.boolean().optional(),
 });
 
 const folderHistorySchema = z.object({
@@ -976,9 +978,11 @@ const modelRouter = router({
           m.api === selection.api,
       );
       const capabilities = await getModelCapabilities(selection);
+      const documentMimeTypes = await documentInputMimeTypes(selection);
       return {
-        ...(descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false }),
+        ...(descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false, documents: false }),
         ...capabilities,
+        documentMimeTypes,
         reasoningEffort: convo?.reasoningEffort ?? null,
         presetReasoningEffort: convo?.presetReasoningEffort ?? null,
         verbosity: convo?.verbosity ?? null,

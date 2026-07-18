@@ -9,6 +9,7 @@ interface AllowlistEntry {
   api: string;
   visibility: "public" | "private";
   name?: string;
+  documents?: boolean;
 }
 
 interface ProviderEndpoint {
@@ -146,7 +147,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
           <legend className="fieldset-legend">Imported models</legend>
           {models.map((model, index) => (
             <div key={index} className="rounded-box bg-base-200 p-2">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto]">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto_auto]">
                 <p className="min-w-0 truncate text-sm">{model.name ?? model.id}</p>
                 <select className="select select-sm min-w-0 w-full" value={model.endpointId} onChange={(event) => { const endpoint = endpoints.find((candidate) => candidate.id === event.target.value); if (endpoint) updateModel(index, { endpointId: endpoint.id, api: endpoint.api }); }}>
                   {endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.label || endpoint.api} · {endpoint.api}</option>)}
@@ -155,7 +156,11 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
                 <input className="toggle toggle-sm" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
                 <span className="hidden md:inline">Visible to all users</span>
                 <span className={`badge badge-sm ${model.visibility === "public" ? "badge-success badge-soft" : "badge-warning badge-soft"}`}>{model.visibility}</span>
-              </label>
+                </label>
+                <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
+                  <input className="toggle toggle-sm" type="checkbox" checked={Boolean(model.documents)} onChange={(event) => updateModel(index, { documents: event.target.checked })} />
+                  <span>Documents</span>
+                </label>
                 <button className="btn btn-ghost btn-sm btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
               </div>
             </div>

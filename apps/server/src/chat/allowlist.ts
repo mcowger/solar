@@ -12,6 +12,7 @@ export interface AllowlistEntry {
   piOptions?: Record<string, unknown>;
   reasoning?: boolean;
   vision?: boolean;
+  documents?: boolean;
 }
 
 export function parseAllowlist(json: string): AllowlistEntry[] {
@@ -35,6 +36,7 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
           : {}),
         ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
         ...(typeof entry.vision === "boolean" ? { vision: entry.vision } : {}),
+        ...(typeof entry.documents === "boolean" ? { documents: entry.documents } : {}),
       }];
     });
   } catch {
