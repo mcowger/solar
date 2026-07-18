@@ -7,7 +7,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, SquarePen, X } from "lucide-react";
+import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, Server, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
@@ -227,6 +227,18 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
   );
 }
 
+function McpControls({ conversationId }: { conversationId: string }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const settings = useQuery(trpc.mcp.forConversation.queryOptions({ conversationId }));
+  const invalidate = () => qc.invalidateQueries({ queryKey: trpc.mcp.forConversation.queryKey({ conversationId }) });
+  const setServer = useMutation(trpc.mcp.setConversation.mutationOptions({ onSuccess: invalidate }));
+  const setAuto = useMutation(trpc.mcp.setAutoExecute.mutationOptions({ onSuccess: invalidate }));
+  if (!settings.data?.servers.length) return null;
+  return <div className="relative"><button type="button" className="btn btn-ghost btn-sm btn-square" title="MCP tools" onClick={() => setOpen((value) => !value)}><Server size={18} /></button>{open && <div className="absolute bottom-11 left-0 z-10 w-64 rounded-box bg-base-100 p-3 shadow-lg ring-1 ring-base-300"><label className="mb-3 flex items-center justify-between gap-3 text-sm font-medium">Run MCP tools automatically<input className="toggle toggle-sm" type="checkbox" checked={settings.data.autoExecuteTools} disabled={setAuto.isPending} onChange={(event) => setAuto.mutate({ conversationId, enabled: event.target.checked })} /></label><div className="divide-y divide-base-300">{settings.data.servers.map((server) => <label key={server.id} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="truncate">{server.name}</span><input className="toggle toggle-sm" type="checkbox" checked={server.enabled} disabled={setServer.isPending} onChange={(event) => setServer.mutate({ conversationId, serverId: server.id, enabled: event.target.checked })} /></label>)}</div></div>}</div>;
+}
+
 /** assistant-ui thread surface (M2): markdown/code/LaTeX, edit & regenerate. */
 export function Thread({ conversationId }: { conversationId: string }) {
   return (
@@ -255,7 +267,8 @@ export function Thread({ conversationId }: { conversationId: string }) {
           >
             <Paperclip size={18} />
           </ComposerPrimitive.AddAttachment>
-          <GenerationControls conversationId={conversationId} />
+           <GenerationControls conversationId={conversationId} />
+           <McpControls conversationId={conversationId} />
           <ComposerPrimitive.Input
             placeholder="Message…"
             className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"

@@ -17,6 +17,36 @@ interface ProviderForm {
   apis: string[];
 }
 
+interface ModelDescriptor {
+  provider: string;
+  modelId: string;
+  api: string;
+  name: string;
+}
+
+function modelKey(model: Pick<ModelDescriptor, "provider" | "modelId" | "api">) {
+  return `${model.provider}/${model.modelId}/${model.api}`;
+}
+
+function TaskModel() {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const available = useQuery(trpc.model.available.queryOptions());
+  const taskModel = useQuery(trpc.model.taskModel.queryOptions());
+  const setTaskModel = useMutation(
+    trpc.model.setTaskModel.mutationOptions({
+      onSuccess: () => qc.invalidateQueries({ queryKey: trpc.model.taskModel.queryKey() }),
+    }),
+  );
+  const models = available.data ?? [];
+  const selected = taskModel.data ? modelKey(taskModel.data) : "";
+
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-4 p-5"><h3 className="card-title">Task model</h3><p className="text-sm opacity-70">Used for future lightweight work such as title generation and context management.</p>
+    <fieldset className="fieldset max-w-lg"><legend className="fieldset-legend">Selected model</legend><select className="select w-full" value={selected} disabled={!models.length || setTaskModel.isPending} onChange={(event) => { const model = models.find((item) => modelKey(item) === event.target.value); if (model) setTaskModel.mutate(model); }}><option value="" disabled>{models.length ? "Select a task model" : "No models configured"}</option>{models.map((model) => <option key={modelKey(model)} value={modelKey(model)}>{model.name} · {model.provider}</option>)}</select></fieldset>
+    {setTaskModel.isError && <div role="alert" className="alert alert-error alert-soft">{setTaskModel.error.message}</div>}
+  </div></section>;
+}
+
 function ProviderCard({ initial }: { initial: ProviderForm }) {
   const trpc = useTRPC();
   const qc = useQueryClient();
@@ -122,7 +152,7 @@ function Logging() {
   </div></section>;
 }
 
-const sections = ["users", "providers", "usage", "logging"] as const;
+const sections = ["users", "providers", "task model", "usage", "logging"] as const;
 type Section = typeof sections[number];
 
 export function Settings({ onClose }: { onClose: () => void }) {
@@ -138,6 +168,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
     {section === "users" && <Users />}
     {section === "usage" && <Usage />}
     {section === "logging" && <Logging />}
+    {section === "task model" && <TaskModel />}
     {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}
     {section === "providers" && ready && <div className="grid gap-4">{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
   </div></main>;

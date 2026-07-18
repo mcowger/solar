@@ -174,6 +174,7 @@ export async function listAvailableModels(isAdmin = false): Promise<ModelDescrip
 }
 
 const ADMIN_DEFAULT_KEY = "default_model";
+const TASK_MODEL_KEY = "task_model";
 
 function toSelection(sel: Partial<ModelSelection>): ModelSelection | null {
   return sel.provider && sel.modelId && sel.api
@@ -252,10 +253,49 @@ export async function getAdminDefault(): Promise<ModelSelection | null> {
 
 /** Persist the admin-wide default model. */
 export async function setAdminDefault(sel: ModelSelection): Promise<void> {
+  await setAppMetaSelection(ADMIN_DEFAULT_KEY, sel);
+}
+
+/** The admin-selected model for small background tasks such as title generation. */
+export async function getTaskModel(): Promise<ModelSelection | null> {
+  return getAppMetaSelection(TASK_MODEL_KEY);
+}
+
+/** Persist the admin-selected model for small background tasks. */
+export async function setTaskModel(sel: ModelSelection): Promise<void> {
+  await setAppMetaSelection(TASK_MODEL_KEY, sel);
+}
+
+/** Resolve the configured task model, rejecting a model removed from the allowlist. */
+export async function resolveTaskModel(): Promise<ModelSelection> {
+  const configured = await getTaskModel();
+  const available = await listAvailableModels();
+  const taskModel = findAvailable(available, configured);
+  if (!taskModel) {
+    throw new Error("No task model is configured. Select one in admin settings.");
+  }
+  return taskModel;
+}
+
+async function getAppMetaSelection(key: string): Promise<ModelSelection | null> {
+  const row = await db
+    .selectFrom("app_meta")
+    .select("value")
+    .where("key", "=", key)
+    .executeTakeFirst();
+  if (!row) return null;
+  try {
+    return toSelection(JSON.parse(row.value));
+  } catch {
+    return null;
+  }
+}
+
+async function setAppMetaSelection(key: string, sel: ModelSelection): Promise<void> {
   const value = JSON.stringify(sel);
   await db
     .insertInto("app_meta")
-    .values({ key: ADMIN_DEFAULT_KEY, value })
+    .values({ key, value })
     .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
     .execute();
 }

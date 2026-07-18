@@ -33,8 +33,34 @@ export interface ConversationTable {
   reasoningSummary: Generated<number>;
   verbosity: string | null;
   presetVerbosity: string | null;
+  autoExecuteTools: Generated<number>;
   createdAt: Generated<string>;
   updatedAt: Generated<string>;
+}
+
+export interface McpServerTable {
+  id: string;
+  /** Null for an admin-managed global server. */
+  userId: string | null;
+  name: string;
+  url: string;
+  /** JSON object of static HTTP request headers. */
+  headers: Generated<string>;
+  enabled: Generated<number>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UserMcpServerPreferenceTable {
+  userId: string;
+  serverId: string;
+  enabled: Generated<number>;
+}
+
+export interface ConversationMcpServerTable {
+  conversationId: string;
+  serverId: string;
+  enabled: Generated<number>;
 }
 
 export type PresetScope = "personal" | "shared";
@@ -142,4 +168,7 @@ export interface Database {
   provider_config: ProviderConfigTable;
   preset: PresetTable;
   attachment: AttachmentTable;
+  mcp_server: McpServerTable;
+  user_mcp_server_preference: UserMcpServerPreferenceTable;
+  conversation_mcp_server: ConversationMcpServerTable;
 }

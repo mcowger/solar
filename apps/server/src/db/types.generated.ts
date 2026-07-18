@@ -9,22 +9,6 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
-export interface Account {
-  accessToken: string | null;
-  accessTokenExpiresAt: string | null;
-  accountId: string;
-  createdAt: string;
-  id: string;
-  idToken: string | null;
-  password: string | null;
-  providerId: string;
-  refreshToken: string | null;
-  refreshTokenExpiresAt: string | null;
-  scope: string | null;
-  updatedAt: string;
-  userId: string;
-}
-
 export interface AppMeta {
   key: string | null;
   updatedAt: Generated<string>;
@@ -44,6 +28,7 @@ export interface Attachment {
 }
 
 export interface Conversation {
+  autoExecuteTools: Generated<number>;
   createdAt: Generated<string>;
   folderId: string | null;
   id: string | null;
@@ -61,6 +46,12 @@ export interface Conversation {
   verbosity: string | null;
 }
 
+export interface ConversationMcpServer {
+  conversationId: string;
+  enabled: Generated<number>;
+  serverId: string;
+}
+
 export interface ConversationTag {
   conversationId: string;
   tagId: string;
@@ -71,6 +62,17 @@ export interface Folder {
   id: string | null;
   name: string;
   userId: string;
+}
+
+export interface McpServer {
+  createdAt: string;
+  enabled: Generated<number>;
+  headers: Generated<string>;
+  id: string | null;
+  name: string;
+  updatedAt: string;
+  url: string;
+  userId: string | null;
 }
 
 export interface Message {
@@ -109,17 +111,6 @@ export interface ProviderConfig {
   updatedAt: Generated<string>;
 }
 
-export interface Session {
-  createdAt: string;
-  expiresAt: string;
-  id: string;
-  ipAddress: string | null;
-  token: string;
-  updatedAt: string;
-  userAgent: string | null;
-  userId: string;
-}
-
 export interface Tag {
   createdAt: Generated<string>;
   id: string | null;
@@ -127,16 +118,10 @@ export interface Tag {
   userId: string;
 }
 
-export interface User {
-  createdAt: string;
-  email: string;
-  emailVerified: number;
-  id: string;
-  image: string | null;
-  isDisabled: Generated<number>;
-  name: string;
-  role: string;
-  updatedAt: string;
+export interface UserMcpServerPreference {
+  enabled: Generated<number>;
+  serverId: string;
+  userId: string;
 }
 
 export interface UserSetting {
@@ -147,28 +132,18 @@ export interface UserSetting {
   userId: string | null;
 }
 
-export interface Verification {
-  createdAt: string;
-  expiresAt: string;
-  id: string;
-  identifier: string;
-  updatedAt: string;
-  value: string;
-}
-
 export interface DB {
-  account: Account;
   app_meta: AppMeta;
   attachment: Attachment;
   conversation: Conversation;
+  conversation_mcp_server: ConversationMcpServer;
   conversation_tag: ConversationTag;
   folder: Folder;
+  mcp_server: McpServer;
   message: Message;
   preset: Preset;
   provider_config: ProviderConfig;
-  session: Session;
   tag: Tag;
-  user: User;
+  user_mcp_server_preference: UserMcpServerPreference;
   user_setting: UserSetting;
-  verification: Verification;
 }
