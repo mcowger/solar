@@ -85,6 +85,7 @@
 .solar-app { min-height: 100dvh; }
 .solar-sidebar { width: min(20rem, 86vw); }
 .solar-sidebar aside { width: 100% !important; height: 100%; border-color: var(--color-base-300) !important; background: var(--color-base-200); transition: background-color 190ms ease; }
+.solar-sidebar-resizer { display: none; }
 .solar-sidebar button, .solar-sidebar input, .solar-sidebar select { color: var(--color-base-content) !important; }
 .solar-sidebar input, .solar-sidebar select { background: var(--color-base-100) !important; border-color: var(--color-base-300) !important; }
 .solar-main { min-width: 0; }
@@ -95,6 +96,38 @@
 .solar-reasoning-body, .solar-attachment-chip { background: var(--color-base-300) !important; color: var(--color-base-content) !important; }
 .solar-auth { background: radial-gradient(circle at top, color-mix(in oklch, var(--color-accent) 30%, transparent), transparent 30rem); }
 .solar-panel { border-color: var(--color-base-300) !important; background: color-mix(in oklch, var(--color-base-100) 88%, transparent); }
+
+@media (width >= 650px) {
+  .solar-app { grid-template-columns: var(--solar-sidebar-width) minmax(0, 1fr); }
+  .solar-app > .solar-sidebar { visibility: visible; position: relative; width: var(--solar-sidebar-width); }
+  .solar-app > .solar-sidebar > .drawer-overlay { display: none; }
+  .solar-menu-toggle { display: none; }
+  .solar-sidebar-resizer {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: -5px;
+    z-index: 2;
+    width: 10px;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .solar-sidebar-resizer::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 3px;
+    width: 4px;
+    height: 3.5rem;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: color-mix(in oklch, var(--color-secondary) 52%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-base-100) 70%, transparent);
+    transition: background-color 150ms ease, height 150ms ease;
+  }
+  .solar-sidebar-resizer:hover::after { height: 5rem; background: var(--color-secondary); }
+}
 
 @media (width < 40rem) {
   input, select, textarea { font-size: 16px !important; }

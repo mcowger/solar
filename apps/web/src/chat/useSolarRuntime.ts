@@ -23,7 +23,16 @@ interface SolarMessage {
   role: "user" | "assistant";
   content: string;
   reasoning?: string;
+  toolCalls?: SolarToolCall[];
   attachments?: SolarAttachmentMeta[];
+}
+
+export interface SolarToolCall {
+  id: string;
+  name: string;
+  args: string;
+  status: "streaming" | "executing" | "complete" | "error";
+  output?: string;
 }
 
 function toCompleteAttachment(a: SolarAttachmentMeta): CompleteAttachment {
@@ -49,6 +58,7 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
       { type: "text", text: m.content },
     ],
     attachments: m.attachments?.map(toCompleteAttachment),
+    metadata: { custom: { toolCalls: m.toolCalls } },
   };
 }
 
@@ -77,17 +87,20 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
   const [isRunning, setIsRunning] = useState(false);
   const assistantIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
 
   const upsertAssistant = useCallback(
-    (id: string, text: string, reasoning?: string) => {
+    (id: string, text: string, reasoning?: string, toolCalls?: SolarToolCall[]) => {
       setMessages((prev) => {
         const exists = prev.some((m) => m.id === id);
         if (exists) {
+          if (toolCalls?.length) toolCallsByMessageRef.current.set(id, toolCalls);
           return prev.map((m) =>
-            m.id === id ? { ...m, content: text, reasoning } : m,
+            m.id === id ? { ...m, content: text, reasoning, toolCalls: toolCalls ?? m.toolCalls } : m,
           );
         }
-        return [...prev, { id, role: "assistant", content: text, reasoning }];
+        if (toolCalls?.length) toolCallsByMessageRef.current.set(id, toolCalls);
+        return [...prev, { id, role: "assistant", content: text, reasoning, toolCalls }];
       });
     },
     [],
@@ -103,23 +116,39 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
         response.headers.get("x-message-id") ?? assistantIdRef.current;
       let text = "";
       let reasoning = "";
+      let toolCalls: SolarToolCall[] = [];
       setIsRunning(true);
       try {
         await readChunkStream(response, (chunk) => {
           if (chunk.type === "text-delta") {
             text += chunk.textDelta;
-            upsertAssistant(displayId, text, reasoning || undefined);
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
           } else if (chunk.type === "reasoning-delta") {
             reasoning += chunk.delta;
-            upsertAssistant(displayId, text, reasoning);
+            upsertAssistant(displayId, text, reasoning, toolCalls);
+          } else if (chunk.type === "tool-call-start") {
+            toolCalls = [...toolCalls, { id: chunk.toolCallId, name: chunk.toolName, args: "", status: "streaming" }];
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+          } else if (chunk.type === "tool-call-delta") {
+            toolCalls = toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, args: call.args + chunk.argsText } : call);
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+          } else if (chunk.type === "tool-call-end") {
+            toolCalls = toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, status: "executing" } : call);
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+          } else if (chunk.type === "tool-call-result") {
+            toolCalls = toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, output: chunk.output, status: chunk.isError ? "error" : "complete" } : call);
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
           } else if (chunk.type === "error") {
             text += `\n\n_Error: ${chunk.errorText}_`;
-            upsertAssistant(displayId, text, reasoning || undefined);
+            upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
           } else if (chunk.type === "title-update") {
             queryClient.invalidateQueries({ queryKey: trpc.conversation.list.queryKey() });
           }
         });
       } finally {
+        if (toolCalls.length && assistantIdRef.current) {
+          toolCallsByMessageRef.current.set(assistantIdRef.current, toolCalls);
+        }
         setIsRunning(false);
         assistantIdRef.current = null;
         abortRef.current = null;
@@ -138,6 +167,7 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
         role: r.role,
         content: r.text,
         reasoning: r.reasoning ?? undefined,
+        toolCalls: toolCallsByMessageRef.current.get(r.id),
         attachments: r.attachments.length ? r.attachments : undefined,
       })),
     );

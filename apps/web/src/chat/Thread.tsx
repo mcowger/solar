@@ -11,7 +11,10 @@ import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, Server, SquareP
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
+import type { SolarToolCall } from "./useSolarRuntime";
 import "./Thread.css";
+
+const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
 
 /** Small image-or-icon chip for a single attachment (composer or message). */
 function AttachmentChip({ removable }: { removable?: boolean }) {
@@ -83,6 +86,33 @@ function Reasoning() {
   );
 }
 
+function ToolCalls() {
+  const toolCalls = useAuiState(
+    (s) => (s.message.metadata?.custom as { toolCalls?: SolarToolCall[] } | undefined)?.toolCalls ?? EMPTY_TOOL_CALLS,
+  );
+
+  if (!toolCalls.length) return null;
+
+  return (
+    <div className="solar-tool-calls">
+      {toolCalls.map((call) => (
+        <details key={call.id} className="solar-tool-call" open={call.status === "streaming" || call.status === "executing"}>
+          <summary>
+            <span className={`solar-tool-status solar-tool-status-${call.status}`} />
+            <span className="solar-tool-name">{call.name}</span>
+            <span className="solar-tool-state">{call.status === "streaming" ? "Preparing" : call.status === "executing" ? "Running" : call.status === "error" ? "Failed" : "Complete"}</span>
+          </summary>
+          <div className="solar-tool-call-details">
+            <span>Input</span>
+            <pre>{call.args || "{}"}</pre>
+            {call.output !== undefined && <><span>{call.status === "error" ? "Error" : "Output"}</span><pre>{call.output}</pre></>}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 const iconButton: React.CSSProperties = {
   border: "none",
   background: "transparent",
@@ -145,6 +175,7 @@ function AssistantMessage() {
             components={{ Text: MarkdownText, Reasoning }}
           />
         )}
+        <ToolCalls />
       </div>
       <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
         <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">

@@ -13,6 +13,11 @@ import { Thread } from "./Thread";
 import { McpServers } from "./McpServers";
 import { useSolarRuntime } from "./useSolarRuntime";
 
+const SIDEBAR_DEFAULT_WIDTH = 280;
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 480;
+const PINNED_SIDEBAR_MEDIA_QUERY = "(min-width: 650px)";
+
 function ConversationView({ conversationId }: { conversationId: string }) {
   const trpc = useTRPC();
   const current = useQuery(
@@ -41,6 +46,7 @@ export function ChatApp() {
   const [showPresets, setShowPresets] = useState(false);
   const [showMcpServers, setShowMcpServers] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
 
@@ -78,12 +84,34 @@ export function ChatApp() {
     }
   }, [conversations.isSuccess, list, activeId, create.isPending]);
 
+  function startSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (!window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+
+    const resize = (moveEvent: PointerEvent) => {
+      setSidebarWidth(
+        Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, moveEvent.clientX)),
+      );
+    };
+    const stopResize = () => {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+      window.removeEventListener("pointercancel", stopResize);
+    };
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize);
+    window.addEventListener("pointercancel", stopResize);
+  }
+
   return (
-    <div className="drawer lg:drawer-open solar-app h-dvh">
+    <div className="drawer solar-app h-dvh" style={{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
       <input id="solar-drawer" type="checkbox" className="drawer-toggle" checked={drawerOpen} onChange={(event) => setDrawerOpen(event.target.checked)} />
       <div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
-         <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="btn btn-ghost btn-sm btn-circle lg:hidden"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
+          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
           <div className="navbar-end gap-1 sm:gap-2">
             <div className="tooltip tooltip-bottom" data-tip="Presets"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowPresets(true); setShowSettings(false); setShowMcpServers(false); }}><SlidersHorizontal size={18} /></button></div>
             <div className="tooltip tooltip-bottom" data-tip="MCP servers"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowMcpServers(true); setShowSettings(false); setShowPresets(false); }}><Server size={18} /></button></div>
@@ -105,17 +133,18 @@ export function ChatApp() {
         {showMcpServers && <McpServers onClose={() => setShowMcpServers(false)} />}
         {showPresets && <Presets onClose={() => setShowPresets(false)} />}
       </div>
-      <div className="drawer-side solar-sidebar">
-        <label htmlFor="solar-drawer" className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
+       <div className="drawer-side solar-sidebar">
+         <label htmlFor="solar-drawer" className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
         <Sidebar
           activeId={activeId}
           onClose={() => setDrawerOpen(false)}
           onSelect={(id) => { setActiveId(id); setDrawerOpen(false); }}
           onNew={() => { newChat(); setDrawerOpen(false); }}
           presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
-          onNewWithPreset={(presetId) => { newChat(presetId); setDrawerOpen(false); }}
-        />
-      </div>
+           onNewWithPreset={(presetId) => { newChat(presetId); setDrawerOpen(false); }}
+         />
+         <div className="solar-sidebar-resizer" onPointerDown={startSidebarResize} />
+       </div>
     </div>
   );
 }

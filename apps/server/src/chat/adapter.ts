@@ -5,15 +5,22 @@ import type { AssistantMessageEvent } from "@earendil-works/pi-ai";
  * lightweight take on the "UI message stream" (per Spike 1), decoupled from the
  * transport: the generation manager stores these chunks in a buffer and the SSE
  * subscriber serializes them. Kept intentionally small for M1 (text + finish +
- * error); reasoning/tool-call chunks are already representable for later.
+ * error); tool calls include their execution result so the client can render
+ * their full lifecycle without affecting text or reasoning streams.
  */
 export type UiChunk =
   | { type: "start"; messageId: string }
   | { type: "text-delta"; textDelta: string }
   | { type: "reasoning-delta"; delta: string }
   | { type: "tool-call-start"; toolCallId: string; toolName: string }
-  | { type: "tool-call-delta"; argsText: string }
-  | { type: "tool-call-end" }
+  | { type: "tool-call-delta"; toolCallId: string; argsText: string }
+  | { type: "tool-call-end"; toolCallId: string }
+  | {
+      type: "tool-call-result";
+      toolCallId: string;
+      output: string;
+      isError: boolean;
+    }
   | {
       type: "finish";
       finishReason: string;
@@ -22,11 +29,19 @@ export type UiChunk =
   | { type: "title-update"; title: string }
   | { type: "error"; errorText: string };
 
+export interface ToolCallResultEvent {
+  type: "tool-call-result";
+  toolCallId: string;
+  output: string;
+  isError: boolean;
+}
+
 /**
  * Maps a single pi-ai event to zero or more UI chunks. The generation loop owns
  * iteration + buffering; this stays a pure mapping (per the Spike 1 adapter).
  */
-export function piEventToUiChunks(event: AssistantMessageEvent): UiChunk[] {
+export function piEventToUiChunks(event: AssistantMessageEvent | ToolCallResultEvent): UiChunk[] {
+  if (event.type === "tool-call-result") return [event];
   switch (event.type) {
     case "text_delta":
       return [{ type: "text-delta", textDelta: event.delta }];
@@ -45,10 +60,18 @@ export function piEventToUiChunks(event: AssistantMessageEvent): UiChunk[] {
       }
       return [];
     }
-    case "toolcall_delta":
-      return [{ type: "tool-call-delta", argsText: event.delta }];
-    case "toolcall_end":
-      return [{ type: "tool-call-end" }];
+    case "toolcall_delta": {
+      const tool = event.partial.content[event.contentIndex];
+      return tool?.type === "toolCall"
+        ? [{ type: "tool-call-delta", toolCallId: tool.id, argsText: event.delta }]
+        : [];
+    }
+    case "toolcall_end": {
+      const tool = event.partial.content[event.contentIndex];
+      return tool?.type === "toolCall"
+        ? [{ type: "tool-call-end", toolCallId: tool.id }]
+        : [];
+    }
     case "done":
       return [
         {

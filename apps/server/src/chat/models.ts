@@ -4,6 +4,7 @@ import type {
   Context,
 } from "@earendil-works/pi-ai";
 import type { ResolvedTool } from "./mcp";
+import type { ToolCallResultEvent } from "./adapter";
 import {
   MOCK,
   resolveModel,
@@ -26,7 +27,7 @@ export async function* streamChat(
   params: GenerationParams,
   signal: AbortSignal,
   resolvedTools: ResolvedTool[] = [],
-): AsyncIterable<AssistantMessageEvent> {
+): AsyncIterable<AssistantMessageEvent | ToolCallResultEvent> {
   if (selection.provider === "mock") {
     yield* mockStream(context, selection, params, signal);
     return;
@@ -50,15 +51,20 @@ export async function* streamChat(
     if (calls.length === 0) return;
     const results = await Promise.all(calls.map(async (call) => {
       const execute = executors.get(call.name);
-      if (!execute) return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: "Tool is unavailable." }], isError: true, timestamp: Date.now() };
+      if (!execute) {
+        const output = "Tool is unavailable.";
+        return { result: { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: output }], isError: true, timestamp: Date.now() }, chunk: { type: "tool-call-result" as const, toolCallId: call.id, output, isError: true } };
+      }
       try {
         const result = await execute(call.arguments);
-        return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: result.content }], isError: result.isError, timestamp: Date.now() };
+        return { result: { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: result.content }], isError: result.isError, timestamp: Date.now() }, chunk: { type: "tool-call-result" as const, toolCallId: call.id, output: result.content, isError: result.isError } };
       } catch (error) {
-        return { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: error instanceof Error ? error.message : String(error) }], isError: true, timestamp: Date.now() };
+        const output = error instanceof Error ? error.message : String(error);
+        return { result: { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: output }], isError: true, timestamp: Date.now() }, chunk: { type: "tool-call-result" as const, toolCallId: call.id, output, isError: true } };
       }
     }));
-    turnContext = { ...turnContext, messages: [...turnContext.messages, message, ...results] };
+    for (const { chunk } of results) yield chunk;
+    turnContext = { ...turnContext, messages: [...turnContext.messages, message, ...results.map(({ result }) => result)] };
   }
 }
 

@@ -19,12 +19,98 @@
   cursor: pointer;
   color: #666;
   padding: 4px;
-  border-radius: 6px;
+  border-radius: 12px;
 }
 
 .solar-action-btn:hover {
   background: #e9e9e9;
   color: #111;
+}
+
+.solar-tool-calls {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.solar-tool-call {
+  border-radius: 8px;
+  background: #e9e9e9;
+  color: #555;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.solar-tool-call summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  padding: 6px 8px;
+}
+
+.solar-tool-call summary::-webkit-details-marker {
+  display: none;
+}
+
+.solar-tool-status {
+  background: #888;
+  border-radius: 50%;
+  height: 6px;
+  width: 6px;
+}
+
+.solar-tool-status-streaming,
+.solar-tool-status-executing {
+  animation: solar-tool-status-pulse 0.9s ease-in-out infinite alternate;
+  background: #4f7dbf;
+}
+
+.solar-tool-status-complete {
+  background: #4c8a5c;
+}
+
+.solar-tool-status-error {
+  background: #b84c4c;
+}
+
+.solar-tool-name {
+  color: #333;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.solar-tool-state {
+  color: #777;
+  margin-left: auto;
+}
+
+.solar-tool-call-details {
+  border-top: 1px solid #ddd;
+  display: grid;
+  gap: 3px;
+  padding: 6px 8px 8px;
+}
+
+.solar-tool-call-details span {
+  color: #777;
+  font-size: 11px;
+}
+
+.solar-tool-call-details pre {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@keyframes solar-tool-status-pulse {
+  to {
+    opacity: 0.4;
+  }
 }
 
 .solar-response-loader {
