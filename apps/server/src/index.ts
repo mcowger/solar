@@ -1,5 +1,6 @@
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { config } from "./config";
 import { auth } from "./auth";
 import { db, sqlite } from "./db";
@@ -22,6 +23,19 @@ await db
 await seedDevUser();
 
 const app = new Hono();
+
+// Dev-only permissive CORS: accept any origin. We reflect the request origin
+// (rather than a literal "*") so credentialed requests — cookie-based Better
+// Auth sessions — keep working. Never enabled in production.
+if (process.env.NODE_ENV !== "production") {
+  app.use(
+    "*",
+    cors({
+      origin: (origin) => origin ?? "*",
+      credentials: true,
+    }),
+  );
+}
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
