@@ -1,0 +1,28 @@
+/* Message action bars stay hidden until the message is hovered or an action
+   inside gains focus (keyboard access). */
+.solar-message .solar-actions {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.solar-message:hover .solar-actions,
+.solar-message .solar-actions:focus-within {
+  opacity: 1;
+}
+
+.solar-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #666;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.solar-action-btn:hover {
+  background: #e9e9e9;
+  color: #111;
+}

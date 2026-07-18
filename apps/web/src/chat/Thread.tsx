@@ -4,7 +4,9 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
+import { Repeat2, SquarePen } from "lucide-react";
 import { MarkdownText } from "./MarkdownText";
+import "./Thread.css";
 
 const iconButton: React.CSSProperties = {
   border: "none",
@@ -18,13 +20,14 @@ const iconButton: React.CSSProperties = {
 
 function UserMessage() {
   return (
-    <div style={{ alignSelf: "flex-end", maxWidth: "80%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+    <div className="solar-message" style={{ alignSelf: "flex-end", maxWidth: "80%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
       <div style={{ background: "#e6f0ff", padding: "8px 12px", borderRadius: 12 }}>
         <MessagePrimitive.Content />
       </div>
-      <ActionBarPrimitive.Root style={{ display: "flex", gap: 4 }}>
-        <ActionBarPrimitive.Edit style={iconButton}>Edit</ActionBarPrimitive.Edit>
-        <ActionBarPrimitive.Copy style={iconButton}>Copy</ActionBarPrimitive.Copy>
+      <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
+        <ActionBarPrimitive.Edit className="solar-action-btn" aria-label="Edit message">
+          <SquarePen size={16} />
+        </ActionBarPrimitive.Edit>
       </ActionBarPrimitive.Root>
     </div>
   );
@@ -46,13 +49,14 @@ function UserEditComposer() {
 
 function AssistantMessage() {
   return (
-    <div style={{ alignSelf: "flex-start", maxWidth: "80%", display: "flex", flexDirection: "column", gap: 2 }}>
+    <div className="solar-message" style={{ alignSelf: "flex-start", maxWidth: "80%", display: "flex", flexDirection: "column", gap: 2 }}>
       <div style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}>
         <MessagePrimitive.Content components={{ Text: MarkdownText }} />
       </div>
-      <ActionBarPrimitive.Root style={{ display: "flex", gap: 4 }}>
-        <ActionBarPrimitive.Copy style={iconButton}>Copy</ActionBarPrimitive.Copy>
-        <ActionBarPrimitive.Reload style={iconButton}>Regenerate</ActionBarPrimitive.Reload>
+      <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
+        <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">
+          <Repeat2 size={16} />
+        </ActionBarPrimitive.Reload>
       </ActionBarPrimitive.Root>
     </div>
   );
