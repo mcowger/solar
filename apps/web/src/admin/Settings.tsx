@@ -22,7 +22,6 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
   const [models, setModels] = useState<AllowlistEntry[]>(initial.enabledModels);
-
   const save = useMutation(
     trpc.admin.setProvider.mutationOptions({
       onSuccess: () => {
@@ -32,93 +31,44 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
       },
     }),
   );
-
-  const addModel = () =>
-    setModels((m) => [...m, { id: "", api: initial.apis[0] ?? "" }]);
-  const updateModel = (i: number, patch: Partial<AllowlistEntry>) =>
-    setModels((m) => m.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
-  const removeModel = (i: number) =>
-    setModels((m) => m.filter((_, idx) => idx !== i));
+  const addModel = () => setModels((models) => [...models, { id: "", api: initial.apis[0] ?? "" }]);
+  const updateModel = (index: number, patch: Partial<AllowlistEntry>) =>
+    setModels((models) => models.map((model, modelIndex) => modelIndex === index ? { ...model, ...patch } : model));
+  const removeModel = (index: number) => setModels((models) => models.filter((_, modelIndex) => modelIndex !== index));
 
   return (
-    <section
-      style={{
-        border: "1px solid #ddd",
-        borderRadius: 8,
-        padding: "1rem",
-        marginBottom: "1rem",
-      }}
-    >
-      <h3 style={{ margin: "0 0 0.75rem", textTransform: "capitalize" }}>
-        {initial.provider}
-      </h3>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>API key</div>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={initial.hasApiKey ? "Saved — enter to replace" : "sk-…"}
-          style={{ width: "100%", boxSizing: "border-box" }}
-        />
-      </label>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>Base URL (optional)</div>
-        <input
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="default"
-          style={{ width: "100%", boxSizing: "border-box" }}
-        />
-      </label>
-
-      <div style={{ fontSize: 12, color: "#666", margin: "8px 0 4px" }}>
-        Enabled models
-      </div>
-      {models.map((m, i) => (
-        <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-          <input
-            value={m.id}
-            onChange={(e) => updateModel(i, { id: e.target.value })}
-            placeholder="model id"
-            style={{ flex: 1 }}
-          />
-          <select
-            value={m.api}
-            onChange={(e) => updateModel(i, { api: e.target.value })}
-          >
-            {initial.apis.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => removeModel(i)}>✕</button>
+    <section className="card card-border bg-base-100 shadow-sm">
+      <div className="card-body gap-5 p-5">
+        <h3 className="card-title capitalize">{initial.provider}</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <fieldset className="fieldset grid min-w-0 content-start gap-2">
+            <legend className="fieldset-legend">API key</legend>
+            <input className="input w-full" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={initial.hasApiKey ? "Saved — enter to replace" : "sk-…"} />
+            <p className="label">Leave blank to keep the existing key.</p>
+          </fieldset>
+          <fieldset className="fieldset grid min-w-0 content-start gap-2">
+            <legend className="fieldset-legend">Base URL</legend>
+            <input className="input w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="Default provider URL" />
+            <p className="label">Optional provider endpoint override.</p>
+          </fieldset>
         </div>
-      ))}
-      <button onClick={addModel} style={{ marginBottom: 8 }}>
-        + Add model
-      </button>
-
-      <div>
-        <button
-          onClick={() =>
-            save.mutate({
-              provider: initial.provider,
-              apiKey,
-              baseUrl,
-              enabledModels: models.filter((m) => m.id.trim()),
-            })
-          }
-          disabled={save.isPending}
-        >
-          {save.isPending ? "Saving…" : "Save"}
-        </button>
-        {save.isError && (
-          <span style={{ color: "crimson", marginLeft: 8 }}>
-            {save.error.message}
-          </span>
-        )}
+        <fieldset className="fieldset gap-2">
+          <legend className="fieldset-legend">Enabled models</legend>
+          {models.map((model, index) => (
+            <div key={index} className="flex flex-col gap-2 sm:flex-row">
+              <input className="input flex-1" value={model.id} onChange={(event) => updateModel(index, { id: event.target.value })} placeholder="Model ID" />
+              <select className="select sm:w-44" value={model.api} onChange={(event) => updateModel(index, { api: event.target.value })}>
+                {initial.apis.map((api) => <option key={api} value={api}>{api}</option>)}
+              </select>
+              <button className="btn btn-ghost btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
+            </div>
+          ))}
+          <button className="btn btn-sm btn-outline w-fit" onClick={addModel}>Add model</button>
+        </fieldset>
+        <div className="card-actions items-center justify-end">
+          {save.isError && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error.message}</div>}
+          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, baseUrl, enabledModels: models.filter((model) => model.id.trim()) })} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
+        </div>
       </div>
     </section>
   );
@@ -133,130 +83,53 @@ function Users() {
   const setRole = useMutation(trpc.admin.setUserRole.mutationOptions({ onSuccess: invalidate }));
   const setDisabled = useMutation(trpc.admin.setUserDisabled.mutationOptions({ onSuccess: invalidate }));
   const remove = useMutation(trpc.admin.deleteUser.mutationOptions({ onSuccess: invalidate }));
-  const currentUserId = session?.user.id;
 
-  return (
-    <section>
-      <h3>Users</h3>
-      {users.isError && <p style={{ color: "crimson" }}>{users.error.message}</p>}
-      {users.data?.map((user) => {
-        const isCurrentUser = user.id === currentUserId;
-        return (
-          <div key={user.id} style={{ borderBottom: "1px solid #ddd", padding: "0.75rem 0" }}>
-            <strong>{user.name}</strong> <span style={{ color: "#666" }}>{user.email}</span>
-            <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
-              <select
-                value={user.role}
-                disabled={isCurrentUser || setRole.isPending}
-                onChange={(event) => setRole.mutate({ userId: user.id, role: event.target.value as "admin" | "user" })}
-              >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-              </select>
-              <button
-                disabled={isCurrentUser || setDisabled.isPending}
-                onClick={() => setDisabled.mutate({ userId: user.id, isDisabled: !Boolean(user.isDisabled) })}
-              >
-                {user.isDisabled ? "Enable" : "Disable"}
-              </button>
-              <button
-                disabled={isCurrentUser || remove.isPending}
-                onClick={() => {
-                  if (window.confirm(`Delete ${user.email} and all of their data?`)) remove.mutate({ userId: user.id });
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        );
-      })}
-    </section>
-  );
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body p-5"><h3 className="card-title">Users</h3>
+    {users.isError && <div role="alert" className="alert alert-error alert-soft">{users.error.message}</div>}
+    <div className="divide-y divide-base-300">{users.data?.map((user) => {
+      const isCurrentUser = user.id === session?.user.id;
+      return <div key={user.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="font-medium">{user.name}</p><p className="truncate text-sm opacity-60">{user.email}</p></div><div className="flex flex-wrap gap-2"><select className="select select-sm" value={user.role} disabled={isCurrentUser || setRole.isPending} onChange={(event) => setRole.mutate({ userId: user.id, role: event.target.value as "admin" | "user" })}><option value="user">User</option><option value="admin">Admin</option></select><button className="btn btn-sm" disabled={isCurrentUser || setDisabled.isPending} onClick={() => setDisabled.mutate({ userId: user.id, isDisabled: !Boolean(user.isDisabled) })}>{user.isDisabled ? "Enable" : "Disable"}</button><button className="btn btn-error btn-soft btn-sm" disabled={isCurrentUser || remove.isPending} onClick={() => { if (window.confirm(`Delete ${user.email} and all of their data?`)) remove.mutate({ userId: user.id }); }}>Delete</button></div></div>;
+    })}</div>
+  </div></section>;
 }
 
 function Usage() {
   const trpc = useTRPC();
   const usage = useQuery(trpc.admin.usage.queryOptions());
-  return (
-    <section>
-      <h3>Usage</h3>
-      {usage.isError && <p style={{ color: "crimson" }}>{usage.error.message}</p>}
-      <table style={{ borderCollapse: "collapse", width: "100%" }}>
-        <thead><tr><th>User</th><th>Model</th><th>Messages</th><th>Input</th><th>Output</th><th>Total</th></tr></thead>
-        <tbody>{usage.data?.map((row) => (
-          <tr key={`${row.userId}:${row.model}`}>
-            <td>{row.email}</td><td>{row.model}</td><td>{row.messageCount}</td>
-            <td>{row.inputTokens}</td><td>{row.outputTokens}</td><td>{row.inputTokens + row.outputTokens}</td>
-          </tr>
-        ))}</tbody>
-      </table>
-    </section>
-  );
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body p-5"><h3 className="card-title">Usage</h3>
+    {usage.isError && <div role="alert" className="alert alert-error alert-soft">{usage.error.message}</div>}
+    <div className="overflow-x-auto"><table className="table table-zebra"><thead><tr><th>User</th><th>Model</th><th>Messages</th><th>Input</th><th>Output</th><th>Total</th></tr></thead><tbody>{usage.data?.map((row) => <tr key={`${row.userId}:${row.model}`}><td>{row.email}</td><td>{row.model}</td><td>{row.messageCount}</td><td>{row.inputTokens}</td><td>{row.outputTokens}</td><td>{row.inputTokens + row.outputTokens}</td></tr>)}</tbody></table></div>
+  </div></section>;
 }
 
 function Logging() {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const logLevel = useQuery(trpc.admin.logLevel.queryOptions());
-  const setLogLevel = useMutation(
-    trpc.admin.setLogLevel.mutationOptions({
-      onSuccess: () => qc.invalidateQueries({ queryKey: trpc.admin.logLevel.queryKey() }),
-    }),
-  );
-  return (
-    <section>
-      <h3>Logging</h3>
-      <p>Changes apply immediately and reset when the server restarts.</p>
-      {logLevel.data && (
-        <select
-          value={logLevel.data.level}
-          disabled={setLogLevel.isPending}
-          onChange={(event) => setLogLevel.mutate({ level: event.target.value as "trace" | "debug" | "info" | "warn" | "error" })}
-        >
-          <option value="trace">Trace</option>
-          <option value="debug">Debug</option>
-          <option value="info">Info</option>
-          <option value="warn">Warn</option>
-          <option value="error">Error</option>
-        </select>
-      )}
-      {setLogLevel.isError && <p style={{ color: "crimson" }}>{setLogLevel.error.message}</p>}
-    </section>
-  );
+  const setLogLevel = useMutation(trpc.admin.setLogLevel.mutationOptions({ onSuccess: () => qc.invalidateQueries({ queryKey: trpc.admin.logLevel.queryKey() }) }));
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body p-5"><h3 className="card-title">Logging</h3><p className="text-sm opacity-70">Changes apply immediately and reset when the server restarts.</p>
+    {logLevel.data && <fieldset className="fieldset max-w-xs"><legend className="fieldset-legend">Log level</legend><select className="select w-full" value={logLevel.data.level} disabled={setLogLevel.isPending} onChange={(event) => setLogLevel.mutate({ level: event.target.value as "trace" | "debug" | "info" | "warn" | "error" })}><option value="trace">Trace</option><option value="debug">Debug</option><option value="info">Info</option><option value="warn">Warn</option><option value="error">Error</option></select></fieldset>}
+    {setLogLevel.isError && <div role="alert" className="alert alert-error alert-soft">{setLogLevel.error.message}</div>}
+  </div></section>;
 }
+
+const sections = ["users", "providers", "usage", "logging"] as const;
+type Section = typeof sections[number];
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const trpc = useTRPC();
   const providers = useQuery(trpc.admin.listProviders.queryOptions());
-
-  // Remount cards when server data arrives so their local form state seeds.
   const [ready, setReady] = useState(false);
-  const [section, setSection] = useState<"users" | "providers" | "usage" | "logging">("users");
-  useEffect(() => {
-    if (providers.isSuccess) setReady(true);
-  }, [providers.isSuccess]);
+  const [section, setSection] = useState<Section>("users");
+  useEffect(() => { if (providers.isSuccess) setReady(true); }, [providers.isSuccess]);
 
-  return (
-    <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", maxWidth: 640 }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={{ margin: 0, flex: 1 }}>Admin settings</h2>
-        <button onClick={onClose}>Close</button>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button onClick={() => setSection("users")}>Users</button>
-        <button onClick={() => setSection("providers")}>Providers</button>
-        <button onClick={() => setSection("usage")}>Usage</button>
-        <button onClick={() => setSection("logging")}>Logging</button>
-      </div>
-      {section === "users" && <Users />}
-      {section === "usage" && <Usage />}
-      {section === "logging" && <Logging />}
-      {section === "providers" && providers.isError && (
-        <p style={{ color: "crimson" }}>{providers.error.message}</p>
-      )}
-      {section === "providers" && ready &&
-        providers.data?.map((p) => <ProviderCard key={p.provider} initial={p} />)}
-    </div>
-  );
+  return <main className="flex-1 overflow-auto p-4 sm:p-6"><div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <header className="flex items-center justify-between gap-4"><div><p className="text-sm tracking-[0.16em] uppercase opacity-60">Administration</p><h2 className="m-0 text-3xl">Settings</h2></div><button className="btn btn-ghost" onClick={onClose}>Close</button></header>
+    <div role="tablist" className="tabs tabs-box w-fit max-w-full overflow-x-auto">{sections.map((name) => <button key={name} role="tab" className={`tab capitalize${section === name ? " tab-active" : ""}`} onClick={() => setSection(name)}>{name}</button>)}</div>
+    {section === "users" && <Users />}
+    {section === "usage" && <Usage />}
+    {section === "logging" && <Logging />}
+    {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}
+    {section === "providers" && ready && <div className="grid gap-4">{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
+  </div></main>;
 }
