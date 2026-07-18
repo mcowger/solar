@@ -182,7 +182,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
   if (!showReasoning && !showVerbosity) return null;
 
   return (
-    <div style={{ display: "flex", gap: 4, position: "relative", alignSelf: "flex-end" }}>
+    <div style={{ display: "flex", gap: 4, position: "relative" }}>
       {showReasoning && (
         <>
           <button
@@ -241,13 +241,16 @@ export function Thread({ conversationId }: { conversationId: string }) {
         />
       </ThreadPrimitive.Viewport>
 
-      <ComposerPrimitive.Root style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, padding: "0.75rem 1rem", borderTop: "1px solid #ddd", width: "100%" }}>
+      <ComposerPrimitive.Root
+        className="bg-base-200/70 rounded-t-2xl px-3 pt-3 pb-4 shadow-[0_-12px_30px_-24px_rgba(0,0,0,0.7)] sm:px-4"
+        style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, width: "100%" }}
+      >
         <ComposerPrimitive.Attachments>
           {() => <AttachmentChip removable />}
         </ComposerPrimitive.Attachments>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
           <ComposerPrimitive.AddAttachment
-            style={{ ...iconButton, alignSelf: "flex-end" }}
+            className="btn btn-ghost btn-sm btn-square"
             aria-label="Add attachment"
           >
             <Paperclip size={18} />
@@ -255,13 +258,13 @@ export function Thread({ conversationId }: { conversationId: string }) {
           <GenerationControls conversationId={conversationId} />
           <ComposerPrimitive.Input
             placeholder="Message…"
-            style={{ flex: 1, padding: 8, borderRadius: 8, border: "1px solid #ccc" }}
+            className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"
           />
           <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send style={{ padding: "8px 16px" }}>Send</ComposerPrimitive.Send>
+            <ComposerPrimitive.Send className="btn btn-ghost btn-sm rounded-xl px-3">Send</ComposerPrimitive.Send>
           </ThreadPrimitive.If>
           <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel style={{ padding: "8px 16px" }}>Stop</ComposerPrimitive.Cancel>
+            <ComposerPrimitive.Cancel className="btn btn-ghost btn-sm rounded-xl px-3">Stop</ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>
         </div>
       </ComposerPrimitive.Root>
