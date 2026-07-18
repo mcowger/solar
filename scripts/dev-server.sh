@@ -46,10 +46,10 @@ case "${1:-}" in
     fi
     if [ "${2:-}" = "--foreground" ]; then
       cd "$ROOT/apps/server"
-      exec env PORT="$SERVER_PORT" bun --env-file=../../.env run dev
+      exec env PORT="$SERVER_PORT" SOLAR_SEED_DEV_USER=1 bun --env-file=../../.env run dev
     fi
     : > "$LOGFILE"
-    PORT="$SERVER_PORT" setsid bash -c 'cd "'"$ROOT"'/apps/server" && exec bun --env-file=../../.env run dev' \
+    PORT="$SERVER_PORT" SOLAR_SEED_DEV_USER=1 setsid bash -c 'cd "'"$ROOT"'/apps/server" && exec bun --env-file=../../.env run dev' \
       >> "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     # Give it a moment to bind or fail fast.

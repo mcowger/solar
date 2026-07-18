@@ -16,11 +16,7 @@ export const auth = betterAuth({
   database: { dialect, type: "sqlite" },
   secret: config.authSecret,
   baseURL: config.authBaseURL,
-  // Dev-only: accept any origin for Better Auth's CSRF/origin check so
-  // cross-origin dev clients work. Never permissive in production.
-  ...(process.env.NODE_ENV !== "production"
-    ? { trustedOrigins: ["*"] }
-    : {}),
+  trustedOrigins: process.env.NODE_ENV !== "production" ? ["*"] : [config.authBaseURL],
   emailAndPassword: { enabled: true },
   user: {
     additionalFields: {

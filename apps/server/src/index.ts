@@ -1,6 +1,7 @@
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import * as path from "node:path";
 import { logger } from "./logger";
 import { config } from "./config";
 import { auth } from "./auth";
@@ -12,7 +13,21 @@ import { attachmentRoutes } from "./chat/attachmentRoutes";
 import { chatRoutes } from "./chat/routes";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
-import index from "@solar/web/index.html";
+
+const isProduction = process.env.NODE_ENV === "production";
+const index = isProduction ? undefined : (await import("@solar/web/index.html")).default;
+const webDirectory = path.join(import.meta.dir, "web");
+const webIndex = Bun.file(path.join(webDirectory, "index.html"));
+
+async function serveProductionWeb(req: Request) {
+  const pathname = new URL(req.url).pathname;
+  const filePath = path.resolve(webDirectory, pathname === "/" ? "index.html" : pathname.slice(1));
+  if (filePath.startsWith(`${webDirectory}${path.sep}`)) {
+    const file = Bun.file(filePath);
+    if (await file.exists()) return new Response(file);
+  }
+  return new Response(webIndex);
+}
 
 if (
   process.env.NODE_ENV === "production" &&
@@ -95,9 +110,9 @@ const server = Bun.serve({
     "/api/attachments/*": (req) => app.fetch(req),
     "/api/attachments": (req) => app.fetch(req),
     "/healthz": (req) => app.fetch(req),
-    "/*": index,
+    "/*": isProduction ? serveProductionWeb : index!,
   },
-  development: process.env.NODE_ENV !== "production" ? { hmr: true } : false,
+  development: !isProduction ? { hmr: true } : false,
 });
 
 logger.withMetadata({ url: server.url.toString() }).info("solar server listening");

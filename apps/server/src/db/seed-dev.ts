@@ -13,7 +13,7 @@ export const DEV_EMAIL = "admin@solar.local";
 export const DEV_PASSWORD = "password";
 
 export async function seedDevUser(): Promise<void> {
-  if (process.env.NODE_ENV === "production") return;
+  if (process.env.NODE_ENV === "production" || process.env.SOLAR_SEED_DEV_USER !== "1") return;
 
   const row = sqlite.query("SELECT COUNT(*) AS c FROM user").get() as {
     c: number;

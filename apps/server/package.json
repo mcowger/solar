@@ -7,7 +7,7 @@
     ".": "./src/trpc/router.ts"
   },
   "scripts": {
-    "dev": "bun run --hot src/index.ts",
+    "dev": "SOLAR_SEED_DEV_USER=1 bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
     "migrate": "bun run src/db/migrate.ts",
     "migrate:auth": "bun run src/db/migrate-auth.ts",

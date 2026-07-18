@@ -21,10 +21,11 @@
     "dev:status": "bash scripts/dev-server.sh status",
     "dev:logs": "bash scripts/dev-server.sh logs",
     "build": "bun run --cwd apps/web build",
-    "package": "bun run build && bun build apps/server/src/index.ts --outdir dist --target bun --external @struktoai/mirage-node",
+    "package": "bun run build && bun build apps/server/src/index.ts --outdir dist --target bun --define 'process.env.NODE_ENV=\"production\"' --external @struktoai/mirage-node && bun build apps/server/src/db/migrations/*.ts --root apps/server/src/db/migrations --outdir dist/migrations --target bun && mkdir -p dist/web && cp -R apps/server/dist/web/. dist/web",
     "migrate": "bun run --cwd apps/server migrate",
     "migrate:auth": "bun run --cwd apps/server migrate:auth",
     "codegen": "bun run --cwd apps/server codegen",
+    "deploy:staging": "bun run scripts/deploy-staging.ts",
     "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json"
   },
   "dependencies": {
