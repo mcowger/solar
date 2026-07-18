@@ -35,18 +35,35 @@ both migration owners at boot, so a fresh `solar.db` needs no manual migrate.
 
 ### Start the server
 
+**Agents and background use: use the managed dev-server scripts.** They detach
+the server into its own session with `setsid`, track it via a pidfile, and log
+to a file — no `nohup`/`disown`, no blocked shells, and a clean group-kill on
+stop (the server installs a `SIGTERM` graceful-shutdown handler). Never start
+the server with raw `... &`/`nohup` from an agent shell.
+
 ```bash
-# Dev (hot reload + web HMR), with provider keys loaded from the root .env.
-# The server's cwd is apps/server, so Bun won't auto-load the root .env —
-# pass it explicitly. This is the normal way to run locally.
-bun --env-file=.env run --cwd apps/server dev
+bun run dev:start     # start detached (waits ~3s, fails fast with logs)
+bun run dev:status    # running / stopped (+ pid)
+bun run dev:logs      # last 80 log lines (bun run dev:logs 200 for more)
+bun run dev:restart   # stop + start
+bun run dev:stop      # SIGTERM the process group, clean up pidfile
+```
 
-# Equivalent from inside apps/server:
-cd apps/server && bun --env-file=../../.env run dev
+Pidfile/logfile live at `.dev-server.pid` / `.dev-server.log` (gitignored).
 
-# Production-style run (no HMR; serves the same single process).
+For an interactive foreground run (your own terminal), the server's cwd is
+`apps/server`, so Bun won't auto-load the root `.env` — pass it explicitly:
+
+```bash
+bun --env-file=.env run --cwd apps/server dev          # from repo root
+cd apps/server && bun --env-file=../../.env run dev     # equivalent
+
+# Production-style run (no HMR; same single process).
 cd apps/server && NODE_ENV=production bun --env-file=../../.env run start
 ```
+
+For real deployments prefer a supervisor (systemd `Restart=always` or PM2) —
+`bun run` itself does not restart on crash or rotate logs.
 
 Then open http://localhost:3000. Override the port with `PORT`, the DB path with
 `DATABASE_PATH` (see `apps/server/src/config.ts`).
@@ -59,7 +76,8 @@ you need model calls.
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev` | Start the server (hot reload) — no `.env`; see above |
+| `bun run dev:start` / `dev:stop` / `dev:status` / `dev:logs` / `dev:restart` | Managed detached dev server (preferred; see above) |
+| `bun run dev` | Foreground server (hot reload) — no `.env`; see above |
 | `bun run build` | Production bundle of the web app → `apps/server/dist/web` |
 | `bun run migrate` | Run app (Kysely) migrations against `solar.db` |
 | `bun run migrate:auth` | Run Better Auth's own migrations |
@@ -90,6 +108,12 @@ capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
   gitignored.
 - **Typecheck:** `bun run typecheck` runs `tsc` per package. Do this before
   committing.
+
+
+## Confirming Functionality
+
+- **Logging** It is often more efficient to place logging statements and log to console and stdout rather than guessing at code.  Logging costs nothing.   
+- **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.
 
 ## Imports & workspace gotchas
 

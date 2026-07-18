@@ -2,9 +2,10 @@ import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
 import { config } from "./config";
 import { auth } from "./auth";
-import { db } from "./db";
+import { db, sqlite } from "./db";
 import { migrateAuth } from "./db/migrate-auth";
 import { migrateToLatest } from "./db/migrate";
+import { seedDevUser } from "./db/seed-dev";
 import { chatRoutes } from "./chat/routes";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
@@ -18,6 +19,7 @@ await db
   .values({ key: "schema_version", value: "1" })
   .onConflict((oc) => oc.column("key").doUpdateSet({ value: "1" }))
   .execute();
+await seedDevUser();
 
 const app = new Hono();
 
@@ -55,3 +57,14 @@ const server = Bun.serve({
 });
 
 console.log(`solar server listening on ${server.url}`);
+
+// Graceful shutdown (Bun exits immediately on SIGTERM by default, dropping
+// in-flight requests). Stop accepting connections, drain, close the DB, exit.
+const shutdown = async (signal: string) => {
+  console.log(`received ${signal}, shutting down`);
+  await server.stop();
+  sqlite.close();
+  process.exit(0);
+};
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -5,6 +5,10 @@
 node_modules/
 dist/
 
+# dev-server.sh pidfile + logfile
+.dev-server.pid
+.dev-server.log
+
 # SQLite database + WAL sidecars
 solar.db
 solar.db-shm
