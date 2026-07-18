@@ -14,7 +14,8 @@
     "codegen": "kysely-codegen --dialect sqlite --url solar.db --out-file src/db/types.generated.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.80.10",
+    "@earendil-works/pi-agent-core": "0.80.10",
+    "@earendil-works/pi-ai": "0.80.10",
     "@hono/trpc-server": "^0.3.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@solar/shared": "workspace:*",

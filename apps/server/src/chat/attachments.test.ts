@@ -215,6 +215,21 @@ describe("attachments", () => {
     await expect(attachments.loadAttachmentContentParts("missing-message")).resolves.toEqual({ parts: [], documents: [] });
   });
 
+  test("loads UTF-8 attachment text for context compaction", async () => {
+    rows.set("text", row({ id: "text", filename: "notes.txt", storageKey: "user-1/text", byteSize: 12 }));
+    files.set("/user-1/text", new TextEncoder().encode("Remember this"));
+
+    await expect(attachments.loadAttachmentSummary({
+      id: "text", filename: "notes.txt", mimeType: "text/plain", kind: "text", byteSize: 12,
+    })).resolves.toBe('<attachment name="notes.txt">\nRemember this\n</attachment>');
+  });
+
+  test("uses durable metadata when an image cannot be summarized as text", async () => {
+    await expect(attachments.loadAttachmentSummary({
+      id: "image", filename: "diagram.png", mimeType: "image/png", kind: "image", byteSize: 42,
+    })).resolves.toBe("[Omitted attachment: diagram.png; type: image/png; kind: image; bytes: 42]");
+  });
+
   test("loads documents as opaque native inputs only when enabled", async () => {
     rows.set("document", row({ id: "document", filename: "report.pdf", mimeType: "application/pdf", kind: "document", storageKey: "user-1/document" }));
     files.set("/user-1/document", new Uint8Array([0, 1, 2]));

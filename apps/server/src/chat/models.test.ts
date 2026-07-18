@@ -2,6 +2,10 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 
 let resolveModelCalls = 0;
 let streamModelCalls = 0;
+let expectNoProviderCalls = true;
+let providerStream: (...args: any[]) => AsyncIterable<any> = () => {
+  throw new Error("provider streaming must not run for mock models");
+};
 const originalMockLlm = process.env.SOLAR_MOCK_LLM;
 
 process.env.SOLAR_MOCK_LLM = "1";
@@ -9,15 +13,17 @@ mock.module("./catalog", () => ({
   MOCK: Boolean(process.env.SOLAR_MOCK_LLM),
   resolveModel: async () => {
     resolveModelCalls += 1;
-    throw new Error("provider resolution must not run for mock models");
+    if (expectNoProviderCalls) throw new Error("provider resolution must not run for mock models");
+    return { model: { contextWindow: 128_000 } };
   },
-  streamModel: () => {
+  streamModel: (...args: any[]) => {
     streamModelCalls += 1;
-    throw new Error("provider streaming must not run for mock models");
+    return providerStream(...args);
   },
 }));
 
 const { MOCK, generateTitle, streamChat } = await import("./models");
+const { modelCallTelemetry } = await import("../context/telemetry");
 
 if (originalMockLlm === undefined) delete process.env.SOLAR_MOCK_LLM;
 else process.env.SOLAR_MOCK_LLM = originalMockLlm;
@@ -60,10 +66,13 @@ async function collect(prompt: string, params = {}) {
 }
 
 afterEach(() => {
-  expect(resolveModelCalls).toBe(0);
-  expect(streamModelCalls).toBe(0);
+  if (expectNoProviderCalls) {
+    expect(resolveModelCalls).toBe(0);
+    expect(streamModelCalls).toBe(0);
+  }
   resolveModelCalls = 0;
   streamModelCalls = 0;
+  expectNoProviderCalls = true;
 });
 
 describe("mock model streaming", () => {
@@ -139,5 +148,68 @@ describe("mock model streaming", () => {
   test("generates titles through the same zero-cost mock stream", async () => {
     const prompt = "Draft a release announcement";
     await expect(generateTitle(prompt, selection)).resolves.toBe(replyFor(prompt));
+  });
+
+  test("reports model-rate cost and safe context-overflow retry metadata without content", () => {
+    const call = modelCallTelemetry(
+      { provider: "provider", endpointId: "endpoint", modelId: "model", api: "test" },
+      {
+        api: "test",
+        provider: "provider",
+        model: "model",
+        content: [],
+        usage: { input: 100, output: 0, cacheRead: 20, cacheWrite: 10, totalTokens: 130, cost: { input: 1, output: 0, cacheRead: 0.2, cacheWrite: 0.1, total: 1.3 } },
+        stopReason: "error",
+        errorMessage: "request exceeds the context window",
+        timestamp: 1,
+      } as never,
+      12,
+      {},
+      128_000,
+    );
+
+    expect(call).toMatchObject({ estimatedCostMicros: 1_300_000, overflowed: true });
+    expect(call.error).toEqual({ kind: "context_overflow", retrySafe: true, outputStarted: false, toolStepsCompleted: false });
+    expect(call).not.toHaveProperty("error.errorMessage");
+  });
+
+  test("labels calls after executing tools as tool-loop calls", async () => {
+    expectNoProviderCalls = false;
+    let callCount = 0;
+    providerStream = async function* () {
+      callCount += 1;
+      if (callCount === 1) {
+        yield {
+          type: "done",
+          reason: "toolUse",
+          message: {
+            api: "test", provider: "test", model: "model", content: [{ type: "toolCall", id: "call-1", name: "weather", arguments: {} }], usage: { input: 3, output: 1 }, stopReason: "toolUse", timestamp: 1,
+          },
+        };
+        return;
+      }
+      yield {
+        type: "done",
+        reason: "stop",
+        message: {
+          api: "test", provider: "test", model: "model", content: [{ type: "text", text: "Sunny" }], usage: { input: 8, output: 2 }, stopReason: "stop", timestamp: 2,
+        },
+      };
+    };
+    const calls: any[] = [];
+    const providerSelection = { provider: "test", endpointId: "test", modelId: "model", api: "test" };
+
+    for await (const _event of streamChat(
+      contextFor("Weather"),
+      providerSelection,
+      {},
+      new AbortController().signal,
+      [{ tool: { name: "weather" }, execute: async () => ({ content: "sunny", isError: false }) }] as never,
+      { onProviderCall: (call) => calls.push(call) },
+    )) {
+      // Consume all provider and tool events.
+    }
+
+    expect(calls.map((call) => call.purpose)).toEqual(["chat", "tool_loop"]);
   });
 });

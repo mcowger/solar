@@ -162,6 +162,81 @@ export interface UserSettingTable {
   updatedAt: Generated<string>;
 }
 
+export type ContextPolicyScope = "exact_model" | "model_family" | "provider";
+
+/** Admin-owned policy overrides; inheritance is resolved by the context repository. */
+export interface ContextPolicyTable {
+  id: string;
+  scope: ContextPolicyScope;
+  provider: string;
+  modelFamily: string | null;
+  modelId: string | null;
+  enabled: Generated<number>;
+  softTriggerTokens: number;
+  targetTokens: number;
+  hardInputTokens: number;
+  maxPinnedAttachmentTokens: number;
+  outputReserveTokens: number;
+  createdAt: Generated<string>;
+  updatedAt: Generated<string>;
+}
+
+export type ContextJobStatus = "idle" | "queued" | "running" | "failed";
+
+/** Mutable working-memory artifact for one canonical conversation. */
+export interface ConversationContextStateTable {
+  conversationId: string;
+  /** Incremented when the transcript changes; background work must match it. */
+  revision: Generated<number>;
+  summary: string | null;
+  summaryRevision: number | null;
+  /** First raw message retained after the active rolling summary. */
+  retainedMessageBoundaryId: string | null;
+  jobStatus: Generated<ContextJobStatus>;
+  jobId: string | null;
+  jobAttempt: Generated<number>;
+  jobError: string | null;
+  jobUpdatedAt: string | null;
+  createdAt: Generated<string>;
+  updatedAt: Generated<string>;
+}
+
+/** Opaque pi-native intermediate steps for a visible assistant message. */
+export interface GenerationStepTable {
+  messageId: string;
+  sequence: number;
+  data: string;
+  createdAt: Generated<string>;
+}
+
+export type ProviderCallPurpose = "chat" | "tool_loop" | "title" | "compaction";
+
+/** Per-provider-call accounting. Deliberately contains no prompt or response content. */
+export interface ProviderCallTelemetryTable {
+  id: string;
+  conversationId: string | null;
+  messageId: string | null;
+  provider: string;
+  api: string;
+  modelId: string;
+  purpose: ProviderCallPurpose;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  estimatedCostMicros: number | null;
+  latencyMs: number | null;
+  contextPolicySource: string | null;
+  contextPolicyEnabled: number | null;
+  /** JSON snapshot of numeric context-policy settings; never prompt content. */
+  contextPolicyState: string | null;
+  overflowed: Generated<number>;
+  retryAttempt: Generated<number>;
+  compactionTokensBefore: number | null;
+  compactionTokensAfter: number | null;
+  createdAt: Generated<string>;
+}
+
 export interface Database {
   app_meta: AppMetaTable;
   user_setting: UserSettingTable;
@@ -176,4 +251,8 @@ export interface Database {
   mcp_server: McpServerTable;
   user_mcp_server_preference: UserMcpServerPreferenceTable;
   conversation_mcp_server: ConversationMcpServerTable;
+  context_policy: ContextPolicyTable;
+  conversation_context_state: ConversationContextStateTable;
+  generation_step: GenerationStepTable;
+  provider_call_telemetry: ProviderCallTelemetryTable;
 }

@@ -16,6 +16,33 @@ import "./Thread.css";
 
 const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
 
+export type ContextStatus = {
+  state: string;
+  estimatedTokens: number | null;
+  summarized: boolean;
+  jobError: string | null;
+};
+
+export function ContextStatusIndicator({ status }: { status?: ContextStatus }) {
+  if (!status || (status.state === "idle" && !status.summarized)) return null;
+  if (status.state === "running") {
+    return <span className="flex items-center gap-1 text-xs text-info"><span className="loading loading-spinner loading-xs" />Summarizing history...</span>;
+  }
+  if (status.state === "failed") {
+    return <span className="badge badge-error badge-xs">Summary failed{status.jobError ? `: ${status.jobError}` : ""}</span>;
+  }
+  return <span className="badge badge-info badge-xs">History summarized</span>;
+}
+
+function ContextStatusControl({ conversationId }: { conversationId: string }) {
+  const trpc = useTRPC();
+  const context = useQuery({
+    ...trpc.conversation.contextState.queryOptions({ conversationId }),
+    refetchInterval: (query) => query.state.data?.state === "running" ? 2_000 : false,
+  });
+  return <ContextStatusIndicator status={context.data} />;
+}
+
 /** Small image-or-icon chip for a single attachment (composer or message). */
 function AttachmentChip({ removable }: { removable?: boolean }) {
   const attachment = useAuiState((s) => s.attachment);
@@ -291,6 +318,7 @@ export function Thread({ conversationId }: { conversationId: string }) {
         <ComposerPrimitive.Attachments>
           {() => <AttachmentChip removable />}
         </ComposerPrimitive.Attachments>
+        <ContextStatusControl conversationId={conversationId} />
         <div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
           <ComposerPrimitive.AddAttachment
             className="btn btn-ghost btn-sm btn-square"

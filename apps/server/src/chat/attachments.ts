@@ -136,6 +136,30 @@ export async function attachmentsForMessage(messageId: string) {
     .execute();
 }
 
+export async function loadAttachmentSummary(attachment: {
+  id: string;
+  filename: string;
+  mimeType: string;
+  kind: string;
+  byteSize: number;
+}): Promise<string> {
+  const fallback = `[Omitted attachment: ${attachment.filename}; type: ${attachment.mimeType}; kind: ${attachment.kind}; bytes: ${attachment.byteSize}]`;
+  if (attachment.kind === "image") return fallback;
+  const row = await db.selectFrom("attachment").select(["storageKey", "kind", "mimeType"])
+    .where("id", "=", attachment.id).executeTakeFirst();
+  if (!row || row.kind === "image") return fallback;
+  try {
+    await ensureOpen();
+    const bytes = await disk.readFile(path(row.storageKey));
+    const text = row.kind === "text"
+      ? Buffer.from(bytes).toString("utf-8")
+      : await extractDocumentText(bytes, row.mimeType);
+    return `<attachment name="${attachment.filename}">\n${text}\n</attachment>`;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function attachmentMetadata(ids: string[], userId: string): Promise<{ kind: AttachmentKind; mimeType: string }[]> {
   if (ids.length === 0) return [];
   const rows = await db
@@ -212,6 +236,7 @@ export async function loadAttachmentContentParts(
     nativeMimeTypes: [],
     extractedTextMimeTypes: [],
   },
+  allowedAttachmentIds?: ReadonlySet<string>,
 ): Promise<{ parts: (TextContent | ImageContent)[]; documents: NativeDocumentInput[] }> {
   const rows = await attachmentsForMessage(messageId);
   if (rows.length === 0) return { parts: [], documents: [] };
@@ -219,6 +244,7 @@ export async function loadAttachmentContentParts(
   const parts: (TextContent | ImageContent)[] = [];
   const documents: NativeDocumentInput[] = [];
   for (const r of rows) {
+    if (allowedAttachmentIds && !allowedAttachmentIds.has(r.id)) continue;
     const bytes = await disk.readFile(path(r.storageKey));
     if (r.kind === "image") {
       parts.push({

@@ -9,6 +9,22 @@ export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
   ? ColumnType<S, I | undefined, U>
   : ColumnType<T, T | undefined, T>;
 
+export interface Account {
+  accessToken: string | null;
+  accessTokenExpiresAt: string | null;
+  accountId: string;
+  createdAt: string;
+  id: string;
+  idToken: string | null;
+  password: string | null;
+  providerId: string;
+  refreshToken: string | null;
+  refreshTokenExpiresAt: string | null;
+  scope: string | null;
+  updatedAt: string;
+  userId: string;
+}
+
 export interface AppMeta {
   key: string | null;
   updatedAt: Generated<string>;
@@ -25,6 +41,22 @@ export interface Attachment {
   mimeType: string;
   storageKey: string;
   userId: string;
+}
+
+export interface ContextPolicy {
+  createdAt: Generated<string>;
+  enabled: Generated<number>;
+  hardInputTokens: number;
+  id: string | null;
+  maxPinnedAttachmentTokens: number;
+  modelFamily: string | null;
+  modelId: string | null;
+  outputReserveTokens: number;
+  provider: string;
+  scope: string;
+  softTriggerTokens: number;
+  targetTokens: number;
+  updatedAt: Generated<string>;
 }
 
 export interface Conversation {
@@ -47,6 +79,21 @@ export interface Conversation {
   verbosity: string | null;
 }
 
+export interface ConversationContextState {
+  conversationId: string | null;
+  createdAt: Generated<string>;
+  jobAttempt: Generated<number>;
+  jobError: string | null;
+  jobId: string | null;
+  jobStatus: Generated<string>;
+  jobUpdatedAt: string | null;
+  retainedMessageBoundaryId: string | null;
+  revision: Generated<number>;
+  summary: string | null;
+  summaryRevision: number | null;
+  updatedAt: Generated<string>;
+}
+
 export interface ConversationMcpServer {
   conversationId: string;
   enabled: Generated<number>;
@@ -63,6 +110,13 @@ export interface Folder {
   id: string | null;
   name: string;
   userId: string;
+}
+
+export interface GenerationStep {
+  createdAt: Generated<string>;
+  data: string;
+  messageId: string;
+  sequence: number;
 }
 
 export interface McpServer {
@@ -105,6 +159,30 @@ export interface Preset {
   verbosity: string | null;
 }
 
+export interface ProviderCallTelemetry {
+  api: string;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  compactionTokensAfter: number | null;
+  compactionTokensBefore: number | null;
+  contextPolicyEnabled: number | null;
+  contextPolicySource: string | null;
+  contextPolicyState: string | null;
+  conversationId: string | null;
+  createdAt: Generated<string>;
+  estimatedCostMicros: number | null;
+  id: string | null;
+  inputTokens: number | null;
+  latencyMs: number | null;
+  messageId: string | null;
+  modelId: string;
+  outputTokens: number | null;
+  overflowed: Generated<number>;
+  provider: string;
+  purpose: string;
+  retryAttempt: Generated<number>;
+}
+
 export interface ProviderConfig {
   apiKey: string | null;
   baseUrl: string | null;
@@ -114,11 +192,34 @@ export interface ProviderConfig {
   updatedAt: Generated<string>;
 }
 
+export interface Session {
+  createdAt: string;
+  expiresAt: string;
+  id: string;
+  ipAddress: string | null;
+  token: string;
+  updatedAt: string;
+  userAgent: string | null;
+  userId: string;
+}
+
 export interface Tag {
   createdAt: Generated<string>;
   id: string | null;
   name: string;
   userId: string;
+}
+
+export interface User {
+  createdAt: string;
+  email: string;
+  emailVerified: number;
+  id: string;
+  image: string | null;
+  isDisabled: number;
+  name: string;
+  role: string;
+  updatedAt: string;
 }
 
 export interface UserMcpServerPreference {
@@ -136,18 +237,35 @@ export interface UserSetting {
   userId: string | null;
 }
 
+export interface Verification {
+  createdAt: string;
+  expiresAt: string;
+  id: string;
+  identifier: string;
+  updatedAt: string;
+  value: string;
+}
+
 export interface DB {
+  account: Account;
   app_meta: AppMeta;
   attachment: Attachment;
+  context_policy: ContextPolicy;
   conversation: Conversation;
+  conversation_context_state: ConversationContextState;
   conversation_mcp_server: ConversationMcpServer;
   conversation_tag: ConversationTag;
   folder: Folder;
+  generation_step: GenerationStep;
   mcp_server: McpServer;
   message: Message;
   preset: Preset;
+  provider_call_telemetry: ProviderCallTelemetry;
   provider_config: ProviderConfig;
+  session: Session;
   tag: Tag;
+  user: User;
   user_mcp_server_preference: UserMcpServerPreference;
   user_setting: UserSetting;
+  verification: Verification;
 }

@@ -6,6 +6,8 @@ import type { GenerationParams, ModelSelection } from "./catalog";
 import { generateTitle, streamChat } from "./models";
 import { logger } from "../logger";
 import type { ResolvedTool } from "./mcp";
+import { ContextRepository } from "../context/repository";
+import type { ChatProviderCall, ModelCallTelemetry, TelemetryMetadata } from "../context/telemetry";
 
 interface BufferedChunk {
   id: number;
@@ -31,7 +33,10 @@ interface Generation {
   text: string;
   parts: unknown | null;
   toolCalls: PersistedToolCall[];
-  usage: { inputTokens: number; outputTokens: number } | null;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+  steps: unknown[];
+  providerCalls: ChatProviderCall[];
+  telemetry: TelemetryMetadata;
 }
 
 interface PersistedToolCall {
@@ -82,6 +87,8 @@ export class GenerationManager {
     params: GenerationParams;
     tools?: ResolvedTool[];
     titleGeneration?: TitleGeneration;
+    telemetry?: TelemetryMetadata;
+    retryContext?: () => Promise<{ context: Context; params: GenerationParams }>;
   }): void {
     const gen: Generation = {
       messageId: opts.messageId,
@@ -97,11 +104,14 @@ export class GenerationManager {
       text: "",
       parts: null,
       toolCalls: [],
-      usage: null,
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      steps: [],
+      providerCalls: [],
+      telemetry: opts.telemetry ?? {},
     };
     this.generations.set(opts.messageId, gen);
     logger.withMetadata({ conversationId: opts.conversationId, messageId: opts.messageId, model: gen.model }).info("generation started");
-    void this.run(gen, opts.context, opts.tools, opts.titleGeneration);
+    void this.run(gen, opts.context, opts.tools, opts.titleGeneration, opts.retryContext);
   }
 
   isActive(messageId: string): boolean {
@@ -170,6 +180,7 @@ export class GenerationManager {
     context: Context,
     tools: ResolvedTool[] = [],
     titleGeneration?: TitleGeneration,
+    retryContext?: () => Promise<{ context: Context; params: GenerationParams }>,
   ): Promise<void> {
     const emit = (chunk: UiChunk) => {
       const bc: BufferedChunk = { id: gen.nextId++, chunk };
@@ -181,11 +192,24 @@ export class GenerationManager {
     emit({ type: "start", messageId: gen.messageId });
 
     const titlePromise = titleGeneration
-      ? this.generateTitle(gen.conversationId, titleGeneration)
+      ? this.generateTitle(gen.conversationId, gen.messageId, titleGeneration, gen.telemetry)
       : null;
 
     try {
-      const events = streamChat(context, gen.selection, gen.params, gen.controller.signal, tools);
+      let retryAttempted = false;
+      while (true) try {
+      const events = streamChat(context, gen.selection, gen.params, gen.controller.signal, tools, {
+        telemetry: gen.telemetry,
+        onGenerationStep: (step) => gen.steps.push(step),
+          onProviderCall: (providerCall) => {
+           gen.providerCalls.push(providerCall);
+           const { error: _error, ...call } = providerCall.observation;
+          gen.usage.inputTokens += call.inputTokens ?? 0;
+          gen.usage.outputTokens += call.outputTokens ?? 0;
+          gen.usage.cacheReadTokens += call.cacheReadTokens ?? 0;
+          gen.usage.cacheWriteTokens += call.cacheWriteTokens ?? 0;
+        },
+      });
       for await (const event of events) {
         if (event.type === "error") {
           throw new Error(event.error.errorMessage ?? "Generation failed");
@@ -195,10 +219,6 @@ export class GenerationManager {
           // Store the whole pi assistant message so context can be
           // reconstructed losslessly on later turns.
           gen.parts = event.message;
-          gen.usage = {
-            inputTokens: event.message.usage.input,
-            outputTokens: event.message.usage.output,
-          };
         }
         for (const chunk of piEventToUiChunks(event, toolDisplayNames)) {
           if (chunk.type === "tool-call-start") {
@@ -213,6 +233,19 @@ export class GenerationManager {
           emit(chunk);
         }
       }
+      break;
+      } catch (error) {
+         const retrySafe = gen.providerCalls.at(-1)?.observation.error?.retrySafe;
+        if (!retryAttempted && retrySafe && retryContext) {
+          retryAttempted = true;
+          const fresh = await retryContext();
+          context = fresh.context;
+          gen.params = fresh.params;
+          gen.telemetry = { ...gen.telemetry, retryAttempt: 1 };
+          continue;
+        }
+        throw error;
+      }
       const title = await titlePromise;
       if (title) emit({ type: "title-update", title });
       gen.status = "done";
@@ -223,7 +256,11 @@ export class GenerationManager {
       if (gen.controller.signal.aborted) {
         // Explicit user Stop: keep the partial text, mark complete.
         gen.status = "done";
-        emit({ type: "finish", finishReason: "stop", usage: gen.usage ?? { inputTokens: 0, outputTokens: 0 } });
+        emit({
+          type: "finish",
+          finishReason: "stop",
+          usage: { inputTokens: gen.usage.inputTokens, outputTokens: gen.usage.outputTokens },
+        });
         await this.persist(gen, "complete");
         logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).trace(gen.text);
         logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).info("generation stopped");
@@ -246,12 +283,22 @@ export class GenerationManager {
 
   private async generateTitle(
     conversationId: string,
+    messageId: string,
     generation: TitleGeneration,
+    telemetry: TelemetryMetadata,
   ): Promise<string | null> {
+    const calls: ModelCallTelemetry[] = [];
     try {
       const response = await generateTitle(
         generation.prompt.replaceAll("{{first_message}}", generation.firstMessage),
         generation.selection,
+        {
+          telemetry,
+          onProviderCall: ({ observation }) => {
+            const { error: _error, ...call } = observation;
+            calls.push(call);
+          },
+        },
       );
       const title = parseTitle(response);
       if (!title) return null;
@@ -265,6 +312,14 @@ export class GenerationManager {
     } catch (error) {
       logger.withError(error).withMetadata({ conversationId }).warn("title generation failed");
       return null;
+    } finally {
+      await Promise.all(calls.map((call) => new ContextRepository(db).recordProviderCall({
+        id: crypto.randomUUID(),
+        conversationId,
+        messageId,
+        purpose: "title",
+        ...call,
+      })));
     }
   }
 
@@ -276,11 +331,26 @@ export class GenerationManager {
         parts: gen.parts ? JSON.stringify({ ...(gen.parts as Record<string, unknown>), solarToolCalls: gen.toolCalls }) : null,
         status,
         model: gen.model,
-        inputTokens: gen.usage?.inputTokens ?? null,
-        outputTokens: gen.usage?.outputTokens ?? null,
+        inputTokens: gen.usage.inputTokens,
+        outputTokens: gen.usage.outputTokens,
       })
       .where("id", "=", gen.messageId)
       .execute();
+
+    const repository = new ContextRepository(db);
+    await Promise.all([
+      repository.recordGenerationSteps(gen.messageId, gen.steps),
+       ...gen.providerCalls.map(({ purpose, observation }) => {
+         const { error: _error, ...call } = observation;
+         return repository.recordProviderCall({
+         id: crypto.randomUUID(),
+         conversationId: gen.conversationId,
+         messageId: gen.messageId,
+         purpose,
+         ...call,
+         });
+       }),
+    ]);
 
     await db
       .updateTable("conversation")

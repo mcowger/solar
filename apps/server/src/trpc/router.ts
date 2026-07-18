@@ -24,6 +24,14 @@ import {
 import type { TrpcContext } from "./context";
 import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
 import { testMcpServer } from "../chat/mcp";
+import { ContextRepository } from "../context/repository";
+import {
+  contextGlobalSettingsInputSchema,
+  CONTEXT_GLOBAL_SETTINGS_VERSION,
+  DEFAULT_CONTEXT_SUMMARY_PROMPT,
+  getContextGlobalSettings,
+  setContextGlobalSettings,
+} from "../context/settings";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -212,6 +220,26 @@ const conversationRouter = router({
         .execute();
       await deleteAttachmentFilesForMessages(messages.map((m) => m.id));
       await db.deleteFrom("conversation").where("id", "=", input.id).execute();
+    }),
+
+  contextState: protectedProcedure
+    .input(z.object({ conversationId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertOwnsConversation(ctx.user.id, input.conversationId);
+      const state = await new ContextRepository(db).getState(input.conversationId);
+      const latestEstimate = await db
+        .selectFrom("provider_call_telemetry")
+        .select("compactionTokensBefore")
+        .where("conversationId", "=", input.conversationId)
+        .where("compactionTokensBefore", "is not", null)
+        .orderBy("createdAt", "desc")
+        .executeTakeFirst();
+      return {
+        state: state?.jobStatus === "failed" ? "failed" : state?.jobStatus === "running" || state?.jobStatus === "queued" ? "running" : "idle",
+        estimatedTokens: latestEstimate?.compactionTokensBefore ?? null,
+        summarized: Boolean(state?.summary),
+        jobError: state?.jobError ?? null,
+      };
     }),
 
   setModel: protectedProcedure
@@ -484,12 +512,95 @@ const historySchema = z.object({
   conversationTags: z.array(z.object({ conversationId: z.string(), tagId: z.string() })),
 });
 
+export const contextPolicySchema = z.object({
+  scope: z.enum(["exact_model", "model_family", "provider"]),
+  provider: z.string().trim().min(1).max(100),
+  modelFamily: z.string().trim().min(1).max(200).nullable(),
+  modelId: z.string().trim().min(1).max(200).nullable(),
+  enabled: z.boolean(),
+  softTriggerTokens: z.number().int().min(1).max(2_000_000),
+  targetTokens: z.number().int().min(1).max(2_000_000),
+  hardInputTokens: z.number().int().min(1).max(2_000_000),
+  maxPinnedAttachmentTokens: z.number().int().min(0).max(2_000_000),
+  outputReserveTokens: z.number().int().min(1).max(2_000_000),
+}).superRefine((policy, ctx) => {
+  if (policy.scope === "exact_model" && !policy.modelId) {
+    ctx.addIssue({ code: "custom", path: ["modelId"], message: "Exact policies require a model ID" });
+  }
+  if (policy.scope === "model_family" && !policy.modelFamily) {
+    ctx.addIssue({ code: "custom", path: ["modelFamily"], message: "Family policies require a model family" });
+  }
+  if (policy.scope === "provider" && (policy.modelFamily || policy.modelId)) {
+    ctx.addIssue({ code: "custom", path: ["scope"], message: "Provider policies cannot select a model" });
+  }
+  if (policy.targetTokens > policy.softTriggerTokens || policy.softTriggerTokens > policy.hardInputTokens) {
+    ctx.addIssue({ code: "custom", path: ["softTriggerTokens"], message: "Target, trigger, and hard input must be ordered" });
+  }
+  if (policy.maxPinnedAttachmentTokens > policy.hardInputTokens) {
+    ctx.addIssue({ code: "custom", path: ["maxPinnedAttachmentTokens"], message: "Pinned attachment budget cannot exceed hard input" });
+  }
+});
+
 function hasDuplicateIds(rows: { id: string }[]) {
   return new Set(rows.map((row) => row.id)).size !== rows.length;
 }
 
 const adminRouter = router({
   logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
+
+  contextManagementSettings: adminProcedure.query(async () => {
+    const repository = new ContextRepository(db);
+    await repository.seedDefaultPolicies();
+    const [global, policies] = await Promise.all([
+      getContextGlobalSettings(),
+      db.selectFrom("context_policy").selectAll().orderBy("provider", "asc").orderBy("scope", "asc").execute(),
+    ]);
+    return {
+      global: {
+        ...global,
+        summaryPrompt: global.summaryPromptOverride ?? DEFAULT_CONTEXT_SUMMARY_PROMPT,
+        summaryPromptOverridden: global.summaryPromptOverride !== null,
+      },
+      policies: policies.map((policy) => ({ ...policy, enabled: Boolean(policy.enabled) })),
+      fallback: {
+        softTrigger: "70% of the model context window",
+        target: "45% of the model context window",
+        hardInput: "Context window minus the output reserve",
+        maxPinnedAttachmentTokens: 64_000,
+        outputReserveTokens: 32_000,
+      },
+    };
+  }),
+
+  setContextManagementGlobal: adminProcedure
+    .input(contextGlobalSettingsInputSchema)
+    .mutation(async ({ input }) => {
+      await setContextGlobalSettings({ version: CONTEXT_GLOBAL_SETTINGS_VERSION, ...input });
+    }),
+
+  setContextPolicy: adminProcedure.input(contextPolicySchema).mutation(async ({ input }) => {
+    const repository = new ContextRepository(db);
+    const policy = {
+      enabled: input.enabled,
+      softTriggerTokens: input.softTriggerTokens,
+      targetTokens: input.targetTokens,
+      hardInputTokens: input.hardInputTokens,
+      maxPinnedAttachmentTokens: input.maxPinnedAttachmentTokens,
+      outputReserveTokens: input.outputReserveTokens,
+    };
+    if (input.scope === "exact_model") {
+      await repository.savePolicy({ ...policy, scope: input.scope, provider: input.provider, modelId: input.modelId! });
+    } else if (input.scope === "model_family") {
+      await repository.savePolicy({ ...policy, scope: input.scope, provider: input.provider, modelFamily: input.modelFamily! });
+    } else {
+      await repository.savePolicy({ ...policy, scope: input.scope, provider: input.provider });
+    }
+  }),
+
+  resetContextSummaryPrompt: adminProcedure.mutation(async () => {
+    const settings = await getContextGlobalSettings();
+    await setContextGlobalSettings({ ...settings, summaryPromptOverride: null });
+  }),
 
   debug: router({
     chatIds: adminProcedure

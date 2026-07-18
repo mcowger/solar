@@ -35,6 +35,46 @@ interface ModelDescriptor {
   name: string;
 }
 
+interface ContextPolicy {
+  id: string;
+  scope: "exact_model" | "model_family" | "provider";
+  provider: string;
+  modelFamily: string | null;
+  modelId: string | null;
+  enabled: boolean;
+  softTriggerTokens: number;
+  targetTokens: number;
+  hardInputTokens: number;
+  maxPinnedAttachmentTokens: number;
+  outputReserveTokens: number;
+}
+
+interface ContextManagementSettings {
+  global: {
+    version: number;
+    enabled: boolean;
+    summaryPromptOverride: string | null;
+    summaryPrompt: string;
+    summaryPromptOverridden: boolean;
+  };
+  policies: ContextPolicy[];
+  fallback: {
+    softTrigger: string;
+    target: string;
+    hardInput: string;
+    maxPinnedAttachmentTokens: number;
+    outputReserveTokens: number;
+  };
+}
+
+const contextPolicyFields = [
+  ["softTriggerTokens", "Soft trigger"],
+  ["targetTokens", "Target"],
+  ["hardInputTokens", "Hard input"],
+  ["maxPinnedAttachmentTokens", "Pinned attachments"],
+  ["outputReserveTokens", "Output reserve"],
+] as const;
+
 function modelKey(model: Pick<ModelDescriptor, "provider" | "endpointId" | "modelId" | "api">) {
   return `${model.provider}/${model.endpointId}/${model.modelId}/${model.api}`;
 }
@@ -215,7 +255,34 @@ function Logging() {
   </div></section>;
 }
 
-const sections = ["users", "providers", "task model", "usage", "logging"] as const;
+function ContextManagement() {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const settings = useQuery(trpc.admin.contextManagementSettings.queryOptions());
+  const [form, setForm] = useState<ContextManagementSettings | null>(null);
+  useEffect(() => { if (settings.data) setForm(settings.data); }, [settings.data]);
+  const invalidate = () => qc.invalidateQueries({ queryKey: trpc.admin.contextManagementSettings.queryKey() });
+  const saveGlobal = useMutation(trpc.admin.setContextManagementGlobal.mutationOptions({ onSuccess: invalidate }));
+  const savePolicy = useMutation(trpc.admin.setContextPolicy.mutationOptions({ onSuccess: invalidate }));
+  const resetPrompt = useMutation(trpc.admin.resetContextSummaryPrompt.mutationOptions({ onSuccess: invalidate }));
+  const updateGlobal = (patch: Partial<ContextManagementSettings["global"]>) => setForm((current) => current ? { ...current, global: { ...current.global, ...patch } } : current);
+  const updatePolicy = (id: string, field: keyof ContextPolicy, value: number | boolean) => setForm((current) => current ? { ...current, policies: current.policies.map((policy) => policy.id === id ? { ...policy, [field]: value } : policy) } : current);
+
+  if (settings.isError) return <div role="alert" className="alert alert-error alert-soft">{settings.error.message}</div>;
+  if (!form) return null;
+  const globalInput = { enabled: form.global.enabled, summaryPromptOverride: form.global.summaryPromptOverride };
+  const pending = saveGlobal.isPending || savePolicy.isPending || resetPrompt.isPending;
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-4 p-5"><h3 className="card-title">Context management</h3><p className="text-sm opacity-70">Active chat policies resolve as exact model, family, provider, then derived fallback.</p>
+    <fieldset className="fieldset"><legend className="fieldset-legend">Global kill switch</legend><label className="flex items-center gap-3"><input className="toggle" type="checkbox" checked={form.global.enabled} disabled={pending} onChange={(event) => updateGlobal({ enabled: event.target.checked })} /><span className="text-sm">Disable all context compaction without changing individual policies.</span></label></fieldset>
+    <div className="grid gap-3 lg:grid-cols-2">{form.policies.map((policy) => <fieldset key={policy.id} className="fieldset rounded-box bg-base-200 p-4"><legend className="fieldset-legend">{policy.scope === "model_family" ? `${policy.provider} / ${policy.modelFamily}` : policy.scope === "exact_model" ? `${policy.provider} / ${policy.modelId}` : `${policy.provider} provider`}</legend><label className="flex items-center gap-2 text-sm"><input className="toggle toggle-sm" type="checkbox" checked={policy.enabled} disabled={pending} onChange={(event) => updatePolicy(policy.id, "enabled", event.target.checked)} /> Enabled</label><div className="grid gap-2 sm:grid-cols-2">{contextPolicyFields.map(([field, label]) => <label key={field} className="label flex-col items-start gap-1"><span>{label}</span><input className="input input-sm w-full" type="number" min="0" step="1000" value={policy[field]} disabled={pending} onChange={(event) => updatePolicy(policy.id, field, Number(event.target.value))} /></label>)}</div><div className="card-actions justify-end"><button className="btn btn-sm" disabled={pending} onClick={() => savePolicy.mutate({ scope: policy.scope, provider: policy.provider, modelFamily: policy.modelFamily, modelId: policy.modelId, enabled: policy.enabled, softTriggerTokens: policy.softTriggerTokens, targetTokens: policy.targetTokens, hardInputTokens: policy.hardInputTokens, maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens, outputReserveTokens: policy.outputReserveTokens })}>{savePolicy.isPending ? "Saving…" : "Save policy"}</button></div></fieldset>)}</div>
+    <fieldset className="fieldset rounded-box bg-base-200 p-4"><legend className="fieldset-legend">Fallback effective default</legend><p className="text-sm">Soft trigger: {form.fallback.softTrigger}. Target: {form.fallback.target}. Hard input: {form.fallback.hardInput}. Pinned attachments: {form.fallback.maxPinnedAttachmentTokens.toLocaleString()} tokens. Output reserve: {form.fallback.outputReserveTokens.toLocaleString()} tokens.</p></fieldset>
+    <fieldset className="fieldset gap-2"><legend className="fieldset-legend">Summary prompt</legend><textarea className="textarea min-h-48 w-full font-mono text-sm" value={form.global.summaryPromptOverride ?? form.global.summaryPrompt} disabled={pending} onChange={(event) => updateGlobal({ summaryPromptOverride: event.target.value })} /><p className="label">{form.global.summaryPromptOverridden || form.global.summaryPromptOverride !== null ? "Custom version 1 override." : "Using the built-in version 1 summary prompt."}</p></fieldset>
+    {(saveGlobal.isError || savePolicy.isError || resetPrompt.isError) && <div role="alert" className="alert alert-error alert-soft">{saveGlobal.error?.message ?? savePolicy.error?.message ?? resetPrompt.error?.message}</div>}
+    <div className="card-actions items-center justify-end"><button className="btn btn-ghost" disabled={!form.global.summaryPromptOverride || resetPrompt.isPending} onClick={() => resetPrompt.mutate()}>Reset summary prompt</button><button className="btn btn-primary" disabled={pending} onClick={() => saveGlobal.mutate(globalInput)}>{saveGlobal.isPending ? "Saving…" : "Save global settings"}</button></div>
+  </div></section>;
+}
+
+const sections = ["users", "providers", "task model", "context management", "usage", "logging"] as const;
 type Section = typeof sections[number];
 
 export function Settings({ onClose }: { onClose: () => void }) {
@@ -239,6 +306,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
     {section === "usage" && <Usage />}
     {section === "logging" && <Logging />}
     {section === "task model" && <TaskModel />}
+    {section === "context management" && <ContextManagement />}
     {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}
     {section === "providers" && ready && <div className="grid gap-4"><section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-3 p-4 sm:p-5"><h3 className="card-title">Add provider</h3><p className="text-sm opacity-70">A provider shares one API key across one or more API endpoints.</p><div className="flex flex-col gap-2 sm:flex-row"><input className="input input-sm min-w-0 flex-1" value={providerName} onChange={(event) => setProviderName(event.target.value)} placeholder="Provider name" /><button className="btn btn-sm" disabled={!providerName.trim() || createProvider.isPending} onClick={() => createProvider.mutate({ provider: providerName.trim(), apiKey: "", endpoints: [], enabledModels: [] })}>{createProvider.isPending ? "Adding…" : "Add provider"}</button></div>{createProvider.isError && <div role="alert" className="alert alert-error alert-soft text-sm">{createProvider.error.message}</div>}</div></section>{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
   </div></div></div><div className="modal-backdrop" onClick={onClose} /></div>;

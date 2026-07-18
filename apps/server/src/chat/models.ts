@@ -2,9 +2,16 @@ import type {
   AssistantMessage,
   AssistantMessageEvent,
   Context,
+  ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type { ResolvedTool } from "./mcp";
 import type { ToolCallResultEvent } from "./adapter";
+import {
+  modelCallTelemetry,
+  type ChatProviderCall,
+  type ProviderCallObservation,
+  type TelemetryMetadata,
+} from "../context/telemetry";
 import {
   MOCK,
   resolveModel,
@@ -12,6 +19,12 @@ import {
   type GenerationParams,
   type ModelSelection,
 } from "./catalog";
+
+export interface StreamChatOptions {
+  telemetry?: TelemetryMetadata;
+  onGenerationStep?: (message: AssistantMessage | ToolResultMessage) => void;
+  onProviderCall?: (call: ChatProviderCall) => void;
+}
 
 /**
  * Stream an assistant turn as pi-ai events for the chosen model.
@@ -27,28 +40,60 @@ export async function* streamChat(
   params: GenerationParams,
   signal: AbortSignal,
   resolvedTools: ResolvedTool[] = [],
+  options: StreamChatOptions = {},
 ): AsyncIterable<AssistantMessageEvent | ToolCallResultEvent> {
   if (selection.provider === "mock") {
-    yield* mockStream(context, selection, params, signal);
+    const startedAt = Date.now();
+    let message: AssistantMessage | undefined;
+    let error: unknown;
+    try {
+      for await (const event of mockStream(context, selection, params, signal)) {
+        if (event.type === "done") message = event.message;
+        yield event;
+      }
+    } catch (caught) {
+      error = caught;
+      throw caught;
+    } finally {
+      options.onProviderCall?.({ purpose: "chat", observation: modelCallTelemetry(selection, message, Date.now() - startedAt, options.telemetry, undefined, error) });
+    }
     return;
   }
   const resolved = await resolveModel(selection);
   const executors = new Map(resolvedTools.map(({ tool, execute }) => [tool.name, execute]));
   let turnContext = context;
+  let toolStepsCompleted = false;
   while (true) {
-    const events = streamModel(resolved, turnContext, signal, params);
+    const startedAt = Date.now();
     let message: AssistantMessage | undefined;
     let reason: string | undefined;
-    for await (const event of events) {
-      yield event;
-      if (event.type === "done") {
-        message = event.message;
-        reason = event.reason;
+    let error: unknown;
+    let outputStarted = false;
+    try {
+      const events = streamModel(resolved, turnContext, signal, params);
+      for await (const event of events) {
+        yield event;
+        if (event.type !== "start") outputStarted = true;
+        if (event.type === "done") {
+          message = event.message;
+          reason = event.reason;
+        } else if (event.type === "error") {
+          message = event.error;
+        }
       }
+    } catch (caught) {
+      error = caught;
+      throw caught;
+    } finally {
+      options.onProviderCall?.({
+        purpose: toolStepsCompleted ? "tool_loop" : "chat",
+        observation: modelCallTelemetry(selection, message, Date.now() - startedAt, options.telemetry, resolved.model.contextWindow, error, outputStarted, toolStepsCompleted),
+      });
     }
     if (!message || reason !== "toolUse") return;
     const calls = message.content.filter((part) => part.type === "toolCall");
     if (calls.length === 0) return;
+    options.onGenerationStep?.(message);
     const results = await Promise.all(calls.map(async (call) => {
       const execute = executors.get(call.name);
       if (!execute) {
@@ -63,7 +108,11 @@ export async function* streamChat(
         return { result: { role: "toolResult" as const, toolCallId: call.id, toolName: call.name, content: [{ type: "text" as const, text: output }], isError: true, timestamp: Date.now() }, chunk: { type: "tool-call-result" as const, toolCallId: call.id, output, isError: true } };
       }
     }));
-    for (const { chunk } of results) yield chunk;
+    for (const { chunk, result } of results) {
+      options.onGenerationStep?.(result);
+      yield chunk;
+    }
+    toolStepsCompleted = true;
     turnContext = { ...turnContext, messages: [...turnContext.messages, message, ...results.map(({ result }) => result)] };
   }
 }
@@ -157,12 +206,13 @@ export { MOCK };
 export async function generateTitle(
   prompt: string,
   selection: ModelSelection,
+  options: StreamChatOptions = {},
 ): Promise<string> {
   const context: Context = {
     messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
   };
   let text = "";
-  for await (const event of streamChat(context, selection, {}, new AbortController().signal)) {
+  for await (const event of streamChat(context, selection, {}, new AbortController().signal, [], options)) {
     if (event.type === "error") {
       throw new Error(event.error.errorMessage ?? "Title generation failed");
     }

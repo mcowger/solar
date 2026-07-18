@@ -3,6 +3,7 @@ import type {
   Context as PiContext,
   Message as PiMessage,
 } from "@earendil-works/pi-ai";
+import { convertToLlm, createCompactionSummaryMessage } from "@earendil-works/pi-agent-core";
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db, sqlite } from "../db";
@@ -12,6 +13,7 @@ import {
   attachmentMetadata,
   linkAttachments,
   loadAttachmentContentParts,
+  loadAttachmentSummary,
 } from "./attachments";
 import {
   getTitlePrompt,
@@ -24,6 +26,8 @@ import {
 import { generationManager } from "./generationManager";
 import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
 import { toolProvider } from "./tools";
+import { contextRuntime } from "../context/runtime";
+import { ContextRepository } from "../context/repository";
 
 export const chatRoutes = new Hono();
 
@@ -60,6 +64,9 @@ async function buildContext(
     nativeMimeTypes: [],
     extractedTextMimeTypes: [],
   },
+  messageIds?: ReadonlySet<string>,
+  summary?: string | null,
+  allowedAttachmentIds?: ReadonlySet<string>,
 ): Promise<{ context: PiContext; documents: import("./attachments").NativeDocumentInput[] }> {
   const rows = await db
     .selectFrom("message")
@@ -72,8 +79,9 @@ async function buildContext(
   const messages: PiMessage[] = [];
   const documents: import("./attachments").NativeDocumentInput[] = [];
   for (const r of rows) {
+    if (messageIds && !messageIds.has(r.id)) continue;
     if (r.role === "user") {
-      const attachmentContent = await loadAttachmentContentParts(r.id, documentInput);
+      const attachmentContent = await loadAttachmentContentParts(r.id, documentInput, allowedAttachmentIds);
       documents.push(...attachmentContent.documents);
       const content =
         attachmentContent.parts.length === 0
@@ -83,15 +91,31 @@ async function buildContext(
               ...attachmentContent.parts,
             ];
       messages.push({ role: "user", content, timestamp: Date.now() });
-    } else if (r.parts) {
-      // Full pi assistant message was persisted — replay it verbatim.
-      messages.push(JSON.parse(r.parts) as AssistantMessage);
+    } else if (r.role === "assistant") {
+      const steps = await db.selectFrom("generation_step").select("data")
+        .where("messageId", "=", r.id).orderBy("sequence", "asc").execute();
+      for (const step of steps) {
+        const parsed = JSON.parse(step.data) as { role?: unknown };
+        if (typeof parsed.role === "string") messages.push(parsed as PiMessage);
+      }
+      // Intermediate tool/reasoning messages precede the final persisted reply.
+      if (r.parts) {
+        const message = JSON.parse(r.parts) as AssistantMessage;
+        // Completed thinking is private scratch work; tool calls remain in their persisted steps.
+        messages.push({ ...message, content: message.content.filter((part) => part.type !== "thinking") });
+      }
+      else messages.push({
+        role: "assistant", content: [{ type: "text", text: r.text }], timestamp: Date.now(),
+        api: "unknown", provider: "unknown", model: "unknown", usage: {}, stopReason: "stop",
+      } as AssistantMessage);
     }
   }
-  return {
-    context: systemPrompt ? { systemPrompt, messages } : { messages },
-    documents,
-  };
+  if (summary) {
+    const summaryMessage = convertToLlm([createCompactionSummaryMessage(summary, 0, new Date().toISOString())])[0]!;
+    const firstUserIndex = messages.findIndex((message) => message.role === "user");
+    messages.splice(firstUserIndex < 0 ? 0 : firstUserIndex + 1, 0, summaryMessage);
+  }
+  return { context: systemPrompt ? { systemPrompt, messages } : { messages }, documents };
 }
 
 const sseHeaders = {
@@ -178,10 +202,14 @@ async function streamNewAssistantTurn(
     isAdmin,
   );
   const documentInput = await documentInputCapabilities(selection);
+  const assembled = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
   const { context, documents } = await buildContext(
     conversationId,
     convo?.systemPrompt,
     documentInput,
+    assembled.messageIds,
+    assembled.summary,
+    assembled.allowedAttachmentIds,
   );
   const resolvedTools = convo?.autoExecuteTools
     ? await toolProvider.resolve({ userId, conversationId })
@@ -237,6 +265,16 @@ async function streamNewAssistantTurn(
     params,
     tools: resolvedTools,
     titleGeneration: titleTask,
+    retryContext: async () => {
+      await contextRuntime.compactForRetry(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
+      const retryAssembly = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
+      const rebuilt = await buildContext(
+        conversationId, convo?.systemPrompt, documentInput, retryAssembly.messageIds,
+        retryAssembly.summary, retryAssembly.allowedAttachmentIds,
+      );
+      rebuilt.context.tools = resolvedTools.map(({ tool }) => tool);
+      return { context: rebuilt.context, params: { ...params, documents: rebuilt.documents } };
+    },
   });
 
   return new Response(generationManager.subscribe(assistantMessageId, 0), {
@@ -351,6 +389,9 @@ chatRoutes.post("/edit", async (c) => {
     .set({ text })
     .where("id", "=", messageId)
     .execute();
+  const contextRepository = new ContextRepository(db);
+  await contextRepository.ensureState(msg.conversationId);
+  await contextRepository.invalidateSummary(msg.conversationId);
 
   return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
@@ -374,6 +415,9 @@ chatRoutes.post("/regenerate", async (c) => {
     msg.createdAt,
     msg.role === "assistant" ? ">=" : ">",
   );
+  const contextRepository = new ContextRepository(db);
+  await contextRepository.ensureState(msg.conversationId);
+  await contextRepository.invalidateSummary(msg.conversationId);
 
   return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
