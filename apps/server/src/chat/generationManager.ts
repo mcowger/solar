@@ -156,6 +156,9 @@ class GenerationManager {
     try {
       const events = await streamChat(context, gen.selection, gen.params, gen.controller.signal);
       for await (const event of events) {
+        if (event.type === "error") {
+          throw new Error(event.error.errorMessage ?? "Generation failed");
+        }
         if (event.type === "text_delta") gen.text += event.delta;
         if (event.type === "done") {
           // Store the whole pi assistant message so context can be
@@ -182,7 +185,11 @@ class GenerationManager {
         logger.withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).info("generation stopped");
       } else {
         gen.status = "error";
-        emit({ type: "error", errorText: err instanceof Error ? err.message : String(err) });
+        const errorText = err instanceof Error ? err.message : String(err);
+        gen.text = gen.text
+          ? `${gen.text}\n\n**Error:** ${errorText}`
+          : `**Error:** ${errorText}`;
+        emit({ type: "error", errorText });
         await this.persist(gen, "error");
         logger.withError(err).withMetadata({ conversationId: gen.conversationId, messageId: gen.messageId, model: gen.model }).error("generation failed");
       }

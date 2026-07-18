@@ -5,6 +5,7 @@ import { deleteAttachmentFilesForMessages, deleteAttachmentFilesForUser } from "
 import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
+  getModelCapabilities,
   getUserDefault,
   listAvailableModels,
   PROVIDER_APIS,
@@ -213,6 +214,54 @@ const conversationRouter = router({
           provider: input.provider,
           modelId: input.modelId,
           modelApi: input.api,
+        })
+        .where("id", "=", input.id)
+        .execute();
+    }),
+
+  setGenerationSettings: protectedProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        reasoningEffort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).nullable().optional(),
+        verbosity: z.enum(["low", "medium", "high"]).nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertOwnsConversation(ctx.user.id, input.id);
+      const conversation = await db
+        .selectFrom("conversation")
+        .select(["provider", "modelId", "modelApi", "presetReasoningEffort", "presetVerbosity"])
+        .where("id", "=", input.id)
+        .executeTakeFirstOrThrow();
+      const selection = await resolveSelection(
+        {
+          provider: conversation.provider ?? undefined,
+          modelId: conversation.modelId ?? undefined,
+          api: conversation.modelApi ?? undefined,
+        },
+        ctx.user.id,
+      );
+      const capabilities = await getModelCapabilities(selection);
+      if (
+        input.reasoningEffort !== undefined &&
+        input.reasoningEffort !== null &&
+        !capabilities.reasoningLevels.includes(input.reasoningEffort)
+      ) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "reasoning effort unavailable" });
+      }
+      if (input.verbosity !== undefined && input.verbosity !== null && !capabilities.supportsVerbosity) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "verbosity unavailable" });
+      }
+      await db
+        .updateTable("conversation")
+        .set({
+          ...(input.reasoningEffort !== undefined
+            ? { reasoningEffort: input.reasoningEffort ?? conversation.presetReasoningEffort }
+            : {}),
+          ...(input.verbosity !== undefined
+            ? { verbosity: input.verbosity ?? conversation.presetVerbosity }
+            : {}),
         })
         .where("id", "=", input.id)
         .execute();
@@ -529,7 +578,15 @@ const modelRouter = router({
       await assertOwnsConversation(ctx.user.id, input.conversationId);
       const convo = await db
         .selectFrom("conversation")
-        .select(["provider", "modelId", "modelApi"])
+        .select([
+          "provider",
+          "modelId",
+          "modelApi",
+          "reasoningEffort",
+          "presetReasoningEffort",
+          "verbosity",
+          "presetVerbosity",
+        ])
         .where("id", "=", input.conversationId)
         .executeTakeFirst();
       const selection = await resolveSelection(
@@ -547,7 +604,15 @@ const modelRouter = router({
           m.modelId === selection.modelId &&
           m.api === selection.api,
       );
-      return descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false };
+      const capabilities = await getModelCapabilities(selection);
+      return {
+        ...(descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false }),
+        ...capabilities,
+        reasoningEffort: convo?.reasoningEffort ?? null,
+        presetReasoningEffort: convo?.presetReasoningEffort ?? null,
+        verbosity: convo?.verbosity ?? null,
+        presetVerbosity: convo?.presetVerbosity ?? null,
+      };
     }),
 
   /** The current user's personal default model, if any. */

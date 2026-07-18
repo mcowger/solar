@@ -21,7 +21,7 @@ function ConversationView({ conversationId }: { conversationId: string }) {
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         <ModelPicker conversationId={conversationId} />
         <div style={{ flex: 1, minHeight: 0 }}>
-          <Thread />
+          <Thread conversationId={conversationId} />
         </div>
       </div>
     </AssistantRuntimeProvider>

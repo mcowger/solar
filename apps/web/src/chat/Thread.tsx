@@ -6,8 +6,10 @@ import {
   ThreadPrimitive,
   useAuiState,
 } from "@assistant-ui/react";
-import { Copy, Paperclip, Repeat2, SquarePen, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Brain, Copy, Paperclip, Podcast, Repeat2, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
 import "./Thread.css";
 
@@ -146,8 +148,77 @@ function AssistantMessage() {
   );
 }
 
+function GenerationControls({ conversationId }: { conversationId: string }) {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const settings = useQuery(
+    trpc.model.forConversation.queryOptions({ conversationId }),
+  );
+  const [open, setOpen] = useState<"reasoning" | "verbosity" | null>(null);
+  const update = useMutation(
+    trpc.conversation.setGenerationSettings.mutationOptions({
+      onSuccess: () => {
+        qc.invalidateQueries({
+          queryKey: trpc.model.forConversation.queryKey({ conversationId }),
+        });
+        setOpen(null);
+      },
+    }),
+  );
+  const data = settings.data;
+  const showReasoning = Boolean(data?.reasoningLevels.length);
+  const showVerbosity = Boolean(data?.supportsVerbosity);
+
+  if (!showReasoning && !showVerbosity) return null;
+
+  return (
+    <div style={{ display: "flex", gap: 4, position: "relative", alignSelf: "flex-end" }}>
+      {showReasoning && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen(open === "reasoning" ? null : "reasoning")}
+            style={{ ...iconButton, color: data?.reasoningEffort ? "#1a56db" : "#666" }}
+            title="Reasoning effort"
+          >
+            <Brain size={18} />
+          </button>
+          {open === "reasoning" && (
+            <div style={{ position: "absolute", bottom: 30, left: 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
+              <button type="button" onClick={() => update.mutate({ id: conversationId, reasoningEffort: null })} style={iconButton}>Default</button>
+              {data?.reasoningLevels.map((level) => (
+                <button key={level} type="button" onClick={() => update.mutate({ id: conversationId, reasoningEffort: level })} style={iconButton}>{level}</button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {showVerbosity && (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
+            style={{ ...iconButton, color: data?.verbosity ? "#1a56db" : "#666" }}
+            title="Answer verbosity"
+          >
+            <Podcast size={18} />
+          </button>
+          {open === "verbosity" && (
+            <div style={{ position: "absolute", bottom: 30, left: showReasoning ? 32 : 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
+              <button type="button" onClick={() => update.mutate({ id: conversationId, verbosity: null })} style={iconButton}>Default</button>
+              {(["low", "medium", "high"] as const).map((level) => (
+                <button key={level} type="button" onClick={() => update.mutate({ id: conversationId, verbosity: level })} style={iconButton}>{level}</button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /** assistant-ui thread surface (M2): markdown/code/LaTeX, edit & regenerate. */
-export function Thread() {
+export function Thread({ conversationId }: { conversationId: string }) {
   return (
     <ThreadPrimitive.Root style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ThreadPrimitive.Viewport style={{ flex: 1, overflowY: "auto", padding: "1rem", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -171,6 +242,7 @@ export function Thread() {
           >
             <Paperclip size={18} />
           </ComposerPrimitive.AddAttachment>
+          <GenerationControls conversationId={conversationId} />
           <ComposerPrimitive.Input
             placeholder="Message…"
             style={{ flex: 1, padding: 8, borderRadius: 8, border: "1px solid #ccc" }}

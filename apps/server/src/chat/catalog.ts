@@ -286,6 +286,29 @@ export interface ResolvedModel {
   apiKey?: string;
 }
 
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+export async function getModelCapabilities(selection: ModelSelection) {
+  if (selection.provider === "mock") {
+    return {
+      reasoningLevels: [...THINKING_LEVELS],
+      supportsVerbosity: false,
+    };
+  }
+  const { model } = await resolveModel(selection);
+  const reasoningLevels = model.reasoning
+    ? THINKING_LEVELS.filter((level) => {
+        const mapped = model.thinkingLevelMap?.[level];
+        if (mapped === null) return false;
+        return level !== "xhigh" && level !== "max" || mapped !== undefined;
+      })
+    : [];
+  return {
+    reasoningLevels,
+    supportsVerbosity: selection.api === "openai-responses",
+  };
+}
+
 /**
  * Build the pi-ai `Model` for a selection, applying the DB-configured base URL
  * and returning the API key to pass per-call. Throws for the mock provider,

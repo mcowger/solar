@@ -28,9 +28,11 @@ export interface ConversationTable {
   modelApi: string | null;
   /** Generation params snapshotted from the preset chosen at conversation start. */
   systemPrompt: string | null;
+  presetReasoningEffort: string | null;
   reasoningEffort: string | null;
   reasoningSummary: Generated<number>;
   verbosity: string | null;
+  presetVerbosity: string | null;
   createdAt: Generated<string>;
   updatedAt: Generated<string>;
 }

@@ -145,8 +145,8 @@ reply that persists — the thinnest vertical slice through every layer.
   preset is editable/deletable only by its owner or an admin**.
 - **Application:** a preset is chosen **only at conversation start**, snapshotting
   model + system prompt + reasoning/verbosity onto the new conversation. After
-  start, **only the model is switchable** in M3; system prompt & reasoning params
-  stay fixed for that conversation.
+  start, the **system prompt stays fixed**; model, reasoning effort, and verbosity
+  are switchable conversation settings.
 
 **Attachments & vision**
 - **Images + plain-text** in v1 (extensible later). **No local extraction, ever**

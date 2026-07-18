@@ -195,7 +195,8 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
   **Reasoning Effort** (`ThinkingLevel` via `streamSimple`), **Reasoning Output**
   (provider reasoning summary via `onPayload`), and **Verbosity**
   (`openai-responses` only, via `onPayload`). A preset is applied **only at
-  conversation start** (snapshot); afterward only the model is switchable in M3.
+  conversation start** (snapshot); afterward its system prompt stays fixed while
+  the model, reasoning effort, and verbosity remain conversation settings.
 - **Reasoning** streams as pi `thinking`/reasoning content (our
   `reasoning-delta` UI chunk), rendered in a live-tailing, collapsible "Thinking"
   box and persisted in the message `parts`.

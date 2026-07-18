@@ -49,6 +49,8 @@ export interface Conversation {
   id: string | null;
   modelApi: string | null;
   modelId: string | null;
+  presetReasoningEffort: string | null;
+  presetVerbosity: string | null;
   provider: string | null;
   reasoningEffort: string | null;
   reasoningSummary: Generated<number>;
