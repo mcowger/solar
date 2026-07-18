@@ -107,7 +107,7 @@ export function ChatApp() {
   }
 
   return (
-    <div className="drawer solar-app h-dvh" style={{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
+    <div className="drawer min-[650px]:drawer-open solar-app h-dvh" style={{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
       <input id="solar-drawer" type="checkbox" className="drawer-toggle" checked={drawerOpen} onChange={(event) => setDrawerOpen(event.target.checked)} />
       <div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
