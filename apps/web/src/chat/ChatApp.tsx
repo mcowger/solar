@@ -20,7 +20,7 @@ function ConversationView({ conversationId }: { conversationId: string }) {
   const runtime = useSolarRuntime(conversationId, current.data?.vision ?? false);
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ModelPicker conversationId={conversationId} />
         <div className="min-h-0 flex-1">
           <Thread conversationId={conversationId} />

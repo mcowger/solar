@@ -241,7 +241,7 @@ export function Thread({ conversationId }: { conversationId: string }) {
         />
       </ThreadPrimitive.Viewport>
 
-      <ComposerPrimitive.Root style={{ display: "flex", flexDirection: "column", gap: 6, padding: "0.75rem 1rem", borderTop: "1px solid #ddd" }}>
+      <ComposerPrimitive.Root style={{ boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 6, minWidth: 0, padding: "0.75rem 1rem", borderTop: "1px solid #ddd", width: "100%" }}>
         <ComposerPrimitive.Attachments>
           {() => <AttachmentChip removable />}
         </ComposerPrimitive.Attachments>
