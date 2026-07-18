@@ -18,10 +18,30 @@ is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null
 }
 
+is_server_on_port() {
+  curl --fail --silent --max-time 1 "http://localhost:$SERVER_PORT/healthz" \
+    | grep --quiet '"ok":true'
+}
+
+show_server_info() {
+  local pid="${1:-}"
+
+  if [ -n "$pid" ]; then
+    echo "dev server already running (pid $pid) -> http://localhost:$SERVER_PORT  port: $SERVER_PORT  logs: $LOGFILE"
+  else
+    echo "dev server already running -> http://localhost:$SERVER_PORT  port: $SERVER_PORT (unmanaged; no pidfile or log path)"
+  fi
+}
+
 case "${1:-}" in
   start)
     if is_running; then
-      echo "dev server already running (pid $(cat "$PIDFILE"))"
+      show_server_info "$(cat "$PIDFILE")"
+      exit 0
+    fi
+    rm -f "$PIDFILE"
+    if is_server_on_port; then
+      show_server_info
       exit 0
     fi
     if [ "${2:-}" = "--foreground" ]; then
@@ -62,7 +82,9 @@ case "${1:-}" in
 
   status)
     if is_running; then
-      echo "running (pid $(cat "$PIDFILE"))"
+      show_server_info "$(cat "$PIDFILE")"
+    elif is_server_on_port; then
+      show_server_info
     else
       echo "stopped"
     fi
