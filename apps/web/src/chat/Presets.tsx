@@ -69,18 +69,18 @@ function PresetEditor({
   const showVerbosity = form.api === "openai-responses";
 
   return (
-    <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: "1rem", marginBottom: "1rem" }}>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>Name</div>
-        <input
+    <section className="card card-border bg-base-100 shadow-sm">
+      <div className="card-body gap-4">
+      <fieldset className="fieldset gap-2">
+        <legend className="fieldset-legend">Name</legend>
+        <input className="input w-full"
           value={form.name}
           onChange={(e) => onChange({ ...form, name: e.target.value })}
-          style={{ width: "100%", boxSizing: "border-box" }}
         />
-      </label>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>Model</div>
-        <select
+      </fieldset>
+      <fieldset className="fieldset gap-2">
+        <legend className="fieldset-legend">Model</legend>
+        <select className="select w-full"
           value={model ? modelKey(model) : ""}
           onChange={(e) => {
             const m = models.find((x) => modelKey(x) === e.target.value);
@@ -93,21 +93,20 @@ function PresetEditor({
             </option>
           ))}
         </select>
-      </label>
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>System prompt</div>
-        <textarea
+      </fieldset>
+      <fieldset className="fieldset gap-2">
+        <legend className="fieldset-legend">System prompt</legend>
+        <textarea className="textarea min-h-32 w-full"
           value={form.systemPrompt}
           onChange={(e) => onChange({ ...form, systemPrompt: e.target.value })}
           rows={4}
-          style={{ width: "100%", boxSizing: "border-box" }}
         />
-      </label>
+      </fieldset>
 
       {showReasoningEffort && (
-        <label style={{ display: "block", marginBottom: 8 }}>
-          <div style={{ fontSize: 12, color: "#666" }}>Reasoning effort</div>
-          <select
+        <fieldset className="fieldset gap-2">
+          <legend className="fieldset-legend">Reasoning effort</legend>
+          <select className="select w-full"
             value={form.reasoningEffort}
             onChange={(e) => onChange({ ...form, reasoningEffort: e.target.value })}
           >
@@ -117,22 +116,22 @@ function PresetEditor({
               </option>
             ))}
           </select>
-        </label>
+        </fieldset>
       )}
       {showReasoningSummary && (
-        <label style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+        <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={form.reasoningSummary}
             onChange={(e) => onChange({ ...form, reasoningSummary: e.target.checked })}
           />
-          <span style={{ fontSize: 13 }}>Request reasoning summary</span>
+          <span>Request reasoning summary</span>
         </label>
       )}
       {showVerbosity && (
-        <label style={{ display: "block", marginBottom: 8 }}>
-          <div style={{ fontSize: 12, color: "#666" }}>Verbosity</div>
-          <select
+        <fieldset className="fieldset gap-2">
+          <legend className="fieldset-legend">Verbosity</legend>
+          <select className="select w-full"
             value={form.verbosity}
             onChange={(e) => onChange({ ...form, verbosity: e.target.value })}
           >
@@ -142,27 +141,23 @@ function PresetEditor({
               </option>
             ))}
           </select>
-        </label>
+        </fieldset>
       )}
 
-      <label style={{ display: "block", marginBottom: 8 }}>
-        <div style={{ fontSize: 12, color: "#666" }}>Scope</div>
-        <select
+      <fieldset className="fieldset gap-2">
+        <legend className="fieldset-legend">Scope</legend>
+        <select className="select w-full"
           value={form.scope}
           onChange={(e) => onChange({ ...form, scope: e.target.value as "personal" | "shared" })}
         >
           <option value="personal">Personal</option>
           <option value="shared">Shared (team)</option>
         </select>
-      </label>
+      </fieldset>
 
-      <button onClick={onSave} disabled={saving || !form.name.trim()}>
-        {saving ? "Saving…" : "Save preset"}
-      </button>
-      <button onClick={onCancel} style={{ marginLeft: 8 }}>
-        Cancel
-      </button>
-    </div>
+      <div className="card-actions justify-end gap-2"><button className="btn btn-ghost" onClick={onCancel}>Cancel</button><button className="btn btn-primary" onClick={onSave} disabled={saving || !form.name.trim()}>{saving ? "Saving…" : "Save preset"}</button></div>
+      </div>
+    </section>
   );
 }
 
@@ -206,11 +201,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", maxWidth: 640 }}>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={{ margin: 0, flex: 1 }}>Presets</h2>
-        <button onClick={onClose}>Close</button>
-      </div>
+    <div className="modal modal-open"><div className="modal-box flex h-[calc(100dvh-2rem)] w-11/12 max-w-4xl flex-col p-0"><header className="flex items-center justify-between gap-4 border-b border-base-300 px-5 py-4 sm:px-6"><div><p className="text-sm uppercase tracking-[0.16em] opacity-60">Chat setup</p><h2 className="m-0 text-3xl">Presets</h2></div><button className="btn btn-ghost" onClick={onClose}>Close</button></header><div className="overflow-y-auto p-5 sm:p-6">
 
       {form ? (
         <PresetEditor
@@ -222,36 +213,26 @@ export function Presets({ onClose }: { onClose: () => void }) {
           saving={saving}
         />
       ) : (
-        <button
+        <button className="btn btn-primary"
           onClick={() => setForm(emptyForm(modelList))}
           disabled={modelList.length === 0}
-          style={{ marginBottom: 16 }}
         >
-          + New preset
+          New preset
         </button>
       )}
 
       {presetList.map((p) => (
-        <div
-          key={p.id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "0.5rem 0",
-            borderBottom: "1px solid #eee",
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <strong>{p.name}</strong>{" "}
-            <span style={{ color: "#888", fontSize: 12 }}>
+        <div key={p.id} className="flex items-center gap-3 border-b border-base-300 py-4">
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">{p.name}</p>
+            <p className="text-sm opacity-60">
               {p.modelId} · {p.scope}
               {p.reasoningEffort ? ` · ${p.reasoningEffort}` : ""}
-            </span>
+            </p>
           </div>
           {p.owned ? (
             <>
-              <button
+              <button className="btn btn-sm btn-outline"
                 onClick={() =>
                   setForm({
                     id: p.id,
@@ -269,13 +250,13 @@ export function Presets({ onClose }: { onClose: () => void }) {
               >
                 Edit
               </button>
-              <button onClick={() => remove.mutate({ id: p.id })}>Delete</button>
+              <button className="btn btn-error btn-soft btn-sm" onClick={() => remove.mutate({ id: p.id })}>Delete</button>
             </>
           ) : (
-            <span style={{ fontSize: 11, color: "#bbb" }}>shared</span>
+            <span className="badge badge-sm badge-ghost">Shared</span>
           )}
         </div>
       ))}
-    </div>
+    </div></div><div className="modal-backdrop" onClick={onClose} /></div>
   );
 }

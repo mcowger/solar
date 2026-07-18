@@ -175,8 +175,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const [section, setSection] = useState<Section>("users");
   useEffect(() => { if (providers.isSuccess) setReady(true); }, [providers.isSuccess]);
 
-  return <main className="flex-1 overflow-auto p-4 sm:p-6"><div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-    <header className="flex items-center justify-between gap-4"><div><p className="text-sm tracking-[0.16em] uppercase opacity-60">Administration</p><h2 className="m-0 text-3xl">Settings</h2></div><button className="btn btn-ghost" onClick={onClose}>Close</button></header>
+  return <div className="modal modal-open"><div className="modal-box flex h-[calc(100dvh-2rem)] w-11/12 max-w-6xl flex-col p-0"><header className="flex items-center justify-between gap-4 border-b border-base-300 px-5 py-4 sm:px-6"><div><p className="text-sm tracking-[0.16em] uppercase opacity-60">Administration</p><h2 className="m-0 text-3xl">Settings</h2></div><button className="btn btn-ghost" onClick={onClose}>Close</button></header><div className="overflow-y-auto p-5 sm:p-6"><div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
     <div role="tablist" className="tabs tabs-box w-fit max-w-full overflow-x-auto">{sections.map((name) => <button key={name} role="tab" className={`tab capitalize${section === name ? " tab-active" : ""}`} onClick={() => setSection(name)}>{name}</button>)}</div>
     {section === "users" && <Users />}
     {section === "usage" && <Usage />}
@@ -184,5 +183,5 @@ export function Settings({ onClose }: { onClose: () => void }) {
     {section === "task model" && <TaskModel />}
     {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}
     {section === "providers" && ready && <div className="grid gap-4">{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
-  </div></main>;
+  </div></div></div><div className="modal-backdrop" onClick={onClose} /></div>;
 }

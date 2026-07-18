@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check, Star } from "lucide-react";
 import { useTRPC } from "../trpc";
 
 interface Selection {
@@ -78,15 +79,21 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
         ))}
       </select>
       {cur && (
-        <button
-          onClick={() =>
-            setDefault.mutate({ provider: cur.provider, modelId: cur.modelId, api: cur.api })
-          }
-          title="Use this model as your default for new conversations"
-          disabled={setDefault.isPending}
+        <div
+          className="tooltip tooltip-bottom"
+          data-tip="Use this model as your default for new conversations"
         >
-          {setDefault.isSuccess ? "✓ Default" : "Make default"}
-        </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs btn-circle"
+            onClick={() =>
+              setDefault.mutate({ provider: cur.provider, modelId: cur.modelId, api: cur.api })
+            }
+            disabled={setDefault.isPending}
+          >
+            {setDefault.isSuccess ? <Check size={15} /> : <Star size={15} />}
+          </button>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu } from "lucide-react";
+import { FolderPlus, Menu, SquarePen } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
@@ -154,17 +154,23 @@ export function Sidebar({
     <aside style={{ width: 280, borderRight: "1px solid #ddd", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: 8, display: "flex", gap: 6 }}>
         <button type="button" className="btn btn-ghost btn-sm btn-circle lg:hidden" onClick={onClose} title="Close menu"><Menu size={19} /></button>
-        <button onClick={onNew} style={{ flex: 1, padding: "6px 8px", cursor: "pointer" }}>+ New chat</button>
-        <button
-          onClick={() => {
-            const name = window.prompt("Folder name:");
-            if (name?.trim()) createFolder.mutate({ name: name.trim() });
-          }}
-          title="New folder"
-          style={{ padding: "6px 8px", cursor: "pointer" }}
-        >
-          + Folder
-        </button>
+        <div className="tooltip tooltip-bottom" data-tip="New chat">
+          <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={onNew}>
+            <SquarePen size={18} />
+          </button>
+        </div>
+        <div className="tooltip tooltip-bottom" data-tip="New folder">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm btn-circle"
+            onClick={() => {
+              const name = window.prompt("Folder name:");
+              if (name?.trim()) createFolder.mutate({ name: name.trim() });
+            }}
+          >
+            <FolderPlus size={18} />
+          </button>
+        </div>
       </div>
       {presets.length > 0 && (
         <div style={{ padding: "0 8px 8px" }}>
