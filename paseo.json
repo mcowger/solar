@@ -12,11 +12,31 @@
       "command": "bun run dev:foreground",
       "port": 3000
     },
-    "typecheck": { "command": "bun run typecheck" },
-    "build": { "command": "bun run build" },
-    "deploy:staging": { "command": "bun run deploy:staging" },
-    "migrate": { "command": "bun run migrate" },
-    "migrate:auth": { "command": "bun run migrate:auth" },
-    "codegen": { "command": "bun run codegen" }
+    "typecheck": {
+      "command": "bun run typecheck"
+    },
+    "build": {
+      "command": "bun run build"
+    },
+    "deploy:staging": {
+      "command": "bun run deploy:staging"
+    },
+    "migrate": {
+      "command": "bun run migrate"
+    },
+    "migrate:auth": {
+      "command": "bun run migrate:auth"
+    },
+    "codegen": {
+      "command": "bun run codegen"
+    }
+  },
+  "metadataGeneration": {
+    "commitMessage": {
+      "instructions": "Use conventional commits with a scope.  Make sure you include a standard single title line, a newline, and then a detailed description of the final changes."
+    },
+    "pullRequest": {
+      "instructions": "Make sure you include a standard single title line, a newline, and then a detailed description of the final changes.  Never include a testing section"
+    }
   }
 }
