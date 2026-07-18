@@ -173,7 +173,15 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 - Because everything is in one `solar.db`, app tables use a **managed foreign
   key** to the Better Auth `user` table (e.g. `conversation.userId → user.id`),
   and admin views (users + usage) are a single SQL join.
-- **Roles:** two roles — `admin` and `user`.
+- **Roles:** two roles — `admin` and `user`. The `role` is a server-assigned
+  field on the user (never accepted from client input).
+- **First-user bootstrap (deployment):** on a fresh deployment there is **no
+  default account and no default password**. The **first user to register**
+  through the sign-up form is automatically made the **admin**; every subsequent
+  registration is a normal `user`. Operators should register their own admin
+  account as the very first action after standing up the server. (In
+  development only, an empty DB is seeded with a known admin account for
+  convenience — see `AGENTS.md`; this seed never runs in production.)
 
 ## 8. Secrets & Configuration
 

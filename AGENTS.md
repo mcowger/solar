@@ -68,6 +68,20 @@ For real deployments prefer a supervisor (systemd `Restart=always` or PM2) —
 Then open http://localhost:3000. Override the port with `PORT`, the DB path with
 `DATABASE_PATH` (see `apps/server/src/config.ts`).
 
+### Default dev login
+
+In development (`NODE_ENV !== "production"`) with an empty database, the server
+seeds a convenience account (`apps/server/src/db/seed-dev.ts`):
+
+| Field | Value |
+| --- | --- |
+| Email | `admin@solar.local` |
+| Password | `solar-dev-password` |
+
+Because it is the first account created, it becomes the **admin** (see the
+first-user-admin rule below). The seed never runs in production and never runs
+if any user already exists. Delete `apps/server/solar.db*` to reset.
+
 Root convenience script `bun run dev` also starts the server, but it does **not**
 load `.env` (so pi-ai has no API key) — prefer the `--env-file` forms above when
 you need model calls.
