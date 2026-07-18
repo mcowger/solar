@@ -70,7 +70,7 @@ const RETENTION_MS = 60_000;
  * In-memory + single-node by design (see ARCHITECTURE.md §5): buffers do not
  * survive a process restart mid-generation.
  */
-class GenerationManager {
+export class GenerationManager {
   private generations = new Map<string, Generation>();
 
   /** Starts a decoupled generation for an already-persisted placeholder message. */

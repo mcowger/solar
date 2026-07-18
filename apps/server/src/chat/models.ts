@@ -94,6 +94,7 @@ async function* mockStream(
   params: GenerationParams,
   signal: AbortSignal,
 ): AsyncIterable<AssistantMessageEvent> {
+  if (signal.aborted) throw new DOMException("aborted", "AbortError");
   const lastUser = [...context.messages].reverse().find((m) => m.role === "user");
   const prompt =
     lastUser && typeof lastUser.content === "string" ? lastUser.content : "";

@@ -177,7 +177,8 @@ bundles include attachment metadata but not the underlying attachment files.
 
   Only exercise the real provider when explicitly validating provider wiring.
 - **Logging** It is often more efficient to place logging statements and log to console and stdout rather than guessing at code.  Logging costs nothing.   
-- **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.  If you cannot initiall find a skill, manually search in .agents/skills/
+- **Make extensive use of the agent-browser skill and CLI** - its an effective way to test.  If you cannot initiall find a skill, manually search in .agents/skills/.   DO NOT use agent-browser for general searching.  Agent browser is for local verifications.   
+- **Use Search and Web Resources** - rather than guess or infer behaviors of libraries and tools, use their help and your web searching tools to verify.
 
 ## Imports & workspace gotchas
 

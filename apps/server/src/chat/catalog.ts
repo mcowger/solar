@@ -11,6 +11,9 @@ import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { db } from "../db";
+import { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
+
+export { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 
 /** Whether the mock (zero-cost) provider is active — see chat/models.ts. */
 export const MOCK = Boolean(process.env.SOLAR_MOCK_LLM);
@@ -27,15 +30,6 @@ export interface ModelDescriptor extends ModelSelection {
   name: string;
   reasoning: boolean;
   vision: boolean;
-}
-
-/** One allowlist entry stored in `provider_config.enabledModels`. */
-export type ModelVisibility = "public" | "private";
-
-export interface AllowlistEntry {
-  id: string;
-  api: string;
-  visibility: ModelVisibility;
 }
 
 /**
@@ -115,25 +109,6 @@ async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
     baseUrl: r.baseUrl,
     enabledModels: parseAllowlist(r.enabledModels),
   }));
-}
-
-export function parseAllowlist(json: string): AllowlistEntry[] {
-  try {
-    const parsed = JSON.parse(json);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((entry) => {
-      if (!entry || typeof entry.id !== "string" || typeof entry.api !== "string") {
-        return [];
-      }
-      return [{
-        id: entry.id,
-        api: entry.api,
-        visibility: entry.visibility === "private" ? "private" : "public",
-      }];
-    });
-  } catch {
-    return [];
-  }
 }
 
 /** Catalog metadata for a known model, if pi-ai ships one. */
