@@ -9,8 +9,6 @@ We are in an early, exploratory build phase. To keep iteration fast, the
 following are **explicitly not desired right now** — do not add them unless
 asked:
 
-- **Tests.** No unit/integration/e2e tests while we are experimenting. Do not
-  scaffold test runners or write test files.
 - **Localization / i18n.** Hard-code user-facing strings in English. No
   translation frameworks, message catalogs, or locale plumbing.
 - **Accessibility (a11y).** Do not spend effort on ARIA attributes, a11y audits,
@@ -98,7 +96,12 @@ you need model calls.
 | `bun run migrate:auth` | Run Better Auth's own migrations |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
 | `bun run chat-history -- --help` | Admin CLI for chat inspection and history import/export |
-| `bun run typecheck` | `tsc` for server, web, and shared |
+| `bun run typecheck` | `tsc` for server, web, shared, and Playwright tests |
+| `bun run test` | Run server and frontend Bun unit tests |
+| `bun run test:server` / `test:web` | Run one Bun unit-test suite |
+| `bun run test:e2e` | Run Playwright E2E tests in Chromium (default) |
+| `bun run test:e2e:all` | Run Playwright E2E tests in Chromium, Firefox, and WebKit |
+| `bun run test:e2e:install` | Install all three Playwright browser binaries for the current user |
 
 Migrations + codegen run against `apps/server/solar.db` (the server's cwd). To
 capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
@@ -164,6 +167,23 @@ bundles include attachment metadata but not the underlying attachment files.
 
 
 ## Confirming Functionality
+
+- **Testing stack.** Frontend unit tests use Bun's test runner, React Testing
+  Library, and Happy DOM (`apps/web/bunfig.toml`). Browser E2E tests use
+  Playwright (`playwright.config.ts`). `bun run test:e2e` intentionally runs
+  Chromium only for the fast default; use `bun run test:e2e:all` when
+  cross-browser coverage is needed. The E2E server uses port 3100, resets its
+  isolated `.e2e.db`, seeds the development admin, and forces
+  `SOLAR_MOCK_LLM=1` automatically.
+
+  On a new Linux machine, install Playwright's host packages once, then install
+  browser binaries as the regular user (do not run the second command with
+  `sudo`, or the browsers land in root's cache):
+
+  ```bash
+  sudo node ./node_modules/@playwright/test/cli.js install-deps chromium firefox webkit
+  bun run test:e2e:install
+  ```
 
 - **NEVER verify against the live model.** Real provider calls cost money. For
   any UI/flow verification, run with `SOLAR_MOCK_LLM=1`, which swaps in a local
