@@ -9,7 +9,9 @@ import {
   getTaskModel,
   getTitlePrompt,
   getUserDefault,
+  importProviderModels,
   listAvailableModels,
+  loadProviderConfigs,
   parseAllowlist,
   PROVIDER_APIS,
   resolveSelection,
@@ -17,7 +19,6 @@ import {
   setTaskModel,
   setTitlePrompt,
   setUserDefault,
-  SUPPORTED_PROVIDERS,
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
 import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
@@ -86,6 +87,7 @@ const conversationRouter = router({
         "title",
         "folderId",
         "provider",
+        "endpointId",
         "modelId",
         "modelApi",
         "createdAt",
@@ -130,6 +132,7 @@ const conversationRouter = router({
       // conversation so later preset edits don't mutate this conversation.
       let snapshot: {
         provider: string | null;
+        endpointId: string | null;
         modelId: string | null;
         modelApi: string | null;
         systemPrompt: string | null;
@@ -138,6 +141,7 @@ const conversationRouter = router({
         verbosity: string | null;
       } = {
         provider: null,
+        endpointId: null,
         modelId: null,
         modelApi: null,
         systemPrompt: null,
@@ -157,11 +161,12 @@ const conversationRouter = router({
           (preset.scope === "shared" || preset.userId === ctx.user.id)
         ) {
           await assertCanUseModel(
-            { provider: preset.provider, modelId: preset.modelId, api: preset.modelApi },
+            { provider: preset.provider, endpointId: preset.endpointId ?? preset.modelApi, modelId: preset.modelId, api: preset.modelApi },
             ctx.user.role === "admin",
           );
           snapshot = {
             provider: preset.provider,
+            endpointId: preset.endpointId ?? preset.modelApi,
             modelId: preset.modelId,
             modelApi: preset.modelApi,
             systemPrompt: preset.systemPrompt,
@@ -213,6 +218,7 @@ const conversationRouter = router({
       z.object({
         id: z.string(),
         provider: z.string(),
+        endpointId: z.string(),
         modelId: z.string(),
         api: z.string(),
       }),
@@ -224,6 +230,7 @@ const conversationRouter = router({
       const ok = available.some(
         (m) =>
           m.provider === input.provider &&
+          m.endpointId === input.endpointId &&
           m.modelId === input.modelId &&
           m.api === input.api,
       );
@@ -232,6 +239,7 @@ const conversationRouter = router({
         .updateTable("conversation")
         .set({
           provider: input.provider,
+          endpointId: input.endpointId,
           modelId: input.modelId,
           modelApi: input.api,
         })
@@ -251,12 +259,13 @@ const conversationRouter = router({
       await assertOwnsConversation(ctx.user.id, input.id);
       const conversation = await db
         .selectFrom("conversation")
-        .select(["provider", "modelId", "modelApi", "presetReasoningEffort", "presetVerbosity"])
+        .select(["provider", "endpointId", "modelId", "modelApi", "presetReasoningEffort", "presetVerbosity"])
         .where("id", "=", input.id)
         .executeTakeFirstOrThrow();
       const selection = await resolveSelection(
         {
           provider: conversation.provider ?? undefined,
+          endpointId: conversation.endpointId ?? undefined,
           modelId: conversation.modelId ?? undefined,
           api: conversation.modelApi ?? undefined,
         },
@@ -401,6 +410,7 @@ const conversationRouter = router({
 
 const allowlistEntrySchema = z.object({
   id: z.string().trim().min(1),
+  endpointId: z.string().trim().min(1),
   api: z.string().trim().min(1),
   visibility: z.enum(["public", "private"]).default("public"),
 });
@@ -420,6 +430,7 @@ const conversationHistorySchema = z.object({
   title: z.string(),
   folderId: z.string().nullable(),
   provider: z.string().nullable(),
+  endpointId: z.string().nullable().optional().default(null),
   modelId: z.string().nullable(),
   modelApi: z.string().nullable(),
   systemPrompt: z.string().nullable(),
@@ -708,41 +719,45 @@ const adminRouter = router({
     }),
 
   listProviders: adminProcedure.query(async () => {
-    const rows = await db
-      .selectFrom("provider_config")
-      .select(["provider", "apiKey", "baseUrl", "enabledModels"])
-      .execute();
-    const byProvider = new Map(rows.map((r) => [r.provider, r]));
-    return SUPPORTED_PROVIDERS.map((provider) => {
-      const row = byProvider.get(provider);
-      const enabledModels = row?.enabledModels ? parseAllowlist(row.enabledModels) : [];
-      return {
-        provider,
-        hasApiKey: Boolean(row?.apiKey),
-        baseUrl: row?.baseUrl ?? "",
-        enabledModels,
-        apis: PROVIDER_APIS[provider] ?? [],
-      };
-    });
+    const configs = await loadProviderConfigs();
+    return configs.map((config) => ({
+      provider: config.provider,
+      hasApiKey: Boolean(config.apiKey),
+      endpoints: config.endpoints,
+      enabledModels: config.enabledModels,
+      apis: PROVIDER_APIS,
+    }));
   }),
 
   setProvider: adminProcedure
     .input(
       z.object({
-        provider: z.enum(SUPPORTED_PROVIDERS as [string, ...string[]]),
+        provider: z.string().trim().min(1).max(100),
         apiKey: z.string().trim().nullish(),
-        baseUrl: z.string().trim().nullish(),
+        endpoints: z.array(z.object({
+          id: z.string().trim().min(1).max(100),
+          label: z.string().trim().min(1).max(100),
+          baseUrl: z.string().url().max(2000),
+          api: z.enum(PROVIDER_APIS as [string, ...string[]]),
+        })),
         enabledModels: z.array(allowlistEntrySchema),
       }),
     )
     .mutation(async ({ input }) => {
-      // Reject allowlist entries whose api is not valid for the provider.
-      const validApis = PROVIDER_APIS[input.provider] ?? [];
+      const endpointIds = new Set(input.endpoints.map((endpoint) => endpoint.id));
+      if (endpointIds.size !== input.endpoints.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "endpoint IDs must be unique" });
+      }
+      const endpointApis = new Set(input.endpoints.map((endpoint) => endpoint.api));
+      if (endpointApis.size !== input.endpoints.length) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "each endpoint must use a different API" });
+      }
       for (const e of input.enabledModels) {
-        if (!validApis.includes(e.api)) {
+        const endpoint = input.endpoints.find((candidate) => candidate.id === e.endpointId);
+        if (!endpoint || endpoint.api !== e.api) {
           throw new TRPCError({
             code: "BAD_REQUEST",
-            message: `api "${e.api}" is not valid for ${input.provider}`,
+            message: `model "${e.id}" must use a configured endpoint`,
           });
         }
       }
@@ -754,7 +769,8 @@ const adminRouter = router({
       const values = {
         provider: input.provider,
         apiKey: input.apiKey || existing?.apiKey || null,
-        baseUrl: input.baseUrl || null,
+        baseUrl: null,
+        endpoints: JSON.stringify(input.endpoints),
         enabledModels: JSON.stringify(input.enabledModels),
         updatedAt: new Date().toISOString(),
       };
@@ -765,11 +781,37 @@ const adminRouter = router({
           oc.column("provider").doUpdateSet({
             apiKey: values.apiKey,
             baseUrl: values.baseUrl,
+            endpoints: values.endpoints,
             enabledModels: values.enabledModels,
             updatedAt: values.updatedAt,
           }),
         )
         .execute();
+    }),
+
+  queryProviderModels: adminProcedure
+    .input(z.object({ provider: z.string(), endpointId: z.string() }))
+    .mutation(async ({ input }) => {
+      try {
+        const { discoverProviderModels } = await import("../chat/catalog");
+        return await discoverProviderModels(input.provider, input.endpointId);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Model query failed" });
+      }
+    }),
+
+  importProviderModels: adminProcedure
+    .input(z.object({
+      provider: z.string(),
+      endpointId: z.string(),
+      models: z.array(z.object({ id: z.string(), api: z.enum(PROVIDER_APIS as [string, ...string[]]), visibility: z.enum(["public", "private"]) })).min(1),
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        await importProviderModels(input.provider, input.endpointId, input.models);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Model import failed" });
+      }
     }),
 
   listUsers: adminProcedure.query(() =>
@@ -869,6 +911,7 @@ const adminRouter = router({
 
 const modelSelectionSchema = z.object({
   provider: z.string(),
+  endpointId: z.string(),
   modelId: z.string(),
   api: z.string(),
 });
@@ -881,6 +924,7 @@ async function assertCanUseModel(
   const selected = available.some(
     (model) =>
       model.provider === selection.provider &&
+      model.endpointId === selection.endpointId &&
       model.modelId === selection.modelId &&
       model.api === selection.api,
   );
@@ -903,6 +947,7 @@ const modelRouter = router({
         .selectFrom("conversation")
         .select([
           "provider",
+          "endpointId",
           "modelId",
           "modelApi",
           "reasoningEffort",
@@ -915,6 +960,7 @@ const modelRouter = router({
       const selection = await resolveSelection(
         {
           provider: convo?.provider ?? undefined,
+          endpointId: convo?.endpointId ?? undefined,
           modelId: convo?.modelId ?? undefined,
           api: convo?.modelApi ?? undefined,
         },
@@ -925,6 +971,7 @@ const modelRouter = router({
       const descriptor = available.find(
         (m) =>
           m.provider === selection.provider &&
+          m.endpointId === selection.endpointId &&
           m.modelId === selection.modelId &&
           m.api === selection.api,
       );
@@ -962,6 +1009,7 @@ const modelRouter = router({
       const selected = publicModels.some(
         (model) =>
           model.provider === input.provider &&
+          model.endpointId === input.endpointId &&
           model.modelId === input.modelId &&
           model.api === input.api,
       );
@@ -986,6 +1034,7 @@ const modelRouter = router({
       const isAvailable = available.some(
         (model) =>
           model.provider === input.provider &&
+          model.endpointId === input.endpointId &&
           model.modelId === input.modelId &&
           model.api === input.api,
       );
@@ -1000,6 +1049,7 @@ const presetInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
   scope: z.enum(["personal", "shared"]),
   provider: z.string(),
+  endpointId: z.string(),
   modelId: z.string(),
   api: z.string(),
   systemPrompt: z.string().trim().max(20000).nullish(),
@@ -1043,6 +1093,7 @@ const presetRouter = router({
     return rows.filter((preset) => available.some(
       (model) =>
         model.provider === preset.provider &&
+        model.endpointId === (preset.endpointId ?? preset.modelApi) &&
         model.modelId === preset.modelId &&
         model.api === preset.modelApi,
     )).map((r) => ({
@@ -1067,6 +1118,7 @@ const presetRouter = router({
           name: input.name,
           scope: input.scope,
           provider: input.provider,
+          endpointId: input.endpointId,
           modelId: input.modelId,
           modelApi: input.api,
           systemPrompt: input.systemPrompt ?? null,
@@ -1091,6 +1143,7 @@ const presetRouter = router({
           name: input.name,
           scope: input.scope,
           provider: input.provider,
+          endpointId: input.endpointId,
           modelId: input.modelId,
           modelApi: input.api,
           systemPrompt: input.systemPrompt ?? null,

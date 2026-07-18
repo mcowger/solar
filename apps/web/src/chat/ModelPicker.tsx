@@ -4,12 +4,13 @@ import { useTRPC } from "../trpc";
 
 interface Selection {
   provider: string;
+  endpointId: string;
   modelId: string;
   api: string;
 }
 
 function key(s: Selection) {
-  return `${s.provider}/${s.modelId}/${s.api}`;
+  return `${s.provider}/${s.endpointId}/${s.modelId}/${s.api}`;
 }
 
 /**
@@ -64,7 +65,7 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
         value={cur ? key(cur) : ""}
         onChange={(e) => {
           const m = models.find((x) => key(x) === e.target.value);
-          if (m) setModel.mutate({ id: conversationId, provider: m.provider, modelId: m.modelId, api: m.api });
+          if (m) setModel.mutate({ id: conversationId, provider: m.provider, endpointId: m.endpointId, modelId: m.modelId, api: m.api });
         }}
       >
         {cur && !models.some((m) => key(m) === key(cur)) && (
@@ -87,7 +88,7 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
             type="button"
             className="btn btn-ghost btn-xs btn-circle"
             onClick={() =>
-              setDefault.mutate({ provider: cur.provider, modelId: cur.modelId, api: cur.api })
+              setDefault.mutate({ provider: cur.provider, endpointId: cur.endpointId, modelId: cur.modelId, api: cur.api })
             }
             disabled={setDefault.isPending}
           >

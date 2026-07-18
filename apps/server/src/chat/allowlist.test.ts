@@ -4,22 +4,22 @@ import { parseAllowlist } from "./allowlist";
 describe("parseAllowlist", () => {
   test("returns valid entries and defaults unknown visibility to public", () => {
     expect(parseAllowlist(JSON.stringify([
-      { id: "gpt-5", api: "openai-responses", visibility: "private" },
-      { id: "gpt-4.1", api: "openai-completions", visibility: "unexpected" },
+      { id: "gpt-5", endpointId: "responses", api: "openai-responses", visibility: "private" },
+      { id: "gpt-4.1", endpointId: "completions", api: "openai-completions", visibility: "unexpected" },
     ]))).toEqual([
-      { id: "gpt-5", api: "openai-responses", visibility: "private" },
-      { id: "gpt-4.1", api: "openai-completions", visibility: "public" },
+      { id: "gpt-5", endpointId: "responses", api: "openai-responses", visibility: "private" },
+      { id: "gpt-4.1", endpointId: "completions", api: "openai-completions", visibility: "public" },
     ]);
   });
 
   test("ignores malformed entries without discarding valid entries", () => {
     expect(parseAllowlist(JSON.stringify([
-      { id: "valid", api: "anthropic-messages" },
+      { id: "valid", endpointId: "messages", api: "anthropic-messages" },
       null,
       { id: "missing-api" },
       { id: 42, api: "openai-responses" },
     ]))).toEqual([
-      { id: "valid", api: "anthropic-messages", visibility: "public" },
+      { id: "valid", endpointId: "messages", api: "anthropic-messages", visibility: "public" },
     ]);
   });
 

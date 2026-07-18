@@ -1,149 +1,157 @@
 import {
-  createModels,
   createProvider,
   envApiKeyAuth,
   type Api,
   type Model,
+  type Provider,
 } from "@earendil-works/pi-ai";
-import { anthropicProvider } from "@earendil-works/pi-ai/providers/anthropic";
-import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
-import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
-import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
+import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { db } from "../db";
 import { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 
 export { parseAllowlist, type AllowlistEntry, type ModelVisibility } from "./allowlist";
 
-/** Whether the mock (zero-cost) provider is active — see chat/models.ts. */
 export const MOCK = Boolean(process.env.SOLAR_MOCK_LLM);
 
-/** A concrete per-conversation model choice. */
+const API_STREAMS = {
+  "openai-responses": openAIResponsesApi(),
+  "openai-completions": openAICompletionsApi(),
+  "anthropic-messages": anthropicMessagesApi(),
+  "google-generative-ai": googleGenerativeAIApi(),
+};
+
+export const PROVIDER_APIS = Object.keys(API_STREAMS);
+
+const UPSTREAM_API_MAP: Record<string, string> = {
+  responses: "openai-responses",
+  "chat_completions": "openai-completions",
+  messages: "anthropic-messages",
+  gemini: "google-generative-ai",
+  "openai-responses": "openai-responses",
+  "openai-completions": "openai-completions",
+  "anthropic-messages": "anthropic-messages",
+  "google-generative-ai": "google-generative-ai",
+};
+
+const piModels = builtinModels();
+
+export interface ProviderEndpoint {
+  id: string;
+  label: string;
+  baseUrl: string;
+  api: string;
+}
+
 export interface ModelSelection {
   provider: string;
+  endpointId: string;
   modelId: string;
   api: string;
 }
 
-/** A model offered to users, derived from the allowlist / catalog. */
 export interface ModelDescriptor extends ModelSelection {
   name: string;
   reasoning: boolean;
   vision: boolean;
 }
 
-/**
- * pi-ai provider registry for the M3 slice: OpenAI (both the responses and
- * completions transports behind one provider id), Anthropic, and OpenRouter.
- * API keys and base URLs come from the DB per request; the env-based auth here
- * is only a fallback when a provider row omits a key.
- */
-const piModels = createModels();
-piModels.setProvider(
-  createProvider<"openai-responses" | "openai-completions">({
-    id: "openai",
-    name: "OpenAI",
-    baseUrl: "https://api.openai.com/v1",
-    auth: { apiKey: envApiKeyAuth("OpenAI API key", ["OPENAI_API_KEY"]) },
-    models: getBuiltinModels("openai"),
-    api: {
-      "openai-responses": openAIResponsesApi(),
-      "openai-completions": openAICompletionsApi(),
-    },
-  }),
-);
-piModels.setProvider(anthropicProvider());
-piModels.setProvider(openrouterProvider());
-
-const PROVIDER_BASE_URLS: Record<string, string> = {
-  openai: "https://api.openai.com/v1",
-  anthropic: "https://api.anthropic.com",
-  openrouter: "https://openrouter.ai/api/v1",
-};
-
-/** Providers the M3 slice knows how to talk to (excludes the mock provider). */
-export const SUPPORTED_PROVIDERS = Object.keys(PROVIDER_BASE_URLS);
-
-/** The stream APIs each provider's allowlist entries may use. */
-export const PROVIDER_APIS: Record<string, string[]> = {
-  openai: ["openai-responses", "openai-completions"],
-  anthropic: ["anthropic-messages"],
-  openrouter: ["openai-completions"],
-};
-
-/** Mock models surfaced when SOLAR_MOCK_LLM is set (zero API cost). */
-const MOCK_MODELS: ModelDescriptor[] = [
-  {
-    provider: "mock",
-    modelId: "mock-reasoning",
-    api: "mock",
-    name: "Mock (reasoning)",
-    reasoning: true,
-    vision: false,
-  },
-  {
-    provider: "mock",
-    modelId: "mock-vision",
-    api: "mock",
-    name: "Mock (vision)",
-    reasoning: false,
-    vision: true,
-  },
-];
-
-interface ProviderConfigRow {
+export interface ProviderConfigRow {
   provider: string;
   apiKey: string | null;
   baseUrl: string | null;
+  endpoints: ProviderEndpoint[];
   enabledModels: AllowlistEntry[];
 }
 
-async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
-  const rows = await db
-    .selectFrom("provider_config")
-    .select(["provider", "apiKey", "baseUrl", "enabledModels"])
-    .execute();
-  return rows.map((r) => ({
-    provider: r.provider,
-    apiKey: r.apiKey,
-    baseUrl: r.baseUrl,
-    enabledModels: parseAllowlist(r.enabledModels),
+export interface DiscoveredModel {
+  id: string;
+  name: string;
+  preferredApi: string | null;
+  piProvider?: string;
+  piModel?: string;
+  piOptions?: Record<string, unknown>;
+  reasoning: boolean;
+  vision: boolean;
+}
+
+const MOCK_MODELS: ModelDescriptor[] = [
+  { provider: "mock", endpointId: "mock", modelId: "mock-reasoning", api: "mock", name: "Mock (reasoning)", reasoning: true, vision: false },
+  { provider: "mock", endpointId: "mock", modelId: "mock-vision", api: "mock", name: "Mock (vision)", reasoning: false, vision: true },
+];
+
+function parseEndpoints(json: string | null | undefined, baseUrl: string | null, entries: AllowlistEntry[]) {
+  try {
+    const parsed = JSON.parse(json ?? "[]");
+    if (Array.isArray(parsed)) {
+      const endpoints = parsed.flatMap((endpoint) =>
+        endpoint &&
+        typeof endpoint.id === "string" &&
+        typeof endpoint.label === "string" &&
+        typeof endpoint.baseUrl === "string" &&
+        typeof endpoint.api === "string" &&
+        PROVIDER_APIS.includes(endpoint.api)
+          ? [{ id: endpoint.id, label: endpoint.label, baseUrl: endpoint.baseUrl, api: endpoint.api }]
+          : [],
+      );
+      if (endpoints.length) return endpoints;
+    }
+  } catch {
+    // Legacy configurations are converted below.
+  }
+  return [...new Set(entries.map((entry) => entry.api))].map((api) => ({
+    id: api,
+    label: api,
+    baseUrl: baseUrl ?? "",
+    api,
   }));
 }
 
-/** Catalog metadata for a known model, if pi-ai ships one. */
-function catalogModel(provider: string, modelId: string): Model<Api> | undefined {
-  return piModels.getModel(provider, modelId);
+export async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
+  const rows = await db
+    .selectFrom("provider_config")
+    .select(["provider", "apiKey", "baseUrl", "endpoints", "enabledModels"])
+    .execute();
+  return rows.map((row) => {
+    const enabledModels = parseAllowlist(row.enabledModels);
+    return {
+      provider: row.provider,
+      apiKey: row.apiKey,
+      baseUrl: row.baseUrl,
+      endpoints: parseEndpoints(row.endpoints, row.baseUrl, enabledModels),
+      enabledModels,
+    };
+  });
 }
 
-function describe(
-  provider: string,
-  entry: AllowlistEntry,
-): ModelDescriptor {
-  const known = catalogModel(provider, entry.id);
+function catalogModel(provider: string, entry: AllowlistEntry): Model<Api> | undefined {
+  return piModels.getModel(entry.piProvider ?? provider, entry.piModel ?? entry.id);
+}
+
+function describe(provider: string, entry: AllowlistEntry): ModelDescriptor {
+  const known = catalogModel(provider, entry);
   return {
     provider,
+    endpointId: entry.endpointId,
     modelId: entry.id,
     api: entry.api,
-    name: known?.name ?? entry.id,
-    reasoning: known?.reasoning ?? false,
-    vision: known?.input.includes("image") ?? false,
+    name: entry.name ?? known?.name ?? entry.id,
+    reasoning: entry.reasoning ?? known?.reasoning ?? false,
+    vision: entry.vision ?? known?.input.includes("image") ?? false,
   };
 }
 
-/**
- * Models a user may pick: public models, plus private models for admins, and
- * the mock models when SOLAR_MOCK_LLM is set.
- */
 export async function listAvailableModels(isAdmin = false): Promise<ModelDescriptor[]> {
   const configs = await loadProviderConfigs();
-  const available: ModelDescriptor[] = [];
-  for (const cfg of configs) {
-    for (const entry of cfg.enabledModels) {
-      if (entry.visibility === "private" && !isAdmin) continue;
-      available.push(describe(cfg.provider, entry));
-    }
-  }
+  const available = configs.flatMap((config) =>
+    config.enabledModels
+      .filter((entry) => entry.visibility === "public" || isAdmin)
+      .filter((entry) => config.endpoints.some((endpoint) => endpoint.id === entry.endpointId && endpoint.api === entry.api))
+      .map((entry) => describe(config.provider, entry)),
+  );
   if (MOCK) available.push(...MOCK_MODELS);
   return available;
 }
@@ -166,328 +174,275 @@ export const DEFAULT_TITLE_PROMPT = `### Task: Generate a concise, 3-5 word titl
 {{first_message}}
 </first_user_message>`;
 
-function toSelection(sel: Partial<ModelSelection>): ModelSelection | null {
-  return sel.provider && sel.modelId && sel.api
-    ? { provider: sel.provider, modelId: sel.modelId, api: sel.api }
-    : null;
+type PartialSelection = Partial<ModelSelection>;
+
+function toSelection(selection: PartialSelection): PartialSelection | null {
+  return selection.provider && selection.modelId && selection.api ? selection : null;
 }
 
-function findAvailable(
-  available: ModelDescriptor[],
-  sel: ModelSelection | null,
-): ModelSelection | null {
-  if (!sel) return null;
-  const match = available.find(
-    (m) => m.provider === sel.provider && m.modelId === sel.modelId && m.api === sel.api,
-  );
-  return match ? { provider: match.provider, modelId: match.modelId, api: match.api } : null;
+function sameSelection(model: ModelDescriptor, selection: PartialSelection) {
+  return model.provider === selection.provider &&
+    model.modelId === selection.modelId &&
+    model.api === selection.api &&
+    (!selection.endpointId || model.endpointId === selection.endpointId);
 }
 
-/** The user's personal default model, if set. */
-export async function getUserDefault(
-  userId: string,
-): Promise<ModelSelection | null> {
+function findAvailable(available: ModelDescriptor[], selection: PartialSelection | null): ModelSelection | null {
+  if (!selection) return null;
+  const match = available.find((model) => sameSelection(model, selection));
+  return match ? { provider: match.provider, endpointId: match.endpointId, modelId: match.modelId, api: match.api } : null;
+}
+
+export async function getUserDefault(userId: string): Promise<ModelSelection | null> {
   const row = await db
     .selectFrom("user_setting")
-    .select(["defaultProvider", "defaultModelId", "defaultApi"])
+    .select(["defaultProvider", "defaultEndpointId", "defaultModelId", "defaultApi"])
     .where("userId", "=", userId)
     .executeTakeFirst();
-  return row
-    ? toSelection({
-        provider: row.defaultProvider ?? undefined,
-        modelId: row.defaultModelId ?? undefined,
-        api: row.defaultApi ?? undefined,
-      })
-    : null;
+  return row ? toSelection({
+    provider: row.defaultProvider ?? undefined,
+    endpointId: row.defaultEndpointId ?? undefined,
+    modelId: row.defaultModelId ?? undefined,
+    api: row.defaultApi ?? undefined,
+  }) as ModelSelection | null : null;
 }
 
-/** Persist the user's personal default model. */
-export async function setUserDefault(
-  userId: string,
-  sel: ModelSelection,
-): Promise<void> {
-  await db
-    .insertInto("user_setting")
-    .values({
-      userId,
-      defaultProvider: sel.provider,
-      defaultModelId: sel.modelId,
-      defaultApi: sel.api,
-      updatedAt: new Date().toISOString(),
-    })
-    .onConflict((oc) =>
-      oc.column("userId").doUpdateSet({
-        defaultProvider: sel.provider,
-        defaultModelId: sel.modelId,
-        defaultApi: sel.api,
-        updatedAt: new Date().toISOString(),
-      }),
-    )
-    .execute();
+export async function setUserDefault(userId: string, selection: ModelSelection): Promise<void> {
+  const values = {
+    userId,
+    defaultProvider: selection.provider,
+    defaultEndpointId: selection.endpointId,
+    defaultModelId: selection.modelId,
+    defaultApi: selection.api,
+    updatedAt: new Date().toISOString(),
+  };
+  await db.insertInto("user_setting").values(values).onConflict((oc) => oc.column("userId").doUpdateSet(values)).execute();
 }
 
-/** The admin-wide default model, if set. */
 export async function getAdminDefault(): Promise<ModelSelection | null> {
-  const row = await db
-    .selectFrom("app_meta")
-    .select("value")
-    .where("key", "=", ADMIN_DEFAULT_KEY)
-    .executeTakeFirst();
-  if (!row) return null;
-  try {
-    return toSelection(JSON.parse(row.value));
-  } catch {
-    return null;
-  }
+  return getAppMetaSelection(ADMIN_DEFAULT_KEY);
 }
 
-/** Persist the admin-wide default model. */
-export async function setAdminDefault(sel: ModelSelection): Promise<void> {
-  await setAppMetaSelection(ADMIN_DEFAULT_KEY, sel);
+export async function setAdminDefault(selection: ModelSelection): Promise<void> {
+  await setAppMetaSelection(ADMIN_DEFAULT_KEY, selection);
 }
 
-/** The admin-selected model for small background tasks such as title generation. */
 export async function getTaskModel(): Promise<ModelSelection | null> {
   return getAppMetaSelection(TASK_MODEL_KEY);
 }
 
-/** Persist the admin-selected model for small background tasks. */
-export async function setTaskModel(sel: ModelSelection): Promise<void> {
-  await setAppMetaSelection(TASK_MODEL_KEY, sel);
+export async function setTaskModel(selection: ModelSelection): Promise<void> {
+  await setAppMetaSelection(TASK_MODEL_KEY, selection);
 }
 
-/** Admin-authored prompt for automatic chat titles. */
 export async function getTitlePrompt(): Promise<string> {
-  const row = await db
-    .selectFrom("app_meta")
-    .select("value")
-    .where("key", "=", TITLE_PROMPT_KEY)
-    .executeTakeFirst();
+  const row = await db.selectFrom("app_meta").select("value").where("key", "=", TITLE_PROMPT_KEY).executeTakeFirst();
   return row?.value ?? DEFAULT_TITLE_PROMPT;
 }
 
-/** Persist the prompt used for automatic chat titles. */
 export async function setTitlePrompt(prompt: string): Promise<void> {
-  await db
-    .insertInto("app_meta")
-    .values({ key: TITLE_PROMPT_KEY, value: prompt })
-    .onConflict((oc) => oc.column("key").doUpdateSet({ value: prompt }))
-    .execute();
+  await db.insertInto("app_meta").values({ key: TITLE_PROMPT_KEY, value: prompt }).onConflict((oc) => oc.column("key").doUpdateSet({ value: prompt })).execute();
 }
 
-/** Resolve the configured task model, rejecting a model removed from the allowlist. */
 export async function resolveTaskModel(): Promise<ModelSelection> {
-  const configured = await getTaskModel();
-  const available = await listAvailableModels();
-  const taskModel = findAvailable(available, configured);
-  if (!taskModel) {
-    throw new Error("No task model is configured. Select one in admin settings.");
-  }
+  const taskModel = findAvailable(await listAvailableModels(), await getTaskModel());
+  if (!taskModel) throw new Error("No task model is configured. Select one in admin settings.");
   return taskModel;
 }
 
-/** Use the configured task model when it remains available, otherwise the chat model. */
-export async function resolveTaskModelOrFallback(
-  fallback: ModelSelection,
-): Promise<ModelSelection> {
-  const configured = await getTaskModel();
-  const available = await listAvailableModels();
-  return findAvailable(available, configured) ?? fallback;
+export async function resolveTaskModelOrFallback(fallback: ModelSelection): Promise<ModelSelection> {
+  return findAvailable(await listAvailableModels(), await getTaskModel()) ?? fallback;
 }
 
 async function getAppMetaSelection(key: string): Promise<ModelSelection | null> {
-  const row = await db
-    .selectFrom("app_meta")
-    .select("value")
-    .where("key", "=", key)
-    .executeTakeFirst();
+  const row = await db.selectFrom("app_meta").select("value").where("key", "=", key).executeTakeFirst();
   if (!row) return null;
   try {
-    return toSelection(JSON.parse(row.value));
+    return toSelection(JSON.parse(row.value)) as ModelSelection | null;
   } catch {
     return null;
   }
 }
 
-async function setAppMetaSelection(key: string, sel: ModelSelection): Promise<void> {
-  const value = JSON.stringify(sel);
-  await db
-    .insertInto("app_meta")
-    .values({ key, value })
-    .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
-    .execute();
+async function setAppMetaSelection(key: string, selection: ModelSelection): Promise<void> {
+  const value = JSON.stringify(selection);
+  await db.insertInto("app_meta").values({ key, value }).onConflict((oc) => oc.column("key").doUpdateSet({ value })).execute();
 }
 
-/**
- * Resolve the model to use for a conversation. Preference order: the stored
- * conversation selection → the user's personal default → the admin default →
- * the first available model. Only selections still present in the allowlist are
- * honored.
- */
-export async function resolveSelection(
-  stored: Partial<ModelSelection>,
-  userId?: string,
-  isAdmin = false,
-): Promise<ModelSelection> {
+export async function resolveSelection(stored: PartialSelection, userId?: string, isAdmin = false): Promise<ModelSelection> {
   const available = await listAvailableModels(isAdmin);
-  if (available.length === 0) {
-    throw new Error("No models are configured. Add a provider in admin settings.");
-  }
-
+  if (!available.length) throw new Error("No models are configured. Add a provider in admin settings.");
   const fromStored = findAvailable(available, toSelection(stored));
   if (fromStored) return fromStored;
-
   if (userId) {
     const fromUser = findAvailable(available, await getUserDefault(userId));
     if (fromUser) return fromUser;
   }
-
   const fromAdmin = findAvailable(available, await getAdminDefault());
   if (fromAdmin) return fromAdmin;
-
   const first = available[0]!;
-  return { provider: first.provider, modelId: first.modelId, api: first.api };
+  return { provider: first.provider, endpointId: first.endpointId, modelId: first.modelId, api: first.api };
 }
 
-/** Resolved model plus the credential needed to stream it. */
 export interface ResolvedModel {
   model: Model<Api>;
+  runtimeProvider: Provider<Api>;
   apiKey?: string;
 }
 
 const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export async function getModelCapabilities(selection: ModelSelection) {
-  if (selection.provider === "mock") {
-    return {
-      reasoningLevels: [...THINKING_LEVELS],
-      supportsVerbosity: false,
-    };
-  }
+  if (selection.provider === "mock") return { reasoningLevels: [...THINKING_LEVELS], supportsVerbosity: false };
   const { model } = await resolveModel(selection);
   const reasoningLevels = model.reasoning
-    ? THINKING_LEVELS.filter((level) => {
-        const mapped = model.thinkingLevelMap?.[level];
-        if (mapped === null) return false;
-        return level !== "xhigh" && level !== "max" || mapped !== undefined;
-      })
+    ? THINKING_LEVELS.filter((level) => model.thinkingLevelMap?.[level] !== null && (level !== "xhigh" && level !== "max" || model.thinkingLevelMap?.[level] !== undefined))
     : [];
-  return {
-    reasoningLevels,
-    supportsVerbosity: selection.api === "openai-responses",
-  };
+  return { reasoningLevels, supportsVerbosity: selection.api === "openai-responses" };
 }
 
-/**
- * Build the pi-ai `Model` for a selection, applying the DB-configured base URL
- * and returning the API key to pass per-call. Throws for the mock provider,
- * which is streamed by the local echo generator, not pi-ai.
- */
-export async function resolveModel(
-  selection: ModelSelection,
-): Promise<ResolvedModel> {
-  if (selection.provider === "mock") {
-    throw new Error("mock provider is not a pi-ai model");
-  }
-  const cfg = await db
-    .selectFrom("provider_config")
-    .select(["apiKey", "baseUrl"])
-    .where("provider", "=", selection.provider)
-    .executeTakeFirst();
-
-  const baseUrl =
-    cfg?.baseUrl ?? PROVIDER_BASE_URLS[selection.provider];
-  if (!baseUrl) {
-    throw new Error(`Unknown provider "${selection.provider}"`);
-  }
-
-  const known = catalogModel(selection.provider, selection.modelId);
-  const model: Model<Api> =
-    known && known.api === selection.api
-      ? { ...known, baseUrl }
-      : synthesizeModel(selection, baseUrl);
-
-  return { model, apiKey: cfg?.apiKey ?? undefined };
+function runtimeProviderId(selection: ModelSelection) {
+  return `solar:${selection.provider}:${selection.endpointId}`;
 }
 
-/**
- * Construct a minimal `Model` for an allowlisted id pi-ai doesn't ship in its
- * catalog (custom-baseURL / gateway models). Capabilities default conservatively;
- * pi-ai auto-detects compat behavior from the base URL.
- */
-function synthesizeModel(selection: ModelSelection, baseUrl: string): Model<Api> {
+export async function resolveModel(selection: ModelSelection): Promise<ResolvedModel> {
+  if (selection.provider === "mock") throw new Error("mock provider is not a pi-ai model");
+  const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === selection.provider);
+  const endpoint = config?.endpoints.find((candidate) => candidate.id === selection.endpointId && candidate.api === selection.api);
+  if (!config || !endpoint) throw new Error(`Unknown endpoint "${selection.provider}/${selection.endpointId}"`);
+  const entry = config.enabledModels.find((candidate) => candidate.id === selection.modelId && candidate.endpointId === selection.endpointId && candidate.api === selection.api);
+  const known = entry ? catalogModel(selection.provider, entry) : undefined;
+  const provider = runtimeProviderId(selection);
+  const model: Model<Api> = known
+    ? { ...known, id: selection.modelId, provider, api: selection.api as Api, baseUrl: endpoint.baseUrl, ...(entry?.piOptions ?? {}) } as Model<Api>
+    : synthesizeModel(selection, endpoint.baseUrl, provider, entry);
+  const runtimeProvider = createProvider({
+    id: provider,
+    baseUrl: endpoint.baseUrl,
+    auth: { apiKey: envApiKeyAuth("Solar provider API key", []) },
+    models: [model],
+    api: API_STREAMS,
+  });
+  return { model, runtimeProvider, apiKey: config.apiKey ?? undefined };
+}
+
+function synthesizeModel(selection: ModelSelection, baseUrl: string, provider: string, entry?: AllowlistEntry): Model<Api> {
   return {
     id: selection.modelId,
-    name: selection.modelId,
+    name: entry?.name ?? selection.modelId,
     api: selection.api as Api,
-    provider: selection.provider,
+    provider,
     baseUrl,
-    reasoning: false,
-    input: ["text"],
+    reasoning: entry?.reasoning ?? false,
+    input: entry?.vision ? ["text", "image"] : ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128_000,
     maxTokens: 4096,
-  };
+    ...(entry?.piOptions ?? {}),
+  } as Model<Api>;
 }
 
-/** Reasoning/verbosity params applied to a turn (from a conversation snapshot). */
 export interface GenerationParams {
   systemPrompt?: string;
-  /** pi ThinkingLevel; enables reasoning via streamSimple when set. */
   reasoningEffort?: string;
-  /** Request a provider reasoning summary (openai-responses / anthropic). */
   reasoningSummary?: boolean;
-  /** openai-responses only. */
   verbosity?: string;
 }
 
-/** Stream via pi-ai for a resolved (non-mock) model, applying reasoning params. */
-export function streamModel(
-  resolved: ResolvedModel,
-  context: Parameters<typeof piModels.stream>[1],
-  signal: AbortSignal,
-  params: GenerationParams = {},
-) {
-  const apiKeyOpt = resolved.apiKey ? { apiKey: resolved.apiKey } : {};
+export function streamModel(resolved: ResolvedModel, context: Parameters<Provider<Api>["stream"]>[1], signal: AbortSignal, params: GenerationParams = {}) {
+  const apiKey = resolved.apiKey ? { apiKey: resolved.apiKey } : {};
   const api = resolved.model.api;
-
-  // onPayload injects provider-native knobs the typed options don't expose:
-  // a reasoning summary (openai-responses / anthropic) and text verbosity
-  // (openai-responses only).
   const wantSummary = params.reasoningSummary;
   const wantVerbosity = params.verbosity && api === "openai-responses";
-  const onPayload =
-    wantSummary || wantVerbosity
-      ? (payload: unknown) => {
-          const p = payload as Record<string, unknown>;
-          if (api === "openai-responses") {
-            if (wantSummary) {
-              p.reasoning = { ...(p.reasoning as object), summary: "auto" };
-            }
-            if (wantVerbosity) {
-              p.text = { ...(p.text as object), verbosity: params.verbosity };
-            }
-          } else if (api === "anthropic-messages" && wantSummary) {
-            // Anthropic streams thinking natively when reasoning is enabled;
-            // nothing extra needed on the payload.
-          }
-          return p;
+  const onPayload = wantSummary || wantVerbosity
+    ? (payload: unknown) => {
+        const next = payload as Record<string, unknown>;
+        if (api === "openai-responses") {
+          if (wantSummary) next.reasoning = { ...(next.reasoning as object), summary: "auto" };
+          if (wantVerbosity) next.text = { ...(next.text as object), verbosity: params.verbosity };
         }
-      : undefined;
-
-  // Reasoning effort uses streamSimple (maps ThinkingLevel per model).
+        return next;
+      }
+    : undefined;
   if (params.reasoningEffort) {
-    return piModels.streamSimple(resolved.model, context, {
-      signal,
-      reasoning: params.reasoningEffort as never,
-      ...(onPayload ? { onPayload } : {}),
-      ...apiKeyOpt,
-    });
+    return resolved.runtimeProvider.streamSimple(resolved.model, context, { signal, reasoning: params.reasoningEffort as never, ...(onPayload ? { onPayload } : {}), ...apiKey });
   }
+  return resolved.runtimeProvider.stream(resolved.model, context, { signal, ...(onPayload ? { onPayload } : {}), ...apiKey });
+}
 
-  return piModels.stream(resolved.model, context, {
-    signal,
-    ...(onPayload ? { onPayload } : {}),
-    ...apiKeyOpt,
+function modelsUrl(baseUrl: string) {
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}${url.pathname.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1"}/models`;
+  return url;
+}
+
+function upstreamApi(value: unknown) {
+  return typeof value === "string" ? UPSTREAM_API_MAP[value] ?? null : null;
+}
+
+function isTextGeneration(model: Record<string, unknown>) {
+  const architecture = model.architecture;
+  if (!architecture || typeof architecture !== "object" || Array.isArray(architecture)) return true;
+  const input = (architecture as { input_modalities?: unknown }).input_modalities;
+  const output = (architecture as { output_modalities?: unknown }).output_modalities;
+  const modalities = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  const inputModalities = modalities(input);
+  const outputModalities = modalities(output);
+  return (!inputModalities.length || inputModalities.includes("text")) && (!outputModalities.length || outputModalities.includes("text"));
+}
+
+export async function discoverProviderModels(provider: string, endpointId: string): Promise<DiscoveredModel[]> {
+  const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === provider);
+  const endpoint = config?.endpoints.find((candidate) => candidate.id === endpointId);
+  if (!config || !endpoint || !endpoint.baseUrl) throw new Error("Provider endpoint is not configured");
+  const response = await fetch(modelsUrl(endpoint.baseUrl), {
+    headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
   });
+  if (!response.ok) throw new Error(`Model query failed (${response.status} ${response.statusText})`);
+  const payload = await response.json() as { data?: unknown };
+  if (!Array.isArray(payload.data)) throw new Error("Model query returned an invalid response");
+  return payload.data.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const model = item as Record<string, unknown>;
+    if (typeof model.id !== "string" || !isTextGeneration(model)) return [];
+    const preferred = Array.isArray(model.preferred_api) ? model.preferred_api.map(upstreamApi).find((api): api is string => api !== null) ?? null : null;
+    const architecture = model.architecture as { input_modalities?: unknown } | undefined;
+    const input = Array.isArray(architecture?.input_modalities) ? architecture.input_modalities : [];
+    const supported = Array.isArray(model.supported_parameters) ? model.supported_parameters : [];
+    return [{
+      id: model.id,
+      name: typeof model.name === "string" ? model.name : model.id,
+      preferredApi: preferred,
+      ...(typeof model.pi_provider === "string" ? { piProvider: model.pi_provider } : {}),
+      ...(typeof model.pi_model === "string" ? { piModel: model.pi_model } : {}),
+      ...(model.pi_options && typeof model.pi_options === "object" && !Array.isArray(model.pi_options) ? { piOptions: model.pi_options as Record<string, unknown> } : {}),
+      reasoning: supported.includes("reasoning"),
+      vision: input.includes("image"),
+    }];
+  });
+}
+
+export async function importProviderModels(provider: string, endpointId: string, imports: { id: string; api: string; visibility: ModelVisibility }[]) {
+  const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === provider);
+  if (!config) throw new Error("Provider not found");
+  const discovered = await discoverProviderModels(provider, endpointId);
+  const imported = imports.map((selection) => {
+    const model = discovered.find((candidate) => candidate.id === selection.id);
+    const endpoint = config.endpoints.find((candidate) => candidate.api === selection.api);
+    if (!model || !endpoint) throw new Error(`Model "${selection.id}" cannot use ${selection.api}`);
+    return {
+      id: model.id,
+      endpointId: endpoint.id,
+      api: selection.api,
+      visibility: selection.visibility,
+      name: model.name,
+      ...(model.piProvider ? { piProvider: model.piProvider } : {}),
+      ...(model.piModel ? { piModel: model.piModel } : {}),
+      ...(model.piOptions ? { piOptions: model.piOptions } : {}),
+      reasoning: model.reasoning,
+      vision: model.vision,
+    } satisfies AllowlistEntry;
+  });
+  const enabledModels = [...config.enabledModels.filter((entry) => !imported.some((item) => item.id === entry.id)), ...imported];
+  await db.updateTable("provider_config").set({ enabledModels: JSON.stringify(enabledModels), updatedAt: new Date().toISOString() }).where("provider", "=", provider).execute();
 }

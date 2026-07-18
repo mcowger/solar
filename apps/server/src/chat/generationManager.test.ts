@@ -71,7 +71,7 @@ function start(manager: InstanceType<typeof GenerationManager>, messageId = "mes
     conversationId: "conversation-1",
     messageId,
     context: {} as never,
-    selection: { provider: "test", modelId: "model", api: "test" },
+    selection: { provider: "test", endpointId: "test", modelId: "model", api: "test" },
     params: {} as never,
   });
 }

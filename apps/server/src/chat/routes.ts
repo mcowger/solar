@@ -143,6 +143,7 @@ async function streamNewAssistantTurn(
     .selectFrom("conversation")
     .select([
       "provider",
+      "endpointId",
       "modelId",
       "modelApi",
       "systemPrompt",
@@ -156,6 +157,7 @@ async function streamNewAssistantTurn(
   const selection = await resolveSelection(
     {
       provider: convo?.provider ?? undefined,
+      endpointId: convo?.endpointId ?? undefined,
       modelId: convo?.modelId ?? undefined,
       api: convo?.modelApi ?? undefined,
     },
@@ -188,6 +190,7 @@ async function streamNewAssistantTurn(
     .updateTable("conversation")
     .set({
       provider: selection.provider,
+      endpointId: selection.endpointId,
       modelId: selection.modelId,
       modelApi: selection.api,
     })

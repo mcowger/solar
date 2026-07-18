@@ -30,6 +30,7 @@ export interface Attachment {
 export interface Conversation {
   autoExecuteTools: Generated<number>;
   createdAt: Generated<string>;
+  endpointId: string | null;
   folderId: string | null;
   id: string | null;
   modelApi: string | null;
@@ -90,6 +91,7 @@ export interface Message {
 
 export interface Preset {
   createdAt: Generated<string>;
+  endpointId: string | null;
   id: string | null;
   modelApi: string;
   modelId: string;
@@ -107,6 +109,7 @@ export interface ProviderConfig {
   apiKey: string | null;
   baseUrl: string | null;
   enabledModels: Generated<string>;
+  endpoints: Generated<string>;
   provider: string | null;
   updatedAt: Generated<string>;
 }
@@ -126,6 +129,7 @@ export interface UserMcpServerPreference {
 
 export interface UserSetting {
   defaultApi: string | null;
+  defaultEndpointId: string | null;
   defaultModelId: string | null;
   defaultProvider: string | null;
   updatedAt: Generated<string>;

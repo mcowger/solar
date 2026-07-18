@@ -5,27 +5,37 @@ import { useTRPC } from "../trpc";
 
 interface AllowlistEntry {
   id: string;
+  endpointId: string;
   api: string;
   visibility: "public" | "private";
+  name?: string;
+}
+
+interface ProviderEndpoint {
+  id: string;
+  label: string;
+  baseUrl: string;
+  api: string;
 }
 
 interface ProviderForm {
   provider: string;
   hasApiKey: boolean;
-  baseUrl: string;
+  endpoints: ProviderEndpoint[];
   enabledModels: AllowlistEntry[];
   apis: string[];
 }
 
 interface ModelDescriptor {
   provider: string;
+  endpointId: string;
   modelId: string;
   api: string;
   name: string;
 }
 
-function modelKey(model: Pick<ModelDescriptor, "provider" | "modelId" | "api">) {
-  return `${model.provider}/${model.modelId}/${model.api}`;
+function modelKey(model: Pick<ModelDescriptor, "provider" | "endpointId" | "modelId" | "api">) {
+  return `${model.provider}/${model.endpointId}/${model.modelId}/${model.api}`;
 }
 
 function TaskModel() {
@@ -64,8 +74,14 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState(initial.baseUrl);
+  const [endpoints, setEndpoints] = useState(initial.endpoints);
   const [models, setModels] = useState<AllowlistEntry[]>(initial.enabledModels);
+  const [discovery, setDiscovery] = useState<{ endpointId: string; models: { id: string; name: string; preferredApi: string | null }[] } | null>(null);
+  const [imports, setImports] = useState<Record<string, { api: string; visibility: "public" | "private" }>>({});
+  useEffect(() => {
+    setEndpoints(initial.endpoints);
+    setModels(initial.enabledModels);
+  }, [initial.endpoints, initial.enabledModels]);
   const save = useMutation(
     trpc.admin.setProvider.mutationOptions({
       onSuccess: () => {
@@ -75,35 +91,65 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
       },
     }),
   );
-  const addModel = () => setModels((models) => [...models, { id: "", api: initial.apis[0] ?? "", visibility: "public" }]);
+  const queryModels = useMutation(
+    trpc.admin.queryProviderModels.mutationOptions({
+      onSuccess: (result, variables) => {
+        setDiscovery({ endpointId: variables.endpointId, models: result });
+        setImports({});
+      },
+    }),
+  );
+  const importModels = useMutation(
+    trpc.admin.importProviderModels.mutationOptions({
+      onSuccess: () => {
+        setDiscovery(null);
+        setImports({});
+        qc.invalidateQueries({ queryKey: trpc.admin.listProviders.queryKey() });
+        qc.invalidateQueries({ queryKey: trpc.model.available.queryKey() });
+      },
+    }),
+  );
+  const addEndpoint = () => setEndpoints((current) => [...current, {
+    id: crypto.randomUUID(),
+    label: "",
+    baseUrl: "",
+    api: initial.apis.find((api) => !current.some((endpoint) => endpoint.api === api)) ?? initial.apis[0] ?? "",
+  }]);
+  const updateEndpoint = (id: string, patch: Partial<ProviderEndpoint>) =>
+    setEndpoints((current) => current.map((endpoint) => endpoint.id === id ? { ...endpoint, ...patch } : endpoint));
+  const removeEndpoint = (id: string) => {
+    setEndpoints((current) => current.filter((endpoint) => endpoint.id !== id));
+    setModels((current) => current.filter((model) => model.endpointId !== id));
+  };
   const updateModel = (index: number, patch: Partial<AllowlistEntry>) =>
     setModels((models) => models.map((model, modelIndex) => modelIndex === index ? { ...model, ...patch } : model));
   const removeModel = (index: number) => setModels((models) => models.filter((_, modelIndex) => modelIndex !== index));
+  const importableApis = endpoints.map((endpoint) => endpoint.api);
+  const selectedImports = Object.entries(imports).map(([id, selection]) => ({ id, ...selection }));
 
   return (
     <section className="card card-border bg-base-100 shadow-sm">
       <div className="card-body gap-4 p-4 sm:p-5">
         <h3 className="card-title capitalize">{initial.provider}</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <fieldset className="fieldset grid min-w-0 content-start gap-1">
-            <legend className="fieldset-legend">API key</legend>
-            <input className="input input-sm w-full" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={initial.hasApiKey ? "Saved — enter to replace" : "sk-…"} />
-            <p className="label">Leave blank to keep the existing key.</p>
-          </fieldset>
-          <fieldset className="fieldset grid min-w-0 content-start gap-1">
-            <legend className="fieldset-legend">Base URL</legend>
-            <input className="input input-sm w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="Default provider URL" />
-            <p className="label">Optional provider endpoint override.</p>
-          </fieldset>
-        </div>
+        <fieldset className="fieldset grid min-w-0 content-start gap-1">
+          <legend className="fieldset-legend">API key</legend>
+          <input className="input input-sm w-full" type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={initial.hasApiKey ? "Saved — enter to replace" : "sk-…"} />
+          <p className="label">One key is shared by every endpoint.</p>
+        </fieldset>
+        <fieldset className="fieldset gap-2">
+          <legend className="fieldset-legend">Endpoints</legend>
+          {endpoints.map((endpoint) => <div key={endpoint.id} className="rounded-box bg-base-200 p-2"><div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_11rem_auto]"><input className="input input-sm min-w-0" value={endpoint.label} onChange={(event) => updateEndpoint(endpoint.id, { label: event.target.value })} placeholder="Label" /><input className="input input-sm min-w-0" value={endpoint.baseUrl} onChange={(event) => updateEndpoint(endpoint.id, { baseUrl: event.target.value })} placeholder="https://plexus.example/v1" /><select className="select select-sm min-w-0" value={endpoint.api} onChange={(event) => updateEndpoint(endpoint.id, { api: event.target.value })}>{initial.apis.map((api) => <option key={api} value={api} disabled={endpoints.some((candidate) => candidate.id !== endpoint.id && candidate.api === api)}>{api}</option>)}</select><div className="flex gap-1"><button className="btn btn-sm" disabled={!endpoint.baseUrl || queryModels.isPending} onClick={() => queryModels.mutate({ provider: initial.provider, endpointId: endpoint.id })}>{queryModels.isPending ? "Querying…" : "Query models"}</button><button className="btn btn-ghost btn-sm btn-square" onClick={() => removeEndpoint(endpoint.id)} title="Remove endpoint">✕</button></div></div></div>)}
+          <button className="btn btn-sm btn-outline w-fit" onClick={addEndpoint} disabled={endpoints.length === initial.apis.length}>Add endpoint</button>
+        </fieldset>
+        {discovery && <fieldset className="fieldset gap-2"><legend className="fieldset-legend">Available text generation models</legend><div className="overflow-x-auto"><table className="table table-sm"><thead><tr><th>Import</th><th>Model</th><th>Preferred API</th><th>Visibility</th></tr></thead><tbody>{discovery.models.map((model) => { const selected = imports[model.id]; const preferredApi = importableApis.includes(model.preferredApi ?? "") ? model.preferredApi! : importableApis[0] ?? ""; return <tr key={model.id}><td><input className="checkbox checkbox-sm" type="checkbox" checked={Boolean(selected)} onChange={(event) => setImports((current) => { const next = { ...current }; if (event.target.checked) next[model.id] = { api: preferredApi, visibility: "public" }; else delete next[model.id]; return next; })} /></td><td><span className="font-medium">{model.name}</span><span className="block text-xs opacity-60">{model.id}</span></td><td><select className="select select-xs" disabled={!selected} value={selected?.api ?? preferredApi} onChange={(event) => setImports((current) => ({ ...current, [model.id]: { api: event.target.value, visibility: current[model.id]?.visibility ?? "public" } }))}>{importableApis.map((api) => <option key={api} value={api}>{api}</option>)}</select></td><td><select className="select select-xs" disabled={!selected} value={selected?.visibility ?? "public"} onChange={(event) => setImports((current) => ({ ...current, [model.id]: { api: current[model.id]?.api ?? preferredApi, visibility: event.target.value as "public" | "private" } }))}><option value="public">Public</option><option value="private">Private</option></select></td></tr>; })}</tbody></table></div><div className="card-actions justify-end"><button className="btn btn-primary btn-sm" disabled={!selectedImports.length || importModels.isPending} onClick={() => importModels.mutate({ provider: initial.provider, endpointId: discovery.endpointId, models: selectedImports })}>{importModels.isPending ? "Importing…" : `Import ${selectedImports.length} selected`}</button></div></fieldset>}
         <fieldset className="fieldset gap-1">
-          <legend className="fieldset-legend">Enabled models</legend>
+          <legend className="fieldset-legend">Imported models</legend>
           {models.map((model, index) => (
             <div key={index} className="rounded-box bg-base-200 p-2">
               <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_11rem_auto_auto]">
-                <input className="input input-sm col-span-2 min-w-0 sm:col-span-1" value={model.id} onChange={(event) => updateModel(index, { id: event.target.value })} placeholder="Model ID" />
-                <select className="select select-sm min-w-0 w-full" value={model.api} onChange={(event) => updateModel(index, { api: event.target.value })}>
-                  {initial.apis.map((api) => <option key={api} value={api}>{api}</option>)}
+                <p className="min-w-0 truncate text-sm">{model.name ?? model.id}</p>
+                <select className="select select-sm min-w-0 w-full" value={model.endpointId} onChange={(event) => { const endpoint = endpoints.find((candidate) => candidate.id === event.target.value); if (endpoint) updateModel(index, { endpointId: endpoint.id, api: endpoint.api }); }}>
+                  {endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.label || endpoint.api} · {endpoint.api}</option>)}
                 </select>
                 <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
                 <input className="toggle toggle-sm" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
@@ -114,11 +160,10 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
               </div>
             </div>
           ))}
-          <button className="btn btn-sm btn-outline w-fit" onClick={addModel}>Add model</button>
         </fieldset>
         <div className="card-actions items-center justify-end">
-          {save.isError && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error.message}</div>}
-          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, baseUrl, enabledModels: models.filter((model) => model.id.trim()) })} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
+          {(save.isError || queryModels.isError || importModels.isError) && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error?.message ?? queryModels.error?.message ?? importModels.error?.message}</div>}
+          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, endpoints, enabledModels: models })} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
         </div>
       </div>
     </section>
@@ -170,9 +215,17 @@ type Section = typeof sections[number];
 
 export function Settings({ onClose }: { onClose: () => void }) {
   const trpc = useTRPC();
+  const qc = useQueryClient();
   const providers = useQuery(trpc.admin.listProviders.queryOptions());
   const [ready, setReady] = useState(false);
   const [section, setSection] = useState<Section>("users");
+  const [providerName, setProviderName] = useState("");
+  const createProvider = useMutation(trpc.admin.setProvider.mutationOptions({
+    onSuccess: () => {
+      setProviderName("");
+      qc.invalidateQueries({ queryKey: trpc.admin.listProviders.queryKey() });
+    },
+  }));
   useEffect(() => { if (providers.isSuccess) setReady(true); }, [providers.isSuccess]);
 
   return <div className="modal modal-open"><div className="modal-box flex h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-6xl flex-col p-0 sm:h-[calc(100dvh-2rem)] sm:w-11/12"><header className="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3 sm:px-5"><div><p className="text-sm tracking-[0.16em] uppercase opacity-60">Administration</p><h2 className="m-0 text-2xl sm:text-3xl">Settings</h2></div><button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button></header><div className="overflow-y-auto p-4 sm:p-5"><div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
@@ -182,6 +235,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
     {section === "logging" && <Logging />}
     {section === "task model" && <TaskModel />}
     {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}
-    {section === "providers" && ready && <div className="grid gap-4">{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
+    {section === "providers" && ready && <div className="grid gap-4"><section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-3 p-4 sm:p-5"><h3 className="card-title">Add provider</h3><p className="text-sm opacity-70">A provider shares one API key across one or more API endpoints.</p><div className="flex flex-col gap-2 sm:flex-row"><input className="input input-sm min-w-0 flex-1" value={providerName} onChange={(event) => setProviderName(event.target.value)} placeholder="Provider name" /><button className="btn btn-sm" disabled={!providerName.trim() || createProvider.isPending} onClick={() => createProvider.mutate({ provider: providerName.trim(), apiKey: "", endpoints: [], enabledModels: [] })}>{createProvider.isPending ? "Adding…" : "Add provider"}</button></div>{createProvider.isError && <div role="alert" className="alert alert-error alert-soft text-sm">{createProvider.error.message}</div>}</div></section>{providers.data?.map((provider) => <ProviderCard key={provider.provider} initial={provider} />)}</div>}
   </div></div></div><div className="modal-backdrop" onClick={onClose} /></div>;
 }

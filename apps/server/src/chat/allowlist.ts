@@ -3,8 +3,15 @@ export type ModelVisibility = "public" | "private";
 
 export interface AllowlistEntry {
   id: string;
+  endpointId: string;
   api: string;
   visibility: ModelVisibility;
+  name?: string;
+  piProvider?: string;
+  piModel?: string;
+  piOptions?: Record<string, unknown>;
+  reasoning?: boolean;
+  vision?: boolean;
 }
 
 export function parseAllowlist(json: string): AllowlistEntry[] {
@@ -17,8 +24,17 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
       }
       return [{
         id: entry.id,
+        endpointId: typeof entry.endpointId === "string" ? entry.endpointId : entry.api,
         api: entry.api,
         visibility: entry.visibility === "private" ? "private" : "public",
+        ...(typeof entry.name === "string" ? { name: entry.name } : {}),
+        ...(typeof entry.piProvider === "string" ? { piProvider: entry.piProvider } : {}),
+        ...(typeof entry.piModel === "string" ? { piModel: entry.piModel } : {}),
+        ...(entry.piOptions && typeof entry.piOptions === "object" && !Array.isArray(entry.piOptions)
+          ? { piOptions: entry.piOptions as Record<string, unknown> }
+          : {}),
+        ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
+        ...(typeof entry.vision === "boolean" ? { vision: entry.vision } : {}),
       }];
     });
   } catch {
