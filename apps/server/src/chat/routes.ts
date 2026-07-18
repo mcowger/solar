@@ -6,6 +6,7 @@ import type {
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db } from "../db";
+import { resolveSelection } from "./catalog";
 import { generationManager } from "./generationManager";
 
 export const chatRoutes = new Hono();
@@ -78,6 +79,29 @@ async function getOwnedMessage(userId: string, messageId: string) {
  */
 async function streamNewAssistantTurn(conversationId: string): Promise<Response> {
   const context = await buildContext(conversationId);
+
+  // Resolve the model for this turn, then persist it so the conversation
+  // remembers the effective selection (defaults are resolved lazily).
+  const convo = await db
+    .selectFrom("conversation")
+    .select(["provider", "modelId", "modelApi"])
+    .where("id", "=", conversationId)
+    .executeTakeFirst();
+  const selection = await resolveSelection({
+    provider: convo?.provider ?? undefined,
+    modelId: convo?.modelId ?? undefined,
+    api: convo?.modelApi ?? undefined,
+  });
+  await db
+    .updateTable("conversation")
+    .set({
+      provider: selection.provider,
+      modelId: selection.modelId,
+      modelApi: selection.api,
+    })
+    .where("id", "=", conversationId)
+    .execute();
+
   const assistantMessageId = crypto.randomUUID();
   await db
     .insertInto("message")
@@ -91,7 +115,12 @@ async function streamNewAssistantTurn(conversationId: string): Promise<Response>
     })
     .execute();
 
-  generationManager.start({ conversationId, messageId: assistantMessageId, context });
+  generationManager.start({
+    conversationId,
+    messageId: assistantMessageId,
+    context,
+    selection,
+  });
 
   return new Response(generationManager.subscribe(assistantMessageId, 0), {
     headers: { ...sseHeaders, "x-message-id": assistantMessageId },

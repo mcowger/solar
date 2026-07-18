@@ -22,7 +22,22 @@ export interface ConversationTable {
   title: string;
   /** FK -> `folder.id`; null = unfiled. */
   folderId: string | null;
+  /** Per-conversation model selection (M3); null = resolve default at send time. */
+  provider: string | null;
+  modelId: string | null;
+  modelApi: string | null;
   createdAt: Generated<string>;
+  updatedAt: Generated<string>;
+}
+
+/** Admin-owned, global provider credentials + model allowlist (M3). */
+export interface ProviderConfigTable {
+  /** Provider id, e.g. "openai" | "anthropic" | "openrouter". */
+  provider: string;
+  apiKey: string | null;
+  baseUrl: string | null;
+  /** JSON array of `{ id, api }` allowlist entries. */
+  enabledModels: Generated<string>;
   updatedAt: Generated<string>;
 }
 
@@ -70,4 +85,5 @@ export interface Database {
   folder: FolderTable;
   tag: TagTable;
   conversation_tag: ConversationTagTable;
+  provider_config: ProviderConfigTable;
 }

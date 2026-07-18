@@ -35,6 +35,9 @@ export interface Conversation {
   createdAt: Generated<string>;
   folderId: string | null;
   id: string | null;
+  modelApi: string | null;
+  modelId: string | null;
+  provider: string | null;
   title: string;
   updatedAt: Generated<string>;
   userId: string;
@@ -63,6 +66,14 @@ export interface Message {
   role: string;
   status: Generated<string>;
   text: Generated<string>;
+}
+
+export interface ProviderConfig {
+  apiKey: string | null;
+  baseUrl: string | null;
+  enabledModels: Generated<string>;
+  provider: string | null;
+  updatedAt: Generated<string>;
 }
 
 export interface Session {
@@ -110,6 +121,7 @@ export interface DB {
   conversation_tag: ConversationTag;
   folder: Folder;
   message: Message;
+  provider_config: ProviderConfig;
   session: Session;
   tag: Tag;
   user: User;

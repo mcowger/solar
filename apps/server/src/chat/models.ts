@@ -3,56 +3,38 @@ import type {
   AssistantMessageEvent,
   Context,
 } from "@earendil-works/pi-ai";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import {
+  MOCK,
+  resolveModel,
+  streamModel,
+  type ModelSelection,
+} from "./catalog";
 
 /**
- * pi-ai model registry. M1 ships a single hard-coded provider/model (OpenAI
- * gpt-4o-mini); API keys are read from the environment by pi-ai. Multi-provider
- * selection and DB-stored keys arrive in M3/M4.
+ * Stream an assistant turn as pi-ai events for the chosen model.
+ *
+ * The `mock` provider (available when SOLAR_MOCK_LLM is set) is served by a
+ * local echo generator so no provider API is called and nothing is billed —
+ * used for local development and UI verification only. All other providers are
+ * streamed through pi-ai with the DB-configured key/baseURL.
  */
-export const models = builtinModels();
-
-export const DEFAULT_PROVIDER = "openai";
-export const DEFAULT_MODEL_ID = "gpt-4o-mini";
-export const DEFAULT_MODEL = `${DEFAULT_PROVIDER}/${DEFAULT_MODEL_ID}`;
-
-/**
- * When `SOLAR_MOCK_LLM` is set, generation is served by a local echo model that
- * streams a canned Markdown/code/LaTeX response — no provider API calls, no
- * cost. Intended for local development and UI verification only.
- */
-const MOCK = Boolean(process.env.SOLAR_MOCK_LLM);
-
-export function getDefaultModel() {
-  const model = models.getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID);
-  if (!model) {
-    throw new Error(
-      `Default model ${DEFAULT_MODEL} is unavailable (check pi-ai catalog / API key).`,
-    );
-  }
-  return model;
-}
-
-/**
- * Stream an assistant turn as pi-ai events. Delegates to the real provider,
- * unless mock mode is on (see `MOCK`), in which case a deterministic local
- * generator is used so no tokens are ever billed.
- */
-export function streamChat(
+export async function streamChat(
   context: Context,
+  selection: ModelSelection,
   signal: AbortSignal,
-): AsyncIterable<AssistantMessageEvent> {
-  if (MOCK) return mockStream(context, signal);
-  return models.stream(getDefaultModel(), context, { signal });
+): Promise<AsyncIterable<AssistantMessageEvent>> {
+  if (selection.provider === "mock") return mockStream(context, selection, signal);
+  const resolved = await resolveModel(selection);
+  return streamModel(resolved, context, signal);
 }
 
-function mockMessage(text: string): AssistantMessage {
+function mockMessage(text: string, selection: ModelSelection): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
     api: "openai-completions",
-    provider: DEFAULT_PROVIDER,
-    model: DEFAULT_MODEL_ID,
+    provider: selection.provider,
+    model: selection.modelId,
     usage: { input: 0, output: 0 },
     stopReason: "stop",
     timestamp: Date.now(),
@@ -61,6 +43,7 @@ function mockMessage(text: string): AssistantMessage {
 
 async function* mockStream(
   context: Context,
+  selection: ModelSelection,
   signal: AbortSignal,
 ): AsyncIterable<AssistantMessageEvent> {
   const lastUser = [...context.messages].reverse().find((m) => m.role === "user");
@@ -68,14 +51,14 @@ async function* mockStream(
     lastUser && typeof lastUser.content === "string" ? lastUser.content : "";
 
   const reply =
-    `**Mock reply** (SOLAR_MOCK_LLM) to: ${prompt}\n\n` +
+    `**Mock reply** (${selection.modelId}) to: ${prompt}\n\n` +
     "Inline code `x = 1`, a fenced block:\n\n" +
     '```js\nconsole.log("hello");\n```\n\n' +
     "And display math: $$E = mc^2$$";
 
   const tokens = reply.match(/\S+\s*|\s+/g) ?? [reply];
   let acc = "";
-  yield { type: "start", partial: mockMessage("") } as AssistantMessageEvent;
+  yield { type: "start", partial: mockMessage("", selection) } as AssistantMessageEvent;
 
   for (const tok of tokens) {
     if (signal.aborted) {
@@ -86,10 +69,12 @@ async function* mockStream(
       type: "text_delta",
       contentIndex: 0,
       delta: tok,
-      partial: mockMessage(acc),
+      partial: mockMessage(acc, selection),
     } as AssistantMessageEvent;
     await new Promise((r) => setTimeout(r, 25));
   }
 
-  yield { type: "done", reason: "stop", message: mockMessage(acc) };
+  yield { type: "done", reason: "stop", message: mockMessage(acc, selection) };
 }
+
+export { MOCK };
