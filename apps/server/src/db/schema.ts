@@ -26,8 +26,31 @@ export interface ConversationTable {
   provider: string | null;
   modelId: string | null;
   modelApi: string | null;
+  /** Generation params snapshotted from the preset chosen at conversation start. */
+  systemPrompt: string | null;
+  reasoningEffort: string | null;
+  reasoningSummary: Generated<number>;
+  verbosity: string | null;
   createdAt: Generated<string>;
   updatedAt: Generated<string>;
+}
+
+export type PresetScope = "personal" | "shared";
+
+/** Reusable assistant config (M3): model + system prompt + reasoning params. */
+export interface PresetTable {
+  id: string;
+  userId: string;
+  name: string;
+  scope: Generated<string>;
+  provider: string;
+  modelId: string;
+  modelApi: string;
+  systemPrompt: string | null;
+  reasoningEffort: string | null;
+  reasoningSummary: Generated<number>;
+  verbosity: string | null;
+  createdAt: Generated<string>;
 }
 
 /** Admin-owned, global provider credentials + model allowlist (M3). */
@@ -96,4 +119,5 @@ export interface Database {
   tag: TagTable;
   conversation_tag: ConversationTagTable;
   provider_config: ProviderConfigTable;
+  preset: PresetTable;
 }

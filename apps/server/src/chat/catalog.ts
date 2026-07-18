@@ -338,14 +338,64 @@ function synthesizeModel(selection: ModelSelection, baseUrl: string): Model<Api>
   };
 }
 
-/** Stream via pi-ai for a resolved (non-mock) model. */
+/** Reasoning/verbosity params applied to a turn (from a conversation snapshot). */
+export interface GenerationParams {
+  systemPrompt?: string;
+  /** pi ThinkingLevel; enables reasoning via streamSimple when set. */
+  reasoningEffort?: string;
+  /** Request a provider reasoning summary (openai-responses / anthropic). */
+  reasoningSummary?: boolean;
+  /** openai-responses only. */
+  verbosity?: string;
+}
+
+/** Stream via pi-ai for a resolved (non-mock) model, applying reasoning params. */
 export function streamModel(
   resolved: ResolvedModel,
   context: Parameters<typeof piModels.stream>[1],
   signal: AbortSignal,
+  params: GenerationParams = {},
 ) {
+  const apiKeyOpt = resolved.apiKey ? { apiKey: resolved.apiKey } : {};
+  const api = resolved.model.api;
+
+  // onPayload injects provider-native knobs the typed options don't expose:
+  // a reasoning summary (openai-responses / anthropic) and text verbosity
+  // (openai-responses only).
+  const wantSummary = params.reasoningSummary;
+  const wantVerbosity = params.verbosity && api === "openai-responses";
+  const onPayload =
+    wantSummary || wantVerbosity
+      ? (payload: unknown) => {
+          const p = payload as Record<string, unknown>;
+          if (api === "openai-responses") {
+            if (wantSummary) {
+              p.reasoning = { ...(p.reasoning as object), summary: "auto" };
+            }
+            if (wantVerbosity) {
+              p.text = { ...(p.text as object), verbosity: params.verbosity };
+            }
+          } else if (api === "anthropic-messages" && wantSummary) {
+            // Anthropic streams thinking natively when reasoning is enabled;
+            // nothing extra needed on the payload.
+          }
+          return p;
+        }
+      : undefined;
+
+  // Reasoning effort uses streamSimple (maps ThinkingLevel per model).
+  if (params.reasoningEffort) {
+    return piModels.streamSimple(resolved.model, context, {
+      signal,
+      reasoning: params.reasoningEffort as never,
+      ...(onPayload ? { onPayload } : {}),
+      ...apiKeyOpt,
+    });
+  }
+
   return piModels.stream(resolved.model, context, {
     signal,
-    ...(resolved.apiKey ? { apiKey: resolved.apiKey } : {}),
+    ...(onPayload ? { onPayload } : {}),
+    ...apiKeyOpt,
   });
 }

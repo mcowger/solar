@@ -38,9 +38,13 @@ export interface Conversation {
   modelApi: string | null;
   modelId: string | null;
   provider: string | null;
+  reasoningEffort: string | null;
+  reasoningSummary: Generated<number>;
+  systemPrompt: string | null;
   title: string;
   updatedAt: Generated<string>;
   userId: string;
+  verbosity: string | null;
 }
 
 export interface ConversationTag {
@@ -66,6 +70,21 @@ export interface Message {
   role: string;
   status: Generated<string>;
   text: Generated<string>;
+}
+
+export interface Preset {
+  createdAt: Generated<string>;
+  id: string | null;
+  modelApi: string;
+  modelId: string;
+  name: string;
+  provider: string;
+  reasoningEffort: string | null;
+  reasoningSummary: Generated<number>;
+  scope: Generated<string>;
+  systemPrompt: string | null;
+  userId: string;
+  verbosity: string | null;
 }
 
 export interface ProviderConfig {
@@ -129,6 +148,7 @@ export interface DB {
   conversation_tag: ConversationTag;
   folder: Folder;
   message: Message;
+  preset: Preset;
   provider_config: ProviderConfig;
   session: Session;
   tag: Tag;

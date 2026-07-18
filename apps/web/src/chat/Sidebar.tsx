@@ -16,9 +16,17 @@ interface SidebarProps {
   activeId: string | undefined;
   onSelect: (id: string) => void;
   onNew: () => void;
+  presets: { id: string; name: string }[];
+  onNewWithPreset: (presetId: string) => void;
 }
 
-export function Sidebar({ activeId, onSelect, onNew }: SidebarProps) {
+export function Sidebar({
+  activeId,
+  onSelect,
+  onNew,
+  presets,
+  onNewWithPreset,
+}: SidebarProps) {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -153,6 +161,26 @@ export function Sidebar({ activeId, onSelect, onNew }: SidebarProps) {
           + Folder
         </button>
       </div>
+      {presets.length > 0 && (
+        <div style={{ padding: "0 8px 8px" }}>
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onNewWithPreset(e.target.value);
+              e.target.value = "";
+            }}
+            style={{ width: "100%" }}
+            title="Start a new chat from a preset"
+          >
+            <option value="">+ New chat from preset…</option>
+            {presets.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={{ padding: "0 8px 8px" }}>
         <input

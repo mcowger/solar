@@ -2,7 +2,7 @@ import type { Context } from "@earendil-works/pi-ai";
 import { db } from "../db";
 import type { MessageStatus } from "../db/schema";
 import { piEventToUiChunks, type UiChunk } from "./adapter";
-import type { ModelSelection } from "./catalog";
+import type { GenerationParams, ModelSelection } from "./catalog";
 import { streamChat } from "./models";
 
 interface BufferedChunk {
@@ -20,6 +20,7 @@ interface Generation {
   conversationId: string;
   model: string;
   selection: ModelSelection;
+  params: GenerationParams;
   chunks: BufferedChunk[];
   nextId: number;
   status: "running" | "done" | "error";
@@ -59,12 +60,14 @@ class GenerationManager {
     messageId: string;
     context: Context;
     selection: ModelSelection;
+    params: GenerationParams;
   }): void {
     const gen: Generation = {
       messageId: opts.messageId,
       conversationId: opts.conversationId,
       model: `${opts.selection.provider}/${opts.selection.modelId}`,
       selection: opts.selection,
+      params: opts.params,
       chunks: [],
       nextId: 1,
       status: "running",
@@ -149,7 +152,7 @@ class GenerationManager {
     emit({ type: "start", messageId: gen.messageId });
 
     try {
-      const events = await streamChat(context, gen.selection, gen.controller.signal);
+      const events = await streamChat(context, gen.selection, gen.params, gen.controller.signal);
       for await (const event of events) {
         if (event.type === "text_delta") gen.text += event.delta;
         if (event.type === "done") {

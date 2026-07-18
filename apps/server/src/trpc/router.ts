@@ -87,10 +87,53 @@ const conversationRouter = router({
       z.object({
         title: z.string().trim().min(1).max(200).optional(),
         folderId: z.string().nullish(),
+        /** A preset chosen at conversation start; its config is snapshotted. */
+        presetId: z.string().nullish(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       const id = crypto.randomUUID();
+      // Snapshot the preset (model + system prompt + reasoning params) onto the
+      // conversation so later preset edits don't mutate this conversation.
+      let snapshot: {
+        provider: string | null;
+        modelId: string | null;
+        modelApi: string | null;
+        systemPrompt: string | null;
+        reasoningEffort: string | null;
+        reasoningSummary: number;
+        verbosity: string | null;
+      } = {
+        provider: null,
+        modelId: null,
+        modelApi: null,
+        systemPrompt: null,
+        reasoningEffort: null,
+        reasoningSummary: 0,
+        verbosity: null,
+      };
+      if (input.presetId) {
+        const preset = await db
+          .selectFrom("preset")
+          .selectAll()
+          .where("id", "=", input.presetId)
+          .executeTakeFirst();
+        // Presets are usable by the owner (any scope) or anyone (shared).
+        if (
+          preset &&
+          (preset.scope === "shared" || preset.userId === ctx.user.id)
+        ) {
+          snapshot = {
+            provider: preset.provider,
+            modelId: preset.modelId,
+            modelApi: preset.modelApi,
+            systemPrompt: preset.systemPrompt,
+            reasoningEffort: preset.reasoningEffort,
+            reasoningSummary: preset.reasoningSummary,
+            verbosity: preset.verbosity,
+          };
+        }
+      }
       await db
         .insertInto("conversation")
         .values({
@@ -98,6 +141,7 @@ const conversationRouter = router({
           userId: ctx.user.id,
           title: input.title ?? "New conversation",
           folderId: input.folderId ?? null,
+          ...snapshot,
         })
         .execute();
       return { id };
@@ -359,6 +403,110 @@ const modelRouter = router({
     }),
 });
 
+const presetInputSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  scope: z.enum(["personal", "shared"]),
+  provider: z.string(),
+  modelId: z.string(),
+  api: z.string(),
+  systemPrompt: z.string().trim().max(20000).nullish(),
+  reasoningEffort: z.string().nullish(),
+  reasoningSummary: z.boolean().optional(),
+  verbosity: z.string().nullish(),
+});
+
+/** Load a preset and assert the user may edit/delete it (owner or admin). */
+async function assertCanEditPreset(
+  userId: string,
+  isAdmin: boolean,
+  presetId: string,
+) {
+  const preset = await db
+    .selectFrom("preset")
+    .select(["id", "userId"])
+    .where("id", "=", presetId)
+    .executeTakeFirst();
+  if (!preset) throw new TRPCError({ code: "NOT_FOUND" });
+  if (preset.userId !== userId && !isAdmin) {
+    throw new TRPCError({ code: "FORBIDDEN" });
+  }
+}
+
+const presetRouter = router({
+  /** Presets the user may use: their own (any scope) plus all shared presets. */
+  list: protectedProcedure.query(async ({ ctx }) => {
+    const rows = await db
+      .selectFrom("preset")
+      .selectAll()
+      .where((eb) =>
+        eb.or([
+          eb("userId", "=", ctx.user.id),
+          eb("scope", "=", "shared"),
+        ]),
+      )
+      .orderBy("name", "asc")
+      .execute();
+    return rows.map((r) => ({
+      ...r,
+      reasoningSummary: Boolean(r.reasoningSummary),
+      owned: r.userId === ctx.user.id,
+    }));
+  }),
+
+  create: protectedProcedure
+    .input(presetInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const id = crypto.randomUUID();
+      await db
+        .insertInto("preset")
+        .values({
+          id,
+          userId: ctx.user.id,
+          name: input.name,
+          scope: input.scope,
+          provider: input.provider,
+          modelId: input.modelId,
+          modelApi: input.api,
+          systemPrompt: input.systemPrompt ?? null,
+          reasoningEffort: input.reasoningEffort ?? null,
+          reasoningSummary: input.reasoningSummary ? 1 : 0,
+          verbosity: input.verbosity ?? null,
+        })
+        .execute();
+      return { id };
+    }),
+
+  update: protectedProcedure
+    .input(presetInputSchema.extend({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = (ctx.user as { role?: string }).role === "admin";
+      await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
+      await db
+        .updateTable("preset")
+        .set({
+          name: input.name,
+          scope: input.scope,
+          provider: input.provider,
+          modelId: input.modelId,
+          modelApi: input.api,
+          systemPrompt: input.systemPrompt ?? null,
+          reasoningEffort: input.reasoningEffort ?? null,
+          reasoningSummary: input.reasoningSummary ? 1 : 0,
+          verbosity: input.verbosity ?? null,
+        })
+        .where("id", "=", input.id)
+        .execute();
+    }),
+
+  remove: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const isAdmin = (ctx.user as { role?: string }).role === "admin";
+      await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
+      await db.deleteFrom("preset").where("id", "=", input.id).execute();
+    }),
+});
+
 const folderRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return db
@@ -458,6 +606,7 @@ export const appRouter = router({
   folder: folderRouter,
   tag: tagRouter,
   model: modelRouter,
+  preset: presetRouter,
   admin: adminRouter,
 });
 

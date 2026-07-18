@@ -6,7 +6,7 @@ import type {
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db } from "../db";
-import { resolveSelection } from "./catalog";
+import { resolveSelection, type GenerationParams } from "./catalog";
 import { generationManager } from "./generationManager";
 
 export const chatRoutes = new Hono();
@@ -27,7 +27,10 @@ async function ownsConversation(userId: string, conversationId: string) {
 }
 
 /** Reconstruct pi context from persisted messages (DB-canonical, per turn). */
-async function buildContext(conversationId: string): Promise<PiContext> {
+async function buildContext(
+  conversationId: string,
+  systemPrompt?: string | null,
+): Promise<PiContext> {
   const rows = await db
     .selectFrom("message")
     .select(["role", "text", "parts"])
@@ -45,7 +48,7 @@ async function buildContext(conversationId: string): Promise<PiContext> {
       messages.push(JSON.parse(r.parts) as AssistantMessage);
     }
   }
-  return { messages };
+  return systemPrompt ? { systemPrompt, messages } : { messages };
 }
 
 const sseHeaders = {
@@ -81,13 +84,19 @@ async function streamNewAssistantTurn(
   conversationId: string,
   userId: string,
 ): Promise<Response> {
-  const context = await buildContext(conversationId);
-
   // Resolve the model for this turn, then persist it so the conversation
   // remembers the effective selection (defaults are resolved lazily).
   const convo = await db
     .selectFrom("conversation")
-    .select(["provider", "modelId", "modelApi"])
+    .select([
+      "provider",
+      "modelId",
+      "modelApi",
+      "systemPrompt",
+      "reasoningEffort",
+      "reasoningSummary",
+      "verbosity",
+    ])
     .where("id", "=", conversationId)
     .executeTakeFirst();
   const selection = await resolveSelection(
@@ -98,6 +107,13 @@ async function streamNewAssistantTurn(
     },
     userId,
   );
+  const context = await buildContext(conversationId, convo?.systemPrompt);
+  const params: GenerationParams = {
+    systemPrompt: convo?.systemPrompt ?? undefined,
+    reasoningEffort: convo?.reasoningEffort ?? undefined,
+    reasoningSummary: Boolean(convo?.reasoningSummary),
+    verbosity: convo?.verbosity ?? undefined,
+  };
   await db
     .updateTable("conversation")
     .set({
@@ -126,6 +142,7 @@ async function streamNewAssistantTurn(
     messageId: assistantMessageId,
     context,
     selection,
+    params,
   });
 
   return new Response(generationManager.subscribe(assistantMessageId, 0), {

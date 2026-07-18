@@ -5,6 +5,7 @@ import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { Settings } from "../admin/Settings";
 import { ModelPicker } from "./ModelPicker";
+import { Presets } from "./Presets";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
 import { useSolarRuntime } from "./useSolarRuntime";
@@ -30,10 +31,12 @@ export function ChatApp() {
   const isAdmin = (session?.user as { role?: string })?.role === "admin";
   const [activeId, setActiveId] = useState<string | undefined>();
   const [showSettings, setShowSettings] = useState(false);
+  const [showPresets, setShowPresets] = useState(false);
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
 
   const conversations = useQuery(trpc.conversation.list.queryOptions());
+  const presets = useQuery(trpc.preset.list.queryOptions());
   const create = useMutation(
     trpc.conversation.create.mutationOptions({
       onSuccess: ({ id }) => {
@@ -44,6 +47,11 @@ export function ChatApp() {
   );
 
   const list = conversations.data ?? [];
+  const presetList = presets.data ?? [];
+
+  // Start a new conversation, optionally snapshotting a chosen preset.
+  const newChat = (presetId?: string) =>
+    create.mutate(presetId ? { presetId } : {});
 
   // Ensure a conversation exists and one is always selected.
   useEffect(() => {
@@ -66,8 +74,11 @@ export function ChatApp() {
         <strong>Solar</strong>
         <span style={{ flex: 1 }} />
         <span style={{ color: "#666" }}>{session?.user.email}</span>
+        <button onClick={() => { setShowPresets((s) => !s); setShowSettings(false); }}>
+          {showPresets ? "Back to chat" : "Presets"}
+        </button>
         {isAdmin && (
-          <button onClick={() => setShowSettings((s) => !s)}>
+          <button onClick={() => { setShowSettings((s) => !s); setShowPresets(false); }}>
             {showSettings ? "Back to chat" : "Settings"}
           </button>
         )}
@@ -76,12 +87,16 @@ export function ChatApp() {
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {showSettings && isAdmin ? (
           <Settings onClose={() => setShowSettings(false)} />
+        ) : showPresets ? (
+          <Presets onClose={() => setShowPresets(false)} />
         ) : (
           <>
             <Sidebar
               activeId={activeId}
               onSelect={setActiveId}
-              onNew={() => create.mutate({})}
+              onNew={() => newChat()}
+              presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
+              onNewWithPreset={newChat}
             />
             {activeId ? (
               <ConversationView key={activeId} conversationId={activeId} />
