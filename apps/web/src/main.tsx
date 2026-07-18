@@ -7,6 +7,10 @@ import { TRPCProvider } from "./trpc";
 
 if (import.meta.hot) {
   import.meta.hot.on("bun:afterUpdate", () => window.location.reload());
+} else if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch((error: unknown) => {
+    console.error("Solar service worker registration failed", error);
+  });
 }
 
 function Root() {

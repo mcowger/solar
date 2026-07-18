@@ -16,17 +16,51 @@ import { appRouter } from "./trpc/router";
 
 const isProduction = process.env.NODE_ENV === "production";
 const index = isProduction ? undefined : (await import("@solar/web/index.html")).default;
-const webDirectory = path.join(import.meta.dir, "web");
+const webDirectory = path.join(import.meta.dir, isProduction && path.basename(import.meta.dir) === "src" ? "../dist/web" : "web");
+const webPublicDirectory = path.resolve(import.meta.dir, "../../web/public");
 const webIndex = Bun.file(path.join(webDirectory, "index.html"));
+const hashedAssetName = /-[a-z0-9]{8}\.[^.]+$/i;
+
+function fileForPath(directory: string, pathname: string) {
+  let relativePath: string;
+  try {
+    relativePath = decodeURIComponent(pathname).replace(/^\/+/, "");
+  } catch {
+    return;
+  }
+
+  const filePath = path.resolve(directory, relativePath);
+  return filePath.startsWith(`${directory}${path.sep}`) ? Bun.file(filePath) : undefined;
+}
+
+function isFileRequest(pathname: string) {
+  return path.extname(pathname) !== "";
+}
+
+function staticCacheControl(pathname: string) {
+  const filename = path.basename(pathname);
+  if (pathname === "/" || filename === "index.html" || filename === "manifest.webmanifest" || filename === "sw.js") {
+    return "no-cache";
+  }
+  if (hashedAssetName.test(filename)) return "public, max-age=31536000, immutable";
+  return "public, max-age=3600";
+}
 
 async function serveProductionWeb(req: Request) {
   const pathname = new URL(req.url).pathname;
-  const filePath = path.resolve(webDirectory, pathname === "/" ? "index.html" : pathname.slice(1));
-  if (filePath.startsWith(`${webDirectory}${path.sep}`)) {
-    const file = Bun.file(filePath);
-    if (await file.exists()) return new Response(file);
+  const file = fileForPath(webDirectory, pathname === "/" ? "/index.html" : pathname);
+  if (file && (await file.exists())) {
+    return new Response(file, { headers: { "Cache-Control": staticCacheControl(pathname) } });
   }
-  return new Response(webIndex);
+  if (isFileRequest(pathname)) return new Response("Not Found", { status: 404 });
+  return new Response(webIndex, { headers: { "Cache-Control": "no-cache" } });
+}
+
+async function serveDevelopmentPublicFile(req: Request) {
+  const pathname = new URL(req.url).pathname;
+  const file = fileForPath(webPublicDirectory, pathname);
+  if (!file || !(await file.exists())) return new Response("Not Found", { status: 404 });
+  return new Response(file, { headers: { "Cache-Control": staticCacheControl(pathname) } });
 }
 
 if (
@@ -79,7 +113,20 @@ if (process.env.NODE_ENV !== "production") {
   );
 }
 
-app.get("/healthz", (c) => c.json({ ok: true }));
+app.get("/healthz", (c) => {
+  c.header("Cache-Control", "no-store");
+  return c.json({ ok: true });
+});
+
+app.use("/api/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "private, no-store");
+});
+
+app.use("/trpc/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "private, no-store");
+});
 
 // Better Auth handles all of /api/auth/*.
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
@@ -110,6 +157,10 @@ const server = Bun.serve({
     "/api/attachments/*": (req) => app.fetch(req),
     "/api/attachments": (req) => app.fetch(req),
     "/healthz": (req) => app.fetch(req),
+    "/manifest.webmanifest": isProduction ? serveProductionWeb : serveDevelopmentPublicFile,
+    "/icons/*": isProduction ? serveProductionWeb : serveDevelopmentPublicFile,
+    "/fonts/*": isProduction ? serveProductionWeb : serveDevelopmentPublicFile,
+    "/sw.js": isProduction ? serveProductionWeb : () => new Response("Not Found", { status: 404 }),
     "/*": isProduction ? serveProductionWeb : index!,
   },
   development: !isProduction ? { hmr: true } : false,
