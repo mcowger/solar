@@ -125,7 +125,8 @@ async function* mockStream(
     `**Mock reply** (${selection.modelId}) to: ${prompt}\n\n` +
     "Inline code `x = 1`, a fenced block:\n\n" +
     '```js\nconsole.log("hello");\n```\n\n' +
-    "And display math: $$E = mc^2$$";
+    "And display math: $$E = mc^2$$\n\n" +
+    "Sources: [React documentation](https://react.dev/), [MDN Web Docs](https://developer.mozilla.org/), [TypeScript handbook](https://www.typescriptlang.org/docs/), and [Bun documentation](https://bun.sh/docs).";
 
   const tokens = reply.match(/\S+\s*|\s+/g) ?? [reply];
   let acc = "";
