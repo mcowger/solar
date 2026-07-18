@@ -33,6 +33,64 @@ test("keeps the iOS viewport at its default scale after sign in", async ({ brows
   await context.close();
 });
 
+test("keeps provider model controls separated on mobile", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ ...devices["iPhone 13"], baseURL });
+  const page = await context.newPage();
+  let interceptedProviders = false;
+  await page.route("**/trpc/*admin.listProviders*", async (route) => {
+    interceptedProviders = true;
+    const providers = [{
+      provider: "openai",
+      hasApiKey: true,
+      endpoints: [{
+        id: "openai-responses",
+        label: "openai-responses",
+        baseUrl: "https://plexus.example/v1",
+        api: "openai-responses",
+      }],
+      enabledModels: [
+        { id: "gpt-5.6-luna", endpointId: "openai-responses", api: "openai-responses", visibility: "public", documents: true },
+        { id: "gpt-5.6-terra", endpointId: "openai-responses", api: "openai-responses", visibility: "public", documents: false },
+      ],
+      apis: ["openai-responses", "openai-completions", "anthropic-messages", "google-generative-ai"],
+    }];
+    const response = await route.fetch();
+    const body = await response.json();
+    const procedures = new URL(route.request().url()).pathname.split("/").at(-1)?.split(",") ?? [];
+    const providerIndex = procedures.indexOf("admin.listProviders");
+    body[providerIndex].result.data = providers;
+    await route.fulfill({ response, json: body });
+  });
+  await signIn(page);
+
+  await page.locator('[data-tip="Settings"] button').click();
+  await page.getByRole("tab", { name: "Providers" }).click();
+  expect(interceptedProviders).toBe(true);
+
+  const rows = page.getByRole("group", { name: "Imported models" }).locator(":scope > div");
+  await expect(rows).toHaveCount(2);
+  for (const row of await rows.all()) {
+    const boxes = await row.locator("label, button").evaluateAll((controls) => controls.map((control) => {
+      const { left, right, top, bottom } = control.getBoundingClientRect();
+      return { left, right, top, bottom };
+    }));
+    for (let first = 0; first < boxes.length; first += 1) {
+      for (let second = first + 1; second < boxes.length; second += 1) {
+        const firstBox = boxes[first]!;
+        const secondBox = boxes[second]!;
+        const horizontalOverlap = Math.max(firstBox.left, secondBox.left) < Math.min(firstBox.right, secondBox.right);
+        const verticalOverlap = Math.max(firstBox.top, secondBox.top) < Math.min(firstBox.bottom, secondBox.bottom);
+        expect(horizontalOverlap && verticalOverlap).toBe(false);
+      }
+    }
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth),
+  );
+
+  await context.close();
+});
+
 test("signs in and streams a mock chat response", async ({ page }) => {
   await signIn(page);
 
