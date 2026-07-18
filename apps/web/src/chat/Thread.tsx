@@ -4,7 +4,7 @@ import {
   MessagePrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
-import { Repeat2, SquarePen } from "lucide-react";
+import { Copy, Repeat2, SquarePen } from "lucide-react";
 import { MarkdownText } from "./MarkdownText";
 import "./Thread.css";
 
@@ -28,6 +28,9 @@ function UserMessage() {
         <ActionBarPrimitive.Edit className="solar-action-btn" aria-label="Edit message">
           <SquarePen size={16} />
         </ActionBarPrimitive.Edit>
+        <ActionBarPrimitive.Copy className="solar-action-btn" aria-label="Copy message">
+          <Copy size={16} />
+        </ActionBarPrimitive.Copy>
       </ActionBarPrimitive.Root>
     </div>
   );
@@ -57,6 +60,9 @@ function AssistantMessage() {
         <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">
           <Repeat2 size={16} />
         </ActionBarPrimitive.Reload>
+        <ActionBarPrimitive.Copy className="solar-action-btn" aria-label="Copy response">
+          <Copy size={16} />
+        </ActionBarPrimitive.Copy>
       </ActionBarPrimitive.Root>
     </div>
   );
