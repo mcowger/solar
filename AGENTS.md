@@ -28,6 +28,47 @@ before treating any of them as permanent policy.
 - Auth: **Better Auth** (Kysely adapter).
 - Frontend: **React + assistant-ui**, **tRPC + TanStack Query**.
 
+## Command reference
+
+All commands are run from the **repo root** unless noted. The server auto-runs
+both migration owners at boot, so a fresh `solar.db` needs no manual migrate.
+
+### Start the server
+
+```bash
+# Dev (hot reload + web HMR), with provider keys loaded from the root .env.
+# The server's cwd is apps/server, so Bun won't auto-load the root .env —
+# pass it explicitly. This is the normal way to run locally.
+bun --env-file=.env run --cwd apps/server dev
+
+# Equivalent from inside apps/server:
+cd apps/server && bun --env-file=../../.env run dev
+
+# Production-style run (no HMR; serves the same single process).
+cd apps/server && NODE_ENV=production bun --env-file=../../.env run start
+```
+
+Then open http://localhost:3000. Override the port with `PORT`, the DB path with
+`DATABASE_PATH` (see `apps/server/src/config.ts`).
+
+Root convenience script `bun run dev` also starts the server, but it does **not**
+load `.env` (so pi-ai has no API key) — prefer the `--env-file` forms above when
+you need model calls.
+
+### Root scripts (`package.json`)
+
+| Command | What it does |
+| --- | --- |
+| `bun run dev` | Start the server (hot reload) — no `.env`; see above |
+| `bun run build` | Production bundle of the web app → `apps/server/dist/web` |
+| `bun run migrate` | Run app (Kysely) migrations against `solar.db` |
+| `bun run migrate:auth` | Run Better Auth's own migrations |
+| `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
+| `bun run typecheck` | `tsc` for server, web, and shared |
+
+Migrations + codegen run against `apps/server/solar.db` (the server's cwd). To
+capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
+
 ## Build, run & dev workflow
 
 - **Single process for everything.** `bun run dev` (root) runs *only*
