@@ -80,7 +80,7 @@ export function ChatApp() {
   return (
     <div className="drawer lg:drawer-open solar-app h-dvh">
       <input id="solar-drawer" type="checkbox" className="drawer-toggle" checked={drawerOpen} onChange={(event) => setDrawerOpen(event.target.checked)} />
-      <div className="drawer-content solar-main flex min-h-0 flex-col bg-base-100">
+      <div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="btn btn-ghost btn-sm btn-circle lg:hidden"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
           <div className="navbar-end gap-1 sm:gap-2">

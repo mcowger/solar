@@ -122,10 +122,11 @@ export function Sidebar({
         <button style={rowButton} title="Rename" onClick={() => renameConversation(c.id, c.title)}>✎</button>
         <button style={rowButton} title="Tags" onClick={() => editTags(c.id, c.tags)}>#</button>
         <select
+          className="select select-xs w-15"
           value={c.folderId ?? ""}
           onChange={(e) => move.mutate({ id: c.id, folderId: e.target.value || null })}
           title="Move to folder"
-          style={{ fontSize: 11, border: "none", background: "transparent", color: "#888", cursor: "pointer", maxWidth: 60 }}
+          style={{ cursor: "pointer" }}
         >
           <option value="">—</option>
           {folderList.map((f) => (
@@ -164,12 +165,12 @@ export function Sidebar({
       {presets.length > 0 && (
         <div style={{ padding: "0 8px 8px" }}>
           <select
+            className="select select-sm w-full"
             value=""
             onChange={(e) => {
               if (e.target.value) onNewWithPreset(e.target.value);
               e.target.value = "";
             }}
-            style={{ width: "100%" }}
             title="Start a new chat from a preset"
           >
             <option value="">+ New chat from preset…</option>
@@ -184,10 +185,10 @@ export function Sidebar({
 
       <div style={{ padding: "0 8px 8px" }}>
         <input
+          className="input input-sm w-full"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search…"
-          style={{ width: "100%", padding: 6, borderRadius: 8, border: "1px solid #ccc", boxSizing: "border-box" }}
         />
       </div>
 
