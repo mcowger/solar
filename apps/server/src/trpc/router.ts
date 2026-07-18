@@ -405,8 +405,301 @@ const allowlistEntrySchema = z.object({
   visibility: z.enum(["public", "private"]).default("public"),
 });
 
+const folderHistorySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+});
+
+const tagHistorySchema = folderHistorySchema;
+
+const conversationHistorySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  title: z.string(),
+  folderId: z.string().nullable(),
+  provider: z.string().nullable(),
+  modelId: z.string().nullable(),
+  modelApi: z.string().nullable(),
+  systemPrompt: z.string().nullable(),
+  presetReasoningEffort: z.string().nullable(),
+  reasoningEffort: z.string().nullable(),
+  reasoningSummary: z.number(),
+  verbosity: z.string().nullable(),
+  presetVerbosity: z.string().nullable(),
+  autoExecuteTools: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const messageHistorySchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  role: z.enum(["user", "assistant"]),
+  text: z.string(),
+  parts: z.string().nullable(),
+  status: z.enum(["complete", "generating", "error"]),
+  model: z.string().nullable(),
+  inputTokens: z.number().nullable(),
+  outputTokens: z.number().nullable(),
+  createdAt: z.string(),
+});
+
+const attachmentHistorySchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  messageId: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+  kind: z.enum(["image", "text"]),
+  byteSize: z.number(),
+  storageKey: z.string(),
+  createdAt: z.string(),
+});
+
+const historySchema = z.object({
+  format: z.literal("solar-chat-history"),
+  version: z.literal(1),
+  exportedAt: z.string(),
+  userId: z.string(),
+  folders: z.array(folderHistorySchema),
+  tags: z.array(tagHistorySchema),
+  conversations: z.array(conversationHistorySchema),
+  messages: z.array(messageHistorySchema),
+  attachments: z.array(attachmentHistorySchema),
+  conversationTags: z.array(z.object({ conversationId: z.string(), tagId: z.string() })),
+});
+
+function hasDuplicateIds(rows: { id: string }[]) {
+  return new Set(rows.map((row) => row.id)).size !== rows.length;
+}
+
 const adminRouter = router({
   logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
+
+  debug: router({
+    chatIds: adminProcedure
+      .input(z.object({ userId: z.string() }))
+      .query(async ({ input }) => {
+        const chats = await db
+          .selectFrom("conversation")
+          .select("id")
+          .where("userId", "=", input.userId)
+          .orderBy("updatedAt", "desc")
+          .execute();
+        return chats.map((chat) => chat.id);
+      }),
+
+    chatRows: adminProcedure
+      .input(z.object({ chatId: z.string() }))
+      .query(async ({ input }) => {
+        const conversation = await db
+          .selectFrom("conversation")
+          .selectAll()
+          .where("id", "=", input.chatId)
+          .executeTakeFirst();
+        if (!conversation) throw new TRPCError({ code: "NOT_FOUND" });
+
+        const messages = await db
+          .selectFrom("message")
+          .selectAll()
+          .where("conversationId", "=", input.chatId)
+          .orderBy("createdAt", "asc")
+          .execute();
+        const messageIds = messages.map((message) => message.id);
+        const [attachments, conversationTags, conversationMcpServers] = await Promise.all([
+          messageIds.length
+            ? db
+                .selectFrom("attachment")
+                .selectAll()
+                .where("messageId", "in", messageIds)
+                .execute()
+            : [],
+          db
+            .selectFrom("conversation_tag")
+            .selectAll()
+            .where("conversationId", "=", input.chatId)
+            .execute(),
+          db
+            .selectFrom("conversation_mcp_server")
+            .selectAll()
+            .where("conversationId", "=", input.chatId)
+            .execute(),
+        ]);
+
+        return { conversation, messages, attachments, conversationTags, conversationMcpServers };
+      }),
+  }),
+
+  history: router({
+    export: adminProcedure
+      .input(z.object({ userId: z.string() }))
+      .query(async ({ input }) => {
+        const [folders, tags, conversations] = await Promise.all([
+          db.selectFrom("folder").selectAll().where("userId", "=", input.userId).execute(),
+          db.selectFrom("tag").selectAll().where("userId", "=", input.userId).execute(),
+          db
+            .selectFrom("conversation")
+            .selectAll()
+            .where("userId", "=", input.userId)
+            .orderBy("createdAt", "asc")
+            .execute(),
+        ]);
+        const conversationIds = conversations.map((conversation) => conversation.id);
+        const messages = conversationIds.length
+          ? await db
+              .selectFrom("message")
+              .selectAll()
+              .where("conversationId", "in", conversationIds)
+              .orderBy("createdAt", "asc")
+              .execute()
+          : [];
+        const messageIds = messages.map((message) => message.id);
+        const [attachments, conversationTags] = await Promise.all([
+          messageIds.length
+            ? db
+                .selectFrom("attachment")
+                .selectAll()
+                .where("messageId", "in", messageIds)
+                .execute()
+            : [],
+          conversationIds.length
+            ? db
+                .selectFrom("conversation_tag")
+                .selectAll()
+                .where("conversationId", "in", conversationIds)
+                .execute()
+            : [],
+        ]);
+
+        return {
+          format: "solar-chat-history" as const,
+          version: 1 as const,
+          exportedAt: new Date().toISOString(),
+          userId: input.userId,
+          folders,
+          tags,
+          conversations,
+          messages,
+          attachments: attachments
+            .filter((attachment): attachment is typeof attachment & { messageId: string } =>
+              attachment.messageId !== null,
+            ),
+          conversationTags,
+        };
+      }),
+
+    import: adminProcedure
+      .input(z.object({ userId: z.string(), history: historySchema }))
+      .mutation(async ({ input }) => {
+        const { history, userId } = input;
+        if (
+          hasDuplicateIds(history.folders) ||
+          hasDuplicateIds(history.tags) ||
+          hasDuplicateIds(history.conversations) ||
+          hasDuplicateIds(history.messages) ||
+          hasDuplicateIds(history.attachments)
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "History contains duplicate IDs" });
+        }
+
+        const folderIds = new Set(history.folders.map((folder) => folder.id));
+        const tagIds = new Set(history.tags.map((tag) => tag.id));
+        const conversationIds = new Set(history.conversations.map((conversation) => conversation.id));
+        const messageIds = new Set(history.messages.map((message) => message.id));
+        if (
+          history.conversations.some(
+            (conversation) => conversation.folderId !== null && !folderIds.has(conversation.folderId),
+          ) ||
+          history.messages.some((message) => !conversationIds.has(message.conversationId)) ||
+          history.attachments.some((attachment) => !messageIds.has(attachment.messageId)) ||
+          history.conversationTags.some(
+            ({ conversationId, tagId }) => !conversationIds.has(conversationId) || !tagIds.has(tagId),
+          )
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "History contains invalid references" });
+        }
+
+        await db.transaction().execute(async (trx) => {
+          const user = sqlite.query("SELECT id FROM user WHERE id = ?").get(userId);
+          if (!user) throw new TRPCError({ code: "NOT_FOUND" });
+
+          const [existingFolders, existingTags, existingConversations, existingMessages, existingAttachments] =
+            await Promise.all([
+              history.folders.length
+                ? trx.selectFrom("folder").select("id").where("id", "in", history.folders.map((folder) => folder.id)).execute()
+                : [],
+              history.tags.length
+                ? trx.selectFrom("tag").select("id").where("id", "in", history.tags.map((tag) => tag.id)).execute()
+                : [],
+              history.conversations.length
+                ? trx.selectFrom("conversation").select("id").where("id", "in", history.conversations.map((conversation) => conversation.id)).execute()
+                : [],
+              history.messages.length
+                ? trx.selectFrom("message").select("id").where("id", "in", history.messages.map((message) => message.id)).execute()
+                : [],
+              history.attachments.length
+                ? trx.selectFrom("attachment").select("id").where("id", "in", history.attachments.map((attachment) => attachment.id)).execute()
+                : [],
+            ]);
+          if (
+            existingFolders.length ||
+            existingTags.length ||
+            existingConversations.length ||
+            existingMessages.length ||
+            existingAttachments.length
+          ) {
+            throw new TRPCError({ code: "CONFLICT", message: "History conflicts with existing IDs" });
+          }
+
+          const existingTagNames = history.tags.length
+            ? await trx
+                .selectFrom("tag")
+                .select("name")
+                .where("userId", "=", userId)
+                .where("name", "in", history.tags.map((tag) => tag.name))
+                .execute()
+            : [];
+          if (existingTagNames.length) {
+            throw new TRPCError({ code: "CONFLICT", message: "History conflicts with existing tag names" });
+          }
+
+          if (history.folders.length) {
+            await trx.insertInto("folder").values(history.folders.map((folder) => ({ ...folder, userId }))).execute();
+          }
+          if (history.tags.length) {
+            await trx.insertInto("tag").values(history.tags.map((tag) => ({ ...tag, userId }))).execute();
+          }
+          if (history.conversations.length) {
+            await trx
+              .insertInto("conversation")
+              .values(history.conversations.map((conversation) => ({ ...conversation, userId })))
+              .execute();
+          }
+          if (history.messages.length) {
+            await trx.insertInto("message").values(history.messages).execute();
+          }
+          if (history.attachments.length) {
+            await trx
+              .insertInto("attachment")
+              .values(history.attachments.map((attachment) => ({ ...attachment, userId })))
+              .execute();
+          }
+          if (history.conversationTags.length) {
+            await trx.insertInto("conversation_tag").values(history.conversationTags).execute();
+          }
+        });
+
+        return {
+          folders: history.folders.length,
+          tags: history.tags.length,
+          conversations: history.conversations.length,
+          messages: history.messages.length,
+          attachments: history.attachments.length,
+        };
+      }),
+  }),
 
   setLogLevel: adminProcedure
     .input(z.object({ level: z.enum(["trace", "debug", "info", "warn", "error"]) }))

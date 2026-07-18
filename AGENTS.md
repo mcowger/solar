@@ -97,10 +97,37 @@ you need model calls.
 | `bun run migrate` | Run app (Kysely) migrations against `solar.db` |
 | `bun run migrate:auth` | Run Better Auth's own migrations |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
+| `bun run chat-history -- --help` | Admin CLI for chat inspection and history import/export |
 | `bun run typecheck` | `tsc` for server, web, and shared |
 
 Migrations + codegen run against `apps/server/solar.db` (the server's cwd). To
 capture *all* tables in codegen, run `migrate` **and** `migrate:auth` first.
+
+### Admin chat-history debugging
+
+`bun run chat-history` calls the admin-only tRPC debugging and history APIs on
+the running server. When the seeded development login is available, prefer it:
+`SOLAR_ADMIN_EMAIL=admin@solar.local SOLAR_ADMIN_PASSWORD=password`. Otherwise,
+authenticate with an existing admin session cookie via `SOLAR_SESSION_COOKIE`,
+or set `SOLAR_ADMIN_EMAIL` and `SOLAR_ADMIN_PASSWORD` for another admin.
+Override the target with `SOLAR_URL` (defaults to `http://localhost:3000`).
+Prefer environment variables over credential flags so passwords do not appear
+in shell history.
+
+```bash
+# List a user's chat IDs, then inspect the raw database rows for one chat.
+bun run chat-history -- list --user <user-id>
+bun run chat-history -- inspect --chat <chat-id>
+
+# Download or upload a versioned Solar JSON history bundle.
+bun run chat-history -- export --user <user-id> --output history.json
+bun run chat-history -- import --user <user-id> --input history.json
+
+bun run chat-history -- --help
+```
+
+Imports merge without overwriting and reject ID or tag-name conflicts. History
+bundles include attachment metadata but not the underlying attachment files.
 
 ## Build, run & dev workflow
 
