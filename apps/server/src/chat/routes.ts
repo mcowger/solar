@@ -9,16 +9,20 @@ import { db, sqlite } from "../db";
 import { logger } from "../logger";
 import {
   deleteAttachmentFilesForMessages,
+  attachmentMetadata,
   linkAttachments,
   loadAttachmentContentParts,
 } from "./attachments";
 import {
   getTitlePrompt,
+  documentInputCapabilities,
   resolveSelection,
   resolveTaskModelOrFallback,
+  documentInputMimeTypes,
   type GenerationParams,
 } from "./catalog";
 import { generationManager } from "./generationManager";
+import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
 import { toolProvider } from "./tools";
 
 export const chatRoutes = new Hono();
@@ -52,7 +56,11 @@ async function ownsConversation(userId: string, conversationId: string) {
 async function buildContext(
   conversationId: string,
   systemPrompt?: string | null,
-): Promise<PiContext> {
+  documentInput: DocumentInputCapabilities = {
+    nativeMimeTypes: [],
+    extractedTextMimeTypes: [],
+  },
+): Promise<{ context: PiContext; documents: import("./attachments").NativeDocumentInput[] }> {
   const rows = await db
     .selectFrom("message")
     .select(["id", "role", "text", "parts"])
@@ -62,15 +70,17 @@ async function buildContext(
     .execute();
 
   const messages: PiMessage[] = [];
+  const documents: import("./attachments").NativeDocumentInput[] = [];
   for (const r of rows) {
     if (r.role === "user") {
-      const attachmentParts = await loadAttachmentContentParts(r.id);
+      const attachmentContent = await loadAttachmentContentParts(r.id, documentInput);
+      documents.push(...attachmentContent.documents);
       const content =
-        attachmentParts.length === 0
+        attachmentContent.parts.length === 0
           ? r.text
           : [
               ...(r.text ? [{ type: "text" as const, text: r.text }] : []),
-              ...attachmentParts,
+              ...attachmentContent.parts,
             ];
       messages.push({ role: "user", content, timestamp: Date.now() });
     } else if (r.parts) {
@@ -78,7 +88,10 @@ async function buildContext(
       messages.push(JSON.parse(r.parts) as AssistantMessage);
     }
   }
-  return systemPrompt ? { systemPrompt, messages } : { messages };
+  return {
+    context: systemPrompt ? { systemPrompt, messages } : { messages },
+    documents,
+  };
 }
 
 const sseHeaders = {
@@ -143,6 +156,7 @@ async function streamNewAssistantTurn(
     .selectFrom("conversation")
     .select([
       "provider",
+      "endpointId",
       "modelId",
       "modelApi",
       "systemPrompt",
@@ -156,13 +170,19 @@ async function streamNewAssistantTurn(
   const selection = await resolveSelection(
     {
       provider: convo?.provider ?? undefined,
+      endpointId: convo?.endpointId ?? undefined,
       modelId: convo?.modelId ?? undefined,
       api: convo?.modelApi ?? undefined,
     },
     userId,
     isAdmin,
   );
-  const context = await buildContext(conversationId, convo?.systemPrompt);
+  const documentInput = await documentInputCapabilities(selection);
+  const { context, documents } = await buildContext(
+    conversationId,
+    convo?.systemPrompt,
+    documentInput,
+  );
   const resolvedTools = convo?.autoExecuteTools
     ? await toolProvider.resolve({ userId, conversationId })
     : [];
@@ -176,6 +196,7 @@ async function streamNewAssistantTurn(
     reasoningEffort: convo?.reasoningEffort ?? undefined,
     reasoningSummary: Boolean(convo?.reasoningSummary),
     verbosity: convo?.verbosity ?? undefined,
+    documents,
   };
   const titleTask = titleGeneration
     ? {
@@ -188,6 +209,7 @@ async function streamNewAssistantTurn(
     .updateTable("conversation")
     .set({
       provider: selection.provider,
+      endpointId: selection.endpointId,
       modelId: selection.modelId,
       modelApi: selection.api,
     })
@@ -241,6 +263,33 @@ chatRoutes.post("/", async (c) => {
   }
   if (!(await ownsConversation(user.id, conversationId))) {
     return c.json({ error: "conversation not found" }, 404);
+  }
+  if (attachmentIds?.length) {
+    const attachments = await attachmentMetadata(attachmentIds, user.id);
+    const documentMimeTypes = attachments
+      .filter((attachment) => attachment.kind === "document")
+      .map((attachment) => attachment.mimeType);
+    if (documentMimeTypes.length) {
+      const convo = await db
+        .selectFrom("conversation")
+        .select(["provider", "endpointId", "modelId", "modelApi"])
+        .where("id", "=", conversationId)
+        .executeTakeFirst();
+      const selection = await resolveSelection(
+        {
+          provider: convo?.provider ?? undefined,
+          endpointId: convo?.endpointId ?? undefined,
+          modelId: convo?.modelId ?? undefined,
+          api: convo?.modelApi ?? undefined,
+        },
+        user.id,
+        user.isAdmin,
+      );
+      const supportedMimeTypes = await documentInputMimeTypes(selection);
+      if (documentMimeTypes.some((mimeType) => !supportedMimeTypes.includes(mimeType))) {
+        return c.json({ error: "The selected model does not support one or more document types" }, 400);
+      }
+    }
   }
 
   // Explicit ms-resolution timestamps guarantee stable ordering (SQLite's

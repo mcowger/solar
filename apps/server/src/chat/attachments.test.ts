@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { writeXlsx } from "openjsxl";
 
 type AttachmentRow = {
   id: string;
@@ -6,7 +7,7 @@ type AttachmentRow = {
   messageId: string | null;
   filename: string;
   mimeType: string;
-  kind: "image" | "text";
+  kind: "image" | "text" | "document";
   byteSize: number;
   storageKey: string;
   createdAt: string;
@@ -131,23 +132,27 @@ afterEach(() => {
 });
 
 describe("attachments", () => {
-  test("saves image and text MIME types with their classified kinds", async () => {
+  test("saves image, text, and document MIME types with their classified kinds", async () => {
     const image = await attachments.saveAttachment({
       userId: "user-1", filename: "photo.png", mimeType: "image/png", bytes: new Uint8Array([1]),
     });
     const text = await attachments.saveAttachment({
       userId: "user-1", filename: "note.txt", mimeType: "text/plain", bytes: new Uint8Array([2]),
     });
+    const document = await attachments.saveAttachment({
+      userId: "user-1", filename: "report.pdf", mimeType: "application/pdf", bytes: new Uint8Array([3]),
+    });
 
     expect(image.kind).toBe("image");
     expect(text.kind).toBe("text");
-    expect([...rows.values()].map((saved) => saved.kind)).toEqual(["image", "text"]);
+    expect(document.kind).toBe("document");
+    expect([...rows.values()].map((saved) => saved.kind)).toEqual(["image", "text", "document"]);
   });
 
   test("rejects unsupported MIME types before writing a file or row", async () => {
     await expect(attachments.saveAttachment({
-      userId: "user-1", filename: "report.pdf", mimeType: "application/pdf", bytes: new Uint8Array([1]),
-    })).rejects.toThrow("Unsupported file type: application/pdf");
+      userId: "user-1", filename: "archive.zip", mimeType: "application/zip", bytes: new Uint8Array([1]),
+    })).rejects.toThrow("Unsupported file type: application/zip");
 
     expect(files).toHaveLength(0);
     expect(rows).toHaveLength(0);
@@ -197,13 +202,52 @@ describe("attachments", () => {
     files.set("/user-1/image", new Uint8Array([0, 1, 2]));
     files.set("/user-1/text", new TextEncoder().encode("Hello, Solar!"));
 
-    await expect(attachments.loadAttachmentContentParts("message-1")).resolves.toEqual([
-      { type: "image", data: "AAEC", mimeType: "image/png" },
-      { type: "text", text: '<attachment name="note.txt">\nHello, Solar!\n</attachment>' },
-    ]);
+    await expect(attachments.loadAttachmentContentParts("message-1")).resolves.toEqual({
+      parts: [
+        { type: "image", data: "AAEC", mimeType: "image/png" },
+        { type: "text", text: '<attachment name="note.txt">\nHello, Solar!\n</attachment>' },
+      ],
+      documents: [],
+    });
   });
 
   test("returns no content parts without attachments", async () => {
-    await expect(attachments.loadAttachmentContentParts("missing-message")).resolves.toEqual([]);
+    await expect(attachments.loadAttachmentContentParts("missing-message")).resolves.toEqual({ parts: [], documents: [] });
+  });
+
+  test("loads documents as opaque native inputs only when enabled", async () => {
+    rows.set("document", row({ id: "document", filename: "report.pdf", mimeType: "application/pdf", kind: "document", storageKey: "user-1/document" }));
+    files.set("/user-1/document", new Uint8Array([0, 1, 2]));
+
+    await expect(attachments.loadAttachmentContentParts("message-1")).resolves.toEqual({ parts: [], documents: [] });
+    await expect(attachments.loadAttachmentContentParts("message-1", {
+      nativeMimeTypes: ["application/pdf"],
+      extractedTextMimeTypes: [],
+    })).resolves.toEqual({
+      parts: [{ type: "text", text: "[[solar-document:document]]" }],
+      documents: [{ marker: "[[solar-document:document]]", data: "AAEC", mimeType: "application/pdf", filename: "report.pdf" }],
+    });
+  });
+
+  test("extracts spreadsheet text only for a configured fallback capability", async () => {
+    const bytes = await writeXlsx({
+      sheets: [{ name: "Inventory", rows: [["Item"], ["Solar"]] }],
+    });
+    rows.set("spreadsheet", row({
+      id: "spreadsheet",
+      filename: "inventory.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      kind: "document",
+      storageKey: "user-1/spreadsheet",
+    }));
+    files.set("/user-1/spreadsheet", bytes);
+
+    await expect(attachments.loadAttachmentContentParts("message-1", {
+      nativeMimeTypes: [],
+      extractedTextMimeTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+    })).resolves.toEqual({
+      parts: [{ type: "text", text: "<attachment name=\"inventory.xlsx\">\n[Sheet: Inventory]\nItem\nSolar\n</attachment>" }],
+      documents: [],
+    });
   });
 });

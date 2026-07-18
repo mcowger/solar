@@ -95,7 +95,7 @@ export function Sidebar({
   const ConversationRow = (c: (typeof list)[number]) => (
     <div
       key={c.id}
-      className={`solar-conversation-row${c.id === activeId ? " bg-secondary/15" : ""}`}
+      className={`solar-conversation-row group relative hover:bg-base-200${c.id === activeId ? " bg-secondary/15" : ""}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -122,22 +122,24 @@ export function Sidebar({
         >
           {c.title}
         </button>
-        <button style={rowButton} title="Rename" onClick={() => renameConversation(c.id, c.title)}>✎</button>
-        <button style={rowButton} title="Tags" onClick={() => editTags(c.id, c.tags)}>#</button>
-        <div style={{ position: "relative", width: 20, height: 20 }} title="Move to folder">
-          <FolderInput size={16} color="#888" style={{ position: "absolute", inset: 2, pointerEvents: "none" }} />
-          <select
-            value={c.folderId ?? ""}
-            onChange={(e) => move.mutate({ id: c.id, folderId: e.target.value || null })}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
-          >
-            <option value="">No folder</option>
-            {folderList.map((f) => (
-              <option key={f.id} value={f.id}>{f.name}</option>
-            ))}
-          </select>
+        <div className="invisible absolute top-1.5 right-2 flex items-center gap-1 rounded bg-base-200 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100">
+          <button style={rowButton} title="Rename" onClick={() => renameConversation(c.id, c.title)}>✎</button>
+          <button style={rowButton} title="Tags" onClick={() => editTags(c.id, c.tags)}>#</button>
+          <div style={{ position: "relative", width: 20, height: 20 }} title="Move to folder">
+            <FolderInput size={16} color="#888" style={{ position: "absolute", inset: 2, pointerEvents: "none" }} />
+            <select
+              value={c.folderId ?? ""}
+              onChange={(e) => move.mutate({ id: c.id, folderId: e.target.value || null })}
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer" }}
+            >
+              <option value="">No folder</option>
+              {folderList.map((f) => (
+                <option key={f.id} value={f.id}>{f.name}</option>
+              ))}
+            </select>
+          </div>
+          <button style={rowButton} title="Delete" onClick={() => deleteConversation(c.id)}>🗑</button>
         </div>
-        <button style={rowButton} title="Delete" onClick={() => deleteConversation(c.id)}>🗑</button>
       </div>
       {c.tags.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>

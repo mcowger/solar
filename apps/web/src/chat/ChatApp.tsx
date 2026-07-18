@@ -23,7 +23,11 @@ function ConversationView({ conversationId }: { conversationId: string }) {
   const current = useQuery(
     trpc.model.forConversation.queryOptions({ conversationId }),
   );
-  const runtime = useSolarRuntime(conversationId, current.data?.vision ?? false);
+  const runtime = useSolarRuntime(
+    conversationId,
+    current.data?.vision ?? false,
+    current.data?.documentMimeTypes ?? [],
+  );
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">

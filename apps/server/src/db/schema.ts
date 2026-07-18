@@ -24,6 +24,7 @@ export interface ConversationTable {
   folderId: string | null;
   /** Per-conversation model selection (M3); null = resolve default at send time. */
   provider: string | null;
+  endpointId: string | null;
   modelId: string | null;
   modelApi: string | null;
   /** Generation params snapshotted from the preset chosen at conversation start. */
@@ -72,6 +73,7 @@ export interface PresetTable {
   name: string;
   scope: Generated<string>;
   provider: string;
+  endpointId: string | null;
   modelId: string;
   modelApi: string;
   systemPrompt: string | null;
@@ -87,6 +89,8 @@ export interface ProviderConfigTable {
   provider: string;
   apiKey: string | null;
   baseUrl: string | null;
+  /** JSON array of configured API endpoints. */
+  endpoints: Generated<string>;
   /** JSON array of `{ id, api, visibility }` allowlist entries. */
   enabledModels: Generated<string>;
   updatedAt: Generated<string>;
@@ -129,7 +133,7 @@ export interface MessageTable {
   createdAt: Generated<string>;
 }
 
-export type AttachmentKind = "image" | "text";
+export type AttachmentKind = "image" | "text" | "document";
 
 /**
  * Uploaded file (M3): stored on disk via Mirage, never locally parsed. Rows are
@@ -152,6 +156,7 @@ export interface AttachmentTable {
 export interface UserSettingTable {
   userId: string;
   defaultProvider: string | null;
+  defaultEndpointId: string | null;
   defaultModelId: string | null;
   defaultApi: string | null;
   updatedAt: Generated<string>;

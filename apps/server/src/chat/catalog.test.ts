@@ -5,6 +5,7 @@ interface ProviderConfig {
   provider: string;
   apiKey: string | null;
   baseUrl: string | null;
+  endpoints?: { id: string; label: string; baseUrl: string; api: string }[];
   enabledModels: AllowlistEntry[];
 }
 
@@ -21,6 +22,7 @@ const db = {
         return {
           execute: async () => table === "provider_config" ? state.providerConfigs.map((config) => ({
             ...config,
+            endpoints: JSON.stringify(config.endpoints ?? []),
             enabledModels: JSON.stringify(config.enabledModels),
           })) : [],
           where(column: string, _operator: string, value: string) {
@@ -51,11 +53,13 @@ const catalog = await import("./catalog");
 
 const publicModel = {
   provider: "openai",
+  endpointId: "openai-responses",
   modelId: "public-model",
   api: "openai-responses",
 };
 const privateModel = {
   provider: "anthropic",
+  endpointId: "anthropic-messages",
   modelId: "private-model",
   api: "anthropic-messages",
 };
@@ -71,6 +75,29 @@ function configureModels(...configs: ProviderConfig[]) {
 }
 
 describe("catalog model policy", () => {
+  test("enables text extraction for configured models without a native attachment adapter", async () => {
+    configureModels({
+      provider: "other",
+      apiKey: null,
+      baseUrl: null,
+      enabledModels: [{ id: "text-model", endpointId: "openai-completions", api: "openai-completions", visibility: "public", documents: true }],
+    });
+
+    await expect(catalog.documentInputCapabilities({
+      provider: "other",
+      endpointId: "openai-completions",
+      modelId: "text-model",
+      api: "openai-completions",
+    })).resolves.toEqual({
+      nativeMimeTypes: [],
+      extractedTextMimeTypes: [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ],
+    });
+  });
+
   test("shows private models only to admins and conservatively describes unknown models", async () => {
     configureModels(
       {
@@ -78,24 +105,26 @@ describe("catalog model policy", () => {
         apiKey: null,
         baseUrl: null,
         enabledModels: [
-          { id: publicModel.modelId, api: publicModel.api, visibility: "public" },
-          { id: "private-openai", api: "openai-completions", visibility: "private" },
+          { id: publicModel.modelId, endpointId: publicModel.endpointId, api: publicModel.api, visibility: "public" },
+          { id: "private-openai", endpointId: "openai-completions", api: "openai-completions", visibility: "private" },
         ],
       },
     );
 
     expect(await catalog.listAvailableModels()).toEqual([
-      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false },
+      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false, documents: false },
     ]);
     expect(await catalog.listAvailableModels(true)).toEqual([
-      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false },
+      { ...publicModel, name: publicModel.modelId, reasoning: false, vision: false, documents: false },
       {
         provider: "openai",
+        endpointId: "openai-completions",
         modelId: "private-openai",
         api: "openai-completions",
         name: "private-openai",
         reasoning: false,
         vision: false,
+        documents: false,
       },
     ]);
   });
@@ -106,13 +135,13 @@ describe("catalog model policy", () => {
         provider: "openai",
         apiKey: null,
         baseUrl: null,
-        enabledModels: [{ id: publicModel.modelId, api: publicModel.api, visibility: "public" }],
+        enabledModels: [{ id: publicModel.modelId, endpointId: publicModel.endpointId, api: publicModel.api, visibility: "public" }],
       },
       {
         provider: "anthropic",
         apiKey: null,
         baseUrl: null,
-        enabledModels: [{ id: privateModel.modelId, api: privateModel.api, visibility: "private" }],
+        enabledModels: [{ id: privateModel.modelId, endpointId: privateModel.endpointId, api: privateModel.api, visibility: "private" }],
       },
     );
     state.userSettings.set("user-1", {
@@ -132,7 +161,7 @@ describe("catalog model policy", () => {
       provider: "openai",
       apiKey: null,
       baseUrl: null,
-      enabledModels: [{ id: publicModel.modelId, api: publicModel.api, visibility: "public" }],
+      enabledModels: [{ id: publicModel.modelId, endpointId: publicModel.endpointId, api: publicModel.api, visibility: "public" }],
     });
     state.userSettings.set("user-1", {
       defaultProvider: "removed-provider",
@@ -153,7 +182,7 @@ describe("catalog model policy", () => {
       provider: "openai",
       apiKey: null,
       baseUrl: null,
-      enabledModels: [{ id: publicModel.modelId, api: publicModel.api, visibility: "public" }],
+      enabledModels: [{ id: publicModel.modelId, endpointId: publicModel.endpointId, api: publicModel.api, visibility: "public" }],
     });
 
     state.appMeta.set("task_model", JSON.stringify(publicModel));
@@ -170,20 +199,28 @@ describe("catalog model policy", () => {
       provider: "openrouter",
       apiKey: "configured-key",
       baseUrl: "https://gateway.example/v1",
+      endpoints: [{
+        id: "openai-completions",
+        label: "Chat Completions",
+        baseUrl: "https://gateway.example/v1",
+        api: "openai-completions",
+      }],
       enabledModels: [],
     });
 
-    await expect(catalog.resolveModel({
+    const resolved = await catalog.resolveModel({
       provider: "openrouter",
+      endpointId: "openai-completions",
       modelId: "gateway-model",
       api: "openai-completions",
-    })).resolves.toEqual({
+    });
+    expect(resolved).toMatchObject({
       apiKey: "configured-key",
       model: {
         id: "gateway-model",
         name: "gateway-model",
         api: "openai-completions",
-        provider: "openrouter",
+        provider: "solar:openrouter:openai-completions",
         baseUrl: "https://gateway.example/v1",
         reasoning: false,
         input: ["text"],
@@ -192,7 +229,55 @@ describe("catalog model policy", () => {
         maxTokens: 4096,
       },
     });
-    await expect(catalog.resolveModel({ provider: "mock", modelId: "mock-reasoning", api: "mock" }))
+    await expect(catalog.resolveModel({ provider: "mock", endpointId: "mock", modelId: "mock-reasoning", api: "mock" }))
       .rejects.toThrow("mock provider is not a pi-ai model");
+  });
+
+  test("normalizes Plexus hints and omits non-text-generation models during discovery", async () => {
+    configureModels({
+      provider: "plexus",
+      apiKey: "test-key",
+      baseUrl: null,
+      endpoints: [{
+        id: "responses",
+        label: "Responses",
+        baseUrl: "https://plexus.example/v1",
+        api: "openai-responses",
+      }],
+      enabledModels: [],
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async () => new Response(JSON.stringify({
+      data: [
+        {
+          id: "gpt-test",
+          name: "GPT Test",
+          preferred_api: ["responses"],
+          pi_provider: "openai",
+          pi_model: "gpt-test",
+          pi_options: { supportsToolSearch: true },
+          architecture: { input_modalities: ["text", "image"], output_modalities: ["text"] },
+          supported_parameters: ["reasoning"],
+        },
+        {
+          id: "embedding-test",
+          architecture: { input_modalities: ["text"], output_modalities: ["embeddings"] },
+        },
+      ],
+    }))) as unknown as typeof fetch;
+    try {
+      expect(await catalog.discoverProviderModels("plexus", "responses")).toEqual([{
+        id: "gpt-test",
+        name: "GPT Test",
+        preferredApi: "openai-responses",
+        piProvider: "openai",
+        piModel: "gpt-test",
+        piOptions: { supportsToolSearch: true },
+        reasoning: true,
+        vision: true,
+      }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

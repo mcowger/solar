@@ -4,6 +4,7 @@ import { useTRPC } from "../trpc";
 
 interface ModelDescriptor {
   provider: string;
+  endpointId: string;
   modelId: string;
   api: string;
   name: string;
@@ -19,6 +20,7 @@ interface PresetForm {
   name: string;
   scope: "personal" | "shared";
   provider: string;
+  endpointId: string;
   modelId: string;
   api: string;
   systemPrompt: string;
@@ -27,8 +29,8 @@ interface PresetForm {
   verbosity: string;
 }
 
-function modelKey(m: { provider: string; modelId: string; api: string }) {
-  return `${m.provider}/${m.modelId}/${m.api}`;
+function modelKey(m: { provider: string; endpointId: string; modelId: string; api: string }) {
+  return `${m.provider}/${m.endpointId}/${m.modelId}/${m.api}`;
 }
 
 function emptyForm(models: ModelDescriptor[]): PresetForm {
@@ -37,6 +39,7 @@ function emptyForm(models: ModelDescriptor[]): PresetForm {
     name: "",
     scope: "personal",
     provider: first?.provider ?? "",
+    endpointId: first?.endpointId ?? "",
     modelId: first?.modelId ?? "",
     api: first?.api ?? "",
     systemPrompt: "",
@@ -84,7 +87,7 @@ function PresetEditor({
           value={model ? modelKey(model) : ""}
           onChange={(e) => {
             const m = models.find((x) => modelKey(x) === e.target.value);
-            if (m) onChange({ ...form, provider: m.provider, modelId: m.modelId, api: m.api });
+            if (m) onChange({ ...form, provider: m.provider, endpointId: m.endpointId, modelId: m.modelId, api: m.api });
           }}
         >
           {models.map((m) => (
@@ -189,6 +192,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
       name: form.name,
       scope: form.scope,
       provider: form.provider,
+      endpointId: form.endpointId,
       modelId: form.modelId,
       api: form.api,
       systemPrompt: form.systemPrompt || null,
@@ -239,6 +243,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
                     name: p.name,
                     scope: p.scope as "personal" | "shared",
                     provider: p.provider,
+                    endpointId: p.endpointId ?? p.modelApi,
                     modelId: p.modelId,
                     api: p.modelApi,
                     systemPrompt: p.systemPrompt ?? "",

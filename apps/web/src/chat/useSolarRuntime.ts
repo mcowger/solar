@@ -8,14 +8,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
-import { SolarAttachmentAdapter } from "./attachmentAdapter";
+import { isDocumentMimeType, SolarAttachmentAdapter } from "./attachmentAdapter";
 import { readChunkStream } from "./stream";
 
 interface SolarAttachmentMeta {
   id: string;
   filename: string;
   mimeType: string;
-  kind: "image" | "text";
+  kind: "image" | "text" | "document";
 }
 
 interface SolarMessage {
@@ -82,7 +82,11 @@ const jsonHeaders = { "content-type": "application/json" };
  * reply; after every turn we reload history so local ids match the DB (required
  * for subsequent edit/regenerate, which key off canonical message ids).
  */
-export function useSolarRuntime(conversationId: string, allowImages: boolean) {
+export function useSolarRuntime(
+  conversationId: string,
+  allowImages: boolean,
+  documentMimeTypes: readonly string[],
+) {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<SolarMessage[]>([]);
@@ -232,7 +236,11 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
             id: a.id,
             filename: a.name,
             mimeType: a.contentType ?? "",
-            kind: a.type === "image" ? ("image" as const) : ("text" as const),
+            kind: a.type === "image"
+              ? "image"
+              : isDocumentMimeType(a.contentType)
+                ? "document"
+                : "text",
           })),
         },
       ]);
@@ -285,8 +293,8 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
   }, []);
 
   const attachmentAdapter = useMemo(
-    () => new SolarAttachmentAdapter(allowImages),
-    [allowImages],
+    () => new SolarAttachmentAdapter(allowImages, documentMimeTypes),
+    [allowImages, documentMimeTypes],
   );
 
   return useExternalStoreRuntime({

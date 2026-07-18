@@ -24,6 +24,7 @@ else process.env.SOLAR_MOCK_LLM = originalMockLlm;
 
 const selection = {
   provider: "mock",
+  endpointId: "mock",
   modelId: "mock-reasoning",
   api: "mock",
 };
