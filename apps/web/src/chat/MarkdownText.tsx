@@ -19,7 +19,7 @@ type Citation = {
   favicon: string;
 };
 
-const SOURCE_BLOCK = /(^|\n\n)Sources:\s*([\s\S]*?)(?=\n\n|$)/gi;
+const SOURCE_BLOCK = /(^|\n\n)(?:\*\*|__)?Sources:(?:\*\*|__)?\s*([\s\S]*?)(?=\n\n|$)/gi;
 const MARKDOWN_LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 const MAX_VISIBLE_FAVICONS = 3;
 
