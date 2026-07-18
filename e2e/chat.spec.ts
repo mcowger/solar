@@ -17,7 +17,7 @@ test("signs in and streams a mock chat response", async ({ page }) => {
   await composer.fill(prompt);
   await page.getByTitle("Send").click();
 
-  const response = page.locator(".solar-assistant-output");
+  const response = page.locator(".solar-assistant-output").last();
   await expect(response).toContainText("Mock reply", { timeout: 20_000 });
   await expect(response).toContainText(prompt);
   await response.getByText("4 Sources", { exact: true }).click();
