@@ -6,11 +6,13 @@ import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
   getModelCapabilities,
+  getTaskModel,
   getUserDefault,
   listAvailableModels,
   PROVIDER_APIS,
   resolveSelection,
   setAdminDefault,
+  setTaskModel,
   setUserDefault,
   SUPPORTED_PROVIDERS,
 } from "../chat/catalog";
@@ -634,6 +636,24 @@ const modelRouter = router({
     .input(modelSelectionSchema)
     .mutation(async ({ input }) => {
       await setAdminDefault(input);
+    }),
+
+  taskModel: adminProcedure.query(() => getTaskModel()),
+
+  setTaskModel: adminProcedure
+    .input(modelSelectionSchema)
+    .mutation(async ({ input }) => {
+      const available = await listAvailableModels();
+      const isAvailable = available.some(
+        (model) =>
+          model.provider === input.provider &&
+          model.modelId === input.modelId &&
+          model.api === input.api,
+      );
+      if (!isAvailable) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "model unavailable" });
+      }
+      await setTaskModel(input);
     }),
 });
 
