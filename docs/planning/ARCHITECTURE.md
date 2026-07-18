@@ -156,12 +156,53 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
   richer querying necessary, normalization is an additive change.
 - Search, edit/regenerate, folders/tags, and usage tracking all operate on these
   addressable per-message rows.
+- **Conversation-level settings (M3):** the conversation row carries its selected
+  `provider` + `modelId` + `api` (switchable) plus a snapshot of the applied
+  preset's `systemPrompt` and reasoning/verbosity params (fixed after start).
+  See §6.3.
 
 ### 6.2 Attachments
 
 - **Mirage** provides the storage interface. **Local-disk resource** in v1;
   **S3-compatible resource** later — same application API, no storage-layer
   rewrite (Spike 3).
+- v1 accepts **images and plain-text** files (extensible later). **No local
+  extraction, ever** — text files are read as UTF-8 into a text part; future
+  binary types use provider-native file passthrough, never local parsing.
+- Upload path: a custom assistant-ui **AttachmentAdapter** POSTs to
+  `POST /api/attachments`; files are written to Mirage under a configurable data
+  dir and an `attachment` row FKs the owning message. Attachments (and their disk
+  objects) **cascade-delete** with the message/conversation. Limits: **~20 MB per
+  file**, a few per message, mime-validated (`image/*`, `text/*`).
+- **Vision** is gated by the model catalog (`model.input` includes `"image"`);
+  images are sent as image parts. pi-ai swaps images for a placeholder when the
+  target model is not vision-capable.
+
+### 6.3 Provider, Model & Preset Configuration (M3)
+
+- **Providers (M3 slice):** OpenAI, Anthropic, OpenRouter. **OpenAI supports
+  both APIs** — each allowlist entry selects `openai-completions` or
+  `openai-responses` (pi-ai dispatches transport off `model.api`). Anthropic uses
+  `anthropic-messages`; OpenRouter uses `openai-completions`.
+- **Model allowlist:** admin-curated per provider (seedable from pi-ai's catalog,
+  free-form for custom-baseURL model ids). Model selection is stored **per
+  conversation** (`provider` + `modelId` + `api`) and is **switchable anytime**;
+  cross-provider replay is handled by pi-ai `transform-messages`.
+- **Default model:** user's personal default → admin default → first enabled
+  model.
+- **Presets:** named, owned, `scope ∈ {personal, shared}` (shared editable only
+  by owner/admin). Capture model + system prompt + **capability-gated** fields —
+  **Reasoning Effort** (`ThinkingLevel` via `streamSimple`), **Reasoning Output**
+  (provider reasoning summary via `onPayload`), and **Verbosity**
+  (`openai-responses` only, via `onPayload`). A preset is applied **only at
+  conversation start** (snapshot); afterward only the model is switchable in M3.
+- **Reasoning** streams as pi `thinking`/reasoning content (our
+  `reasoning-delta` UI chunk), rendered in a live-tailing, collapsible "Thinking"
+  box and persisted in the message `parts`.
+- **Cost-free verification:** a **Mock provider** (pi-ai `faux` / echo) is
+  registered in the allowlist under `SOLAR_MOCK_LLM` with reasoning and vision
+  models, so all M3 paths verify at zero cost. UI verification never hits a live
+  provider.
 
 ## 7. Authentication & Identity
 
@@ -187,9 +228,14 @@ Canonical conversation state lives in **our DB**, not in pi's internal state
 
 - Runtime config (DB path, port, OAuth client secrets, Better Auth secret) via
   **environment variables**.
-- **Provider API keys** are stored **in `solar.db` as plaintext**, editable live
-  through the full admin UI. This is a deliberate, accepted simplicity tradeoff
-  (documented; may be revisited if requirements change).
+- **Provider configuration** is **global and admin-owned**, stored **in
+  `solar.db` as plaintext**: one `provider_config` row per provider holding
+  `{ apiKey, baseURL, enabledModels[] }`. Keys as plaintext is a deliberate,
+  accepted simplicity tradeoff (documented; may be revisited). A **custom
+  baseURL** is supported per provider (proxies / gateways / OpenAI-compatible
+  endpoints). Providers are constructed from these rows via pi-ai
+  `createModels`/`setProvider`. Editing lands as a minimal admin settings page in
+  M3 and the full admin UI in M4.
 
 ## 9. Admin & Usage
 

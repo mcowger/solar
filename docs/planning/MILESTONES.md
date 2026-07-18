@@ -87,14 +87,15 @@ reply that persists — the thinnest vertical slice through every layer.
 
 ---
 
-## Milestone 3 — Multi-Provider & Presets
+## Milestone 3 — Multi-Provider & Presets — 🔒 Decisions locked
 
 **Goal:** users choose models and save reusable assistants.
 
 **Includes:**
-- Multiple providers via `pi-ai` (OpenAI, Anthropic, Google, Bedrock, Mistral)
-  selectable per conversation.
-- **Saved presets** (model + system prompt + params): create, edit, use.
+- Multiple providers via `pi-ai` (this slice: **OpenAI, Anthropic, OpenRouter**),
+  selectable per conversation, each with a **custom baseURL**.
+- **Saved presets** (model + system prompt + capability-gated reasoning params):
+  create, edit, use.
 - Preset **sharing within the team** (personal vs shared scope).
 - **Image input (vision)** for capable models via attachments.
 - **File attachments** stored through Mirage (local-disk resource) and passed
@@ -104,6 +105,89 @@ reply that persists — the thinnest vertical slice through every layer.
 - Switching provider/model mid-app works and streams correctly.
 - A saved preset drives a conversation; a shared preset is usable by another user.
 - An image attachment is understood by a vision-capable model.
+
+### Locked decisions (grilling session)
+
+**Providers & credentials**
+- This slice: **OpenAI, Anthropic, OpenRouter**. Every provider config supports a
+  **custom baseURL** (proxies / gateways / OpenAI-compatible endpoints).
+- **OpenAI supports both APIs.** Each OpenAI allowlist entry chooses its `api`:
+  **`openai-completions`** or **`openai-responses`** (same key/baseURL, different
+  transport). The same model id may be enabled under either API. Anthropic uses
+  `anthropic-messages`; OpenRouter uses `openai-completions`.
+- Credentials are **global, admin-owned**: one `provider_config` per provider —
+  `{ apiKey, baseURL, enabledModels[] }` — stored **plaintext in DB** (per §8).
+  A **minimal admin-only settings page ships in M3** to edit it (the full admin
+  UI remains M4). Providers are constructed from DB config via pi-ai
+  `createModels`/`setProvider`.
+
+**Models**
+- **Admin-curated allowlist per provider** (seedable from pi-ai's catalog,
+  free-form to allow custom-baseURL model ids). Users pick from enabled models.
+- Selection is stored **per conversation** (`provider` + `modelId` + `api`) and is
+  **switchable at any time**; each turn uses the current selection. Cross-provider
+  history replay is safe — pi-ai `transform-messages` sanitizes prior assistant
+  turns for the target model (drops provider-specific encrypted reasoning, swaps
+  images for placeholders on non-vision models).
+- **Default model resolution:** user's personal default → admin default → first
+  enabled model. A user sets their personal default via a "make default" action
+  in the model picker (per-user setting).
+
+**Presets**
+- Fields: `name`, `model` (provider+id+api), `systemPrompt`, plus **capability-
+  gated** fields shown only when the selected model/api supports them:
+  - **Reasoning Effort** → pi `ThinkingLevel`, gated by `model.reasoning` /
+    `thinkingLevelMap`; applied via `streamSimple`.
+  - **Reasoning Output** → request a provider **reasoning summary** (OpenAI
+    responses / Anthropic thinking) via per-API `onPayload`.
+  - **Verbosity** → **`openai-responses` only** (`textVerbosity`), via `onPayload`.
+- **Scope/permissions:** anyone creates personal or shared presets; a **shared
+  preset is editable/deletable only by its owner or an admin**.
+- **Application:** a preset is chosen **only at conversation start**, snapshotting
+  model + system prompt + reasoning/verbosity onto the new conversation. After
+  start, **only the model is switchable** in M3; system prompt & reasoning params
+  stay fixed for that conversation.
+
+**Attachments & vision**
+- **Images + plain-text** in v1 (extensible later). **No local extraction, ever**
+  — text files are read as UTF-8 into a text part; future binary types will use
+  provider-native file passthrough, never local parsing.
+- Stored via **Mirage DiskResource** under a configurable data dir. A custom
+  assistant-ui **AttachmentAdapter** POSTs to `POST /api/attachments`; an
+  `attachment` row FKs the message and **cascade-deletes** with it (disk object
+  too). Limits: **~20 MB/file**, a few per message, mime-validated
+  (`image/*`, `text/*`).
+- **Vision** gated by `model.input.includes("image")`; images sent as image parts.
+
+**Reasoning display**
+- Collapsible **"Thinking"** box above the answer — fixed-height **live-tailing**
+  while streaming (not infinitely growing), collapsible with a **full-expand**
+  option. Reasoning persisted in the message `parts`.
+
+**Cost-free verification**
+- Register a **"Mock" provider** in the catalog/allowlist (backed by pi-ai `faux`
+  or the existing echo generator) exposing a reasoning model and a vision model,
+  gated by `SOLAR_MOCK_LLM`, so model selection, presets, reasoning display, and
+  vision all exercise the real code paths at **zero API cost**. **UI verification
+  must never hit a live provider.**
+
+### Build order (walking-skeleton-first)
+
+1. **Model-selection backbone** — `provider_config` table + provider construction
+   from DB (key/baseURL/api); per-conversation `provider`+`modelId`+`api`; route
+   generation off the selection instead of the hard-coded default; register the
+   Mock provider. Refactors the current single-model seam (`models.ts`,
+   `generationManager`, `SOLAR_MOCK_LLM`).
+2. **Admin settings page** (minimal) — configure providers + enabled-model
+   allowlists; admin-gated.
+3. **Model picker + defaults** — per-conversation switch; user/admin default
+   resolution.
+4. **Presets** — `preset` table + CRUD + scope/permissions; choose-at-start flow;
+   capability-gated reasoning fields; wire `streamSimple`/`onPayload`.
+5. **Reasoning display** — live-tailing collapsible Thinking box; persist parts.
+6. **Attachments** — Mirage disk, `POST /api/attachments`, AttachmentAdapter,
+   `attachment` table + cascade; text→text-part injection.
+7. **Vision** — route image parts to vision-capable models.
 
 ---
 
