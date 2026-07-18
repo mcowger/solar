@@ -31,6 +31,18 @@ export interface AppMeta {
   value: string;
 }
 
+export interface Attachment {
+  byteSize: number;
+  createdAt: Generated<string>;
+  filename: string;
+  id: string | null;
+  kind: string;
+  messageId: string | null;
+  mimeType: string;
+  storageKey: string;
+  userId: string;
+}
+
 export interface Conversation {
   createdAt: Generated<string>;
   folderId: string | null;
@@ -144,6 +156,7 @@ export interface Verification {
 export interface DB {
   account: Account;
   app_meta: AppMeta;
+  attachment: Attachment;
   conversation: Conversation;
   conversation_tag: ConversationTag;
   folder: Folder;

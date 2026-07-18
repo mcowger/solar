@@ -1,17 +1,41 @@
 import {
   useExternalStoreRuntime,
+  type CompleteAttachment,
   type ThreadMessageLike,
   type AppendMessage,
 } from "@assistant-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { trpcClient } from "../trpcClient";
+import { SolarAttachmentAdapter } from "./attachmentAdapter";
 import { readChunkStream } from "./stream";
+
+interface SolarAttachmentMeta {
+  id: string;
+  filename: string;
+  mimeType: string;
+  kind: "image" | "text";
+}
 
 interface SolarMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   reasoning?: string;
+  attachments?: SolarAttachmentMeta[];
+}
+
+function toCompleteAttachment(a: SolarAttachmentMeta): CompleteAttachment {
+  return {
+    id: a.id,
+    type: a.kind === "image" ? "image" : "document",
+    name: a.filename,
+    contentType: a.mimeType,
+    status: { type: "complete" },
+    content:
+      a.kind === "image"
+        ? [{ type: "image", image: `/api/attachments/${a.id}` }]
+        : [{ type: "text", text: "" }],
+  };
 }
 
 function convertMessage(m: SolarMessage): ThreadMessageLike {
@@ -22,6 +46,7 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
       ...(m.reasoning ? [{ type: "reasoning" as const, text: m.reasoning }] : []),
       { type: "text", text: m.content },
     ],
+    attachments: m.attachments?.map(toCompleteAttachment),
   };
 }
 
@@ -107,6 +132,7 @@ export function useSolarRuntime(conversationId: string) {
         role: r.role,
         content: r.text,
         reasoning: r.reasoning ?? undefined,
+        attachments: r.attachments.length ? r.attachments : undefined,
       })),
     );
     return rows;
@@ -154,12 +180,23 @@ export function useSolarRuntime(conversationId: string) {
   const onNew = useCallback(
     async (message: AppendMessage) => {
       const text = appendText(message).trim();
-      if (!text) return;
+      const attachmentIds = (message.attachments ?? []).map((a) => a.id);
+      if (!text && attachmentIds.length === 0) return;
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "user", content: text },
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: text,
+          attachments: message.attachments?.map((a) => ({
+            id: a.id,
+            filename: a.name,
+            mimeType: a.contentType ?? "",
+            kind: a.type === "image" ? ("image" as const) : ("text" as const),
+          })),
+        },
       ]);
-      await streamTurn("/api/chat", { conversationId, text });
+      await streamTurn("/api/chat", { conversationId, text, attachmentIds });
     },
     [conversationId, streamTurn],
   );
@@ -207,6 +244,8 @@ export function useSolarRuntime(conversationId: string) {
     abortRef.current?.abort();
   }, []);
 
+  const attachmentAdapter = useMemo(() => new SolarAttachmentAdapter(), []);
+
   return useExternalStoreRuntime({
     messages,
     isRunning,
@@ -215,5 +254,6 @@ export function useSolarRuntime(conversationId: string) {
     onEdit,
     onReload,
     onCancel,
+    adapters: { attachments: attachmentAdapter },
   });
 }

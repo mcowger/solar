@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { db } from "../db";
+import { deleteAttachmentFilesForMessages } from "../chat/attachments";
 import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
@@ -176,6 +177,12 @@ const conversationRouter = router({
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await assertOwnsConversation(ctx.user.id, input.id);
+      const messages = await db
+        .selectFrom("message")
+        .select("id")
+        .where("conversationId", "=", input.id)
+        .execute();
+      await deleteAttachmentFilesForMessages(messages.map((m) => m.id));
       await db.deleteFrom("conversation").where("id", "=", input.id).execute();
     }),
 
@@ -279,6 +286,25 @@ const conversationRouter = router({
         .orderBy("createdAt", "asc")
         .execute();
 
+      const attachments = messages.length
+        ? await db
+            .selectFrom("attachment")
+            .select(["id", "messageId", "filename", "mimeType", "kind"])
+            .where(
+              "messageId",
+              "in",
+              messages.map((m) => m.id),
+            )
+            .execute()
+        : [];
+      const attachmentsByMessage = new Map<string, typeof attachments>();
+      for (const a of attachments) {
+        if (!a.messageId) continue;
+        const list = attachmentsByMessage.get(a.messageId) ?? [];
+        list.push(a);
+        attachmentsByMessage.set(a.messageId, list);
+      }
+
       return messages.map((m) => {
         const reasoning = extractReasoning(m.parts);
         return {
@@ -288,6 +314,12 @@ const conversationRouter = router({
           status: m.status,
           createdAt: m.createdAt,
           reasoning,
+          attachments: (attachmentsByMessage.get(m.id) ?? []).map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            kind: a.kind,
+          })),
           isActive: m.status === "generating" && generationManager.isActive(m.id),
         };
       });

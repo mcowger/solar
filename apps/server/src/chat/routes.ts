@@ -6,6 +6,11 @@ import type {
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db } from "../db";
+import {
+  deleteAttachmentFilesForMessages,
+  linkAttachments,
+  loadAttachmentContentParts,
+} from "./attachments";
 import { resolveSelection, type GenerationParams } from "./catalog";
 import { generationManager } from "./generationManager";
 
@@ -33,7 +38,7 @@ async function buildContext(
 ): Promise<PiContext> {
   const rows = await db
     .selectFrom("message")
-    .select(["role", "text", "parts"])
+    .select(["id", "role", "text", "parts"])
     .where("conversationId", "=", conversationId)
     .where("status", "=", "complete")
     .orderBy("createdAt", "asc")
@@ -42,7 +47,15 @@ async function buildContext(
   const messages: PiMessage[] = [];
   for (const r of rows) {
     if (r.role === "user") {
-      messages.push({ role: "user", content: r.text, timestamp: Date.now() });
+      const attachmentParts = await loadAttachmentContentParts(r.id);
+      const content =
+        attachmentParts.length === 0
+          ? r.text
+          : [
+              ...(r.text ? [{ type: "text" as const, text: r.text }] : []),
+              ...attachmentParts,
+            ];
+      messages.push({ role: "user", content, timestamp: Date.now() });
     } else if (r.parts) {
       // Full pi assistant message was persisted — replay it verbatim.
       messages.push(JSON.parse(r.parts) as AssistantMessage);
@@ -56,6 +69,27 @@ const sseHeaders = {
   "cache-control": "no-cache",
   connection: "keep-alive",
 };
+
+/** Deletes messages matching the predicate, freeing their attachments' on-disk
+ * files first (SQLite's ON DELETE CASCADE only removes the DB rows). */
+async function deleteMessages(
+  conversationId: string,
+  createdAt: string,
+  op: ">" | ">=",
+): Promise<void> {
+  const toDelete = await db
+    .selectFrom("message")
+    .select("id")
+    .where("conversationId", "=", conversationId)
+    .where("createdAt", op, createdAt)
+    .execute();
+  await deleteAttachmentFilesForMessages(toDelete.map((m) => m.id));
+  await db
+    .deleteFrom("message")
+    .where("conversationId", "=", conversationId)
+    .where("createdAt", op, createdAt)
+    .execute();
+}
 
 /** Look up a message with its owning user id (for authorization). */
 async function getOwnedMessage(userId: string, messageId: string) {
@@ -155,12 +189,17 @@ chatRoutes.post("/", async (c) => {
   const userId = await requireUserId(c.req.raw);
   if (!userId) return c.json({ error: "unauthorized" }, 401);
 
-  const { conversationId, text } = (await c.req.json()) as {
+  const { conversationId, text, attachmentIds } = (await c.req.json()) as {
     conversationId: string;
     text: string;
+    attachmentIds?: string[];
   };
-  if (!conversationId || !text?.trim()) {
-    return c.json({ error: "conversationId and text are required" }, 400);
+  const hasAttachments = Boolean(attachmentIds?.length);
+  if (!conversationId || (!text?.trim() && !hasAttachments)) {
+    return c.json(
+      { error: "conversationId and text or an attachment are required" },
+      400,
+    );
   }
   if (!(await ownsConversation(userId, conversationId))) {
     return c.json({ error: "conversation not found" }, 404);
@@ -168,17 +207,21 @@ chatRoutes.post("/", async (c) => {
 
   // Explicit ms-resolution timestamps guarantee stable ordering (SQLite's
   // CURRENT_TIMESTAMP is only second-resolution). User precedes assistant.
+  const userMessageId = crypto.randomUUID();
   await db
     .insertInto("message")
     .values({
-      id: crypto.randomUUID(),
+      id: userMessageId,
       conversationId,
       role: "user",
-      text,
+      text: text ?? "",
       status: "complete",
       createdAt: new Date().toISOString(),
     })
     .execute();
+  if (attachmentIds?.length) {
+    await linkAttachments(attachmentIds, userId, userMessageId);
+  }
 
   return streamNewAssistantTurn(conversationId, userId);
 });
@@ -203,11 +246,7 @@ chatRoutes.post("/edit", async (c) => {
     return c.json({ error: "only user messages can be edited" }, 400);
   }
 
-  await db
-    .deleteFrom("message")
-    .where("conversationId", "=", msg.conversationId)
-    .where("createdAt", ">", msg.createdAt)
-    .execute();
+  await deleteMessages(msg.conversationId, msg.createdAt, ">");
   await db
     .updateTable("message")
     .set({ text })
@@ -231,13 +270,11 @@ chatRoutes.post("/regenerate", async (c) => {
   const msg = await getOwnedMessage(userId, messageId);
   if (!msg) return c.json({ error: "message not found" }, 404);
 
-  const q = db
-    .deleteFrom("message")
-    .where("conversationId", "=", msg.conversationId);
-  await (msg.role === "assistant"
-    ? q.where("createdAt", ">=", msg.createdAt)
-    : q.where("createdAt", ">", msg.createdAt)
-  ).execute();
+  await deleteMessages(
+    msg.conversationId,
+    msg.createdAt,
+    msg.role === "assistant" ? ">=" : ">",
+  );
 
   return streamNewAssistantTurn(msg.conversationId, userId);
 });

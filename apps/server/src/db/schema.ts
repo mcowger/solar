@@ -101,6 +101,25 @@ export interface MessageTable {
   createdAt: Generated<string>;
 }
 
+export type AttachmentKind = "image" | "text";
+
+/**
+ * Uploaded file (M3): stored on disk via Mirage, never locally parsed. Rows are
+ * created on upload (`messageId` null) and linked to the message they're sent
+ * with; unlinked rows are orphaned uploads pending removal or send.
+ */
+export interface AttachmentTable {
+  id: string;
+  userId: string;
+  messageId: string | null;
+  filename: string;
+  mimeType: string;
+  kind: AttachmentKind;
+  byteSize: number;
+  storageKey: string;
+  createdAt: Generated<string>;
+}
+
 /** Per-user preferences (M3): currently the personal default model. */
 export interface UserSettingTable {
   userId: string;
@@ -120,4 +139,5 @@ export interface Database {
   conversation_tag: ConversationTagTable;
   provider_config: ProviderConfigTable;
   preset: PresetTable;
+  attachment: AttachmentTable;
 }

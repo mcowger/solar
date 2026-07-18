@@ -53,3 +53,46 @@
   margin-top: 4px;
   color: #555;
 }
+
+.solar-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eef1f5;
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin: 2px 4px 2px 0;
+  font-size: 12px;
+  color: #444;
+}
+
+.solar-attachment-thumb {
+  width: 24px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.solar-attachment-icon {
+  font-size: 14px;
+}
+
+.solar-attachment-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.solar-attachment-remove {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #888;
+  display: inline-flex;
+  padding: 0;
+}
+
+.solar-attachment-remove:hover {
+  color: #c00;
+}

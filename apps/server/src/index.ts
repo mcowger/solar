@@ -7,6 +7,7 @@ import { db, sqlite } from "./db";
 import { migrateAuth } from "./db/migrate-auth";
 import { migrateToLatest } from "./db/migrate";
 import { seedDevUser } from "./db/seed-dev";
+import { attachmentRoutes } from "./chat/attachmentRoutes";
 import { chatRoutes } from "./chat/routes";
 import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
@@ -44,6 +45,7 @@ app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
 // Decoupled chat streaming (SSE) — see chat/generationManager.ts.
 app.route("/api/chat", chatRoutes);
+app.route("/api/attachments", attachmentRoutes);
 
 app.use(
   "/trpc/*",
@@ -64,6 +66,8 @@ const server = Bun.serve({
     "/api/auth/*": (req) => app.fetch(req),
     "/api/chat/*": (req) => app.fetch(req),
     "/api/chat": (req) => app.fetch(req),
+    "/api/attachments/*": (req) => app.fetch(req),
+    "/api/attachments": (req) => app.fetch(req),
     "/healthz": (req) => app.fetch(req),
     "/*": index,
   },
