@@ -114,6 +114,9 @@ Override the target with `SOLAR_URL` (defaults to `http://localhost:3000`).
 Prefer environment variables over credential flags so passwords do not appear
 in shell history.
 
+For live staging information, set `SOLAR_URL=https://solar.home.cowger.us` and
+`SOLAR_ADMIN_EMAIL=devuser@cowger.us`.   For staging only, you may user the staging (non secret) password: "password".
+
 ```bash
 # List a user's chat IDs, then inspect the raw database rows for one chat.
 bun run chat-history -- list --user <user-id>

@@ -73,10 +73,10 @@ async function trpcRequest(
   const headers = new Headers({ cookie });
   let body: string | undefined;
   if (method === "GET") {
-    requestUrl.searchParams.set("input", JSON.stringify({ json: input }));
+    requestUrl.searchParams.set("input", JSON.stringify(input));
   } else {
     headers.set("content-type", "application/json");
-    body = JSON.stringify({ json: input });
+    body = JSON.stringify(input);
   }
 
   const response = await fetch(requestUrl, { method, headers, body });

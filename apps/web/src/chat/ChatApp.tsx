@@ -1,7 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { LogOut, Menu, Server, Settings2, SlidersHorizontal } from "lucide-react";
+import { Hash, LogOut, Menu, Server, Settings2, SlidersHorizontal } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { ThemeToggle } from "../ThemeToggle";
@@ -47,6 +47,7 @@ export function ChatApp() {
   const [showMcpServers, setShowMcpServers] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
+  const [copiedChatId, setCopiedChatId] = useState<string>();
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
 
@@ -106,6 +107,12 @@ export function ChatApp() {
     window.addEventListener("pointercancel", stopResize);
   }
 
+  async function copyChatId() {
+    if (!activeId) return;
+    await navigator.clipboard.writeText(activeId);
+    setCopiedChatId(activeId);
+  }
+
   return (
     <div className="drawer min-[650px]:drawer-open solar-app h-dvh" style={{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties}>
       <input id="solar-drawer" type="checkbox" className="drawer-toggle" checked={drawerOpen} onChange={(event) => setDrawerOpen(event.target.checked)} />
@@ -113,6 +120,7 @@ export function ChatApp() {
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
           <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
           <div className="navbar-end gap-1 sm:gap-2">
+            {activeId && <div className="tooltip tooltip-bottom hidden sm:block" data-tip="Copy chat ID"><button className="btn btn-ghost btn-xs h-7 min-h-0 gap-1 px-2 font-mono text-[11px] font-normal opacity-45 hover:opacity-100" onClick={() => void copyChatId()}><Hash size={13} />{copiedChatId === activeId ? "Copied" : activeId.slice(0, 8)}</button></div>}
             <div className="tooltip tooltip-bottom" data-tip="Presets"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowPresets(true); setShowSettings(false); setShowMcpServers(false); }}><SlidersHorizontal size={18} /></button></div>
             <div className="tooltip tooltip-bottom" data-tip="MCP servers"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowMcpServers(true); setShowSettings(false); setShowPresets(false); }}><Server size={18} /></button></div>
            {isAdmin && (
