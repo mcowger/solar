@@ -164,17 +164,19 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
   const streamTurn = useCallback(
     async (url: string, body: unknown) => {
       const abort = new AbortController();
+      const displayId = crypto.randomUUID();
       abortRef.current = abort;
+      upsertAssistant(displayId, "");
       const res = await fetch(url, {
         method: "POST",
         headers: jsonHeaders,
         body: JSON.stringify(body),
         signal: abort.signal,
       });
-      await consume(res, crypto.randomUUID());
+      await consume(res, displayId);
       await loadHistory();
     },
-    [consume, loadHistory],
+    [consume, loadHistory, upsertAssistant],
   );
 
   const onNew = useCallback(

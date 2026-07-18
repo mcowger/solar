@@ -27,6 +27,17 @@
   color: #111;
 }
 
+.solar-response-loader {
+  animation: solar-response-loader-spin 0.8s linear infinite;
+  color: #666;
+}
+
+@keyframes solar-response-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .solar-reasoning {
   margin-bottom: 6px;
   font-size: 13px;

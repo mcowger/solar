@@ -7,7 +7,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Copy, Paperclip, Podcast, Repeat2, SquarePen, X } from "lucide-react";
+import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
@@ -129,12 +129,22 @@ function UserEditComposer() {
 }
 
 function AssistantMessage() {
+  const isEmpty = useAuiState((s) =>
+    s.message.content.every((part) =>
+      part.type === "text" ? !part.text : part.type === "reasoning" ? !part.text : true,
+    ),
+  );
+
   return (
     <div className="solar-message" style={{ alignSelf: "flex-start", maxWidth: "80%", display: "flex", flexDirection: "column", gap: 2 }}>
       <div style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}>
-        <MessagePrimitive.Content
-          components={{ Text: MarkdownText, Reasoning }}
-        />
+        {isEmpty ? (
+          <LoaderCircle className="solar-response-loader" size={18} />
+        ) : (
+          <MessagePrimitive.Content
+            components={{ Text: MarkdownText, Reasoning }}
+          />
+        )}
       </div>
       <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
         <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">
