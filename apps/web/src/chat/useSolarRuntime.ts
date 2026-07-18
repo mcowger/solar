@@ -11,10 +11,18 @@ interface SolarMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  reasoning?: string;
 }
 
 function convertMessage(m: SolarMessage): ThreadMessageLike {
-  return { id: m.id, role: m.role, content: [{ type: "text", text: m.content }] };
+  return {
+    id: m.id,
+    role: m.role,
+    content: [
+      ...(m.reasoning ? [{ type: "reasoning" as const, text: m.reasoning }] : []),
+      { type: "text", text: m.content },
+    ],
+  };
 }
 
 function appendText(message: AppendMessage): string {
@@ -41,15 +49,20 @@ export function useSolarRuntime(conversationId: string) {
   const assistantIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const upsertAssistant = useCallback((id: string, text: string) => {
-    setMessages((prev) => {
-      const exists = prev.some((m) => m.id === id);
-      if (exists) {
-        return prev.map((m) => (m.id === id ? { ...m, content: text } : m));
-      }
-      return [...prev, { id, role: "assistant", content: text }];
-    });
-  }, []);
+  const upsertAssistant = useCallback(
+    (id: string, text: string, reasoning?: string) => {
+      setMessages((prev) => {
+        const exists = prev.some((m) => m.id === id);
+        if (exists) {
+          return prev.map((m) =>
+            m.id === id ? { ...m, content: text, reasoning } : m,
+          );
+        }
+        return [...prev, { id, role: "assistant", content: text, reasoning }];
+      });
+    },
+    [],
+  );
 
   const consume = useCallback(
     async (response: Response, displayId: string) => {
@@ -60,15 +73,19 @@ export function useSolarRuntime(conversationId: string) {
       assistantIdRef.current =
         response.headers.get("x-message-id") ?? assistantIdRef.current;
       let text = "";
+      let reasoning = "";
       setIsRunning(true);
       try {
         await readChunkStream(response, (chunk) => {
           if (chunk.type === "text-delta") {
             text += chunk.textDelta;
-            upsertAssistant(displayId, text);
+            upsertAssistant(displayId, text, reasoning || undefined);
+          } else if (chunk.type === "reasoning-delta") {
+            reasoning += chunk.delta;
+            upsertAssistant(displayId, text, reasoning);
           } else if (chunk.type === "error") {
             text += `\n\n_Error: ${chunk.errorText}_`;
-            upsertAssistant(displayId, text);
+            upsertAssistant(displayId, text, reasoning || undefined);
           }
         });
       } finally {
@@ -84,7 +101,14 @@ export function useSolarRuntime(conversationId: string) {
   // stay in sync with the DB. Returns the rows (for the resume check).
   const loadHistory = useCallback(async () => {
     const rows = await trpcClient.conversation.messages.query({ conversationId });
-    setMessages(rows.map((r) => ({ id: r.id, role: r.role, content: r.text })));
+    setMessages(
+      rows.map((r) => ({
+        id: r.id,
+        role: r.role,
+        content: r.text,
+        reasoning: r.reasoning ?? undefined,
+      })),
+    );
     return rows;
   }, [conversationId]);
 

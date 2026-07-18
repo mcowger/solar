@@ -3,10 +3,47 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
 import { Copy, Repeat2, SquarePen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { MarkdownText } from "./MarkdownText";
 import "./Thread.css";
+
+/** Live-tailing, collapsible "Thinking" box for reasoning message parts. */
+function Reasoning() {
+  const text = useAuiState((s) =>
+    s.part.type === "reasoning" ? s.part.text : "",
+  );
+  const isRunning = useAuiState((s) => s.part.status.type === "running");
+  const [open, setOpen] = useState(isRunning);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && bodyRef.current) {
+      bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+    }
+  }, [text, open]);
+
+  if (!text) return null;
+
+  return (
+    <div className="solar-reasoning">
+      <button
+        type="button"
+        className="solar-reasoning-toggle"
+        onClick={() => setOpen((o) => !o)}
+      >
+        {isRunning ? "Thinking…" : "Thinking"} {open ? "▾" : "▸"}
+      </button>
+      {open && (
+        <div className="solar-reasoning-body" ref={bodyRef}>
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const iconButton: React.CSSProperties = {
   border: "none",
@@ -54,7 +91,9 @@ function AssistantMessage() {
   return (
     <div className="solar-message" style={{ alignSelf: "flex-start", maxWidth: "80%", display: "flex", flexDirection: "column", gap: 2 }}>
       <div style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}>
-        <MessagePrimitive.Content components={{ Text: MarkdownText }} />
+        <MessagePrimitive.Content
+          components={{ Text: MarkdownText, Reasoning }}
+        />
       </div>
       <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
         <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">

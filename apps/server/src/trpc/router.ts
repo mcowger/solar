@@ -44,6 +44,20 @@ async function assertOwnsConversation(userId: string, conversationId: string) {
   if (!convo) throw new TRPCError({ code: "NOT_FOUND" });
 }
 
+/** Pulls the persisted "thinking" text out of a full pi AssistantMessage JSON. */
+function extractReasoning(parts: string | null): string | null {
+  if (!parts) return null;
+  try {
+    const parsed = JSON.parse(parts) as {
+      content?: { type: string; thinking?: string }[];
+    };
+    const thinking = parsed.content?.find((c) => c.type === "thinking");
+    return thinking?.thinking ?? null;
+  } catch {
+    return null;
+  }
+}
+
 const conversationRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const conversations = await db
@@ -260,15 +274,23 @@ const conversationRouter = router({
 
       const messages = await db
         .selectFrom("message")
-        .select(["id", "role", "text", "status", "createdAt"])
+        .select(["id", "role", "text", "status", "parts", "createdAt"])
         .where("conversationId", "=", input.conversationId)
         .orderBy("createdAt", "asc")
         .execute();
 
-      return messages.map((m) => ({
-        ...m,
-        isActive: m.status === "generating" && generationManager.isActive(m.id),
-      }));
+      return messages.map((m) => {
+        const reasoning = extractReasoning(m.parts);
+        return {
+          id: m.id,
+          role: m.role,
+          text: m.text,
+          status: m.status,
+          createdAt: m.createdAt,
+          reasoning,
+          isActive: m.status === "generating" && generationManager.isActive(m.id),
+        };
+      });
     }),
 });
 

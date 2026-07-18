@@ -26,3 +26,30 @@
   background: #e9e9e9;
   color: #111;
 }
+
+.solar-reasoning {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #555;
+}
+
+.solar-reasoning-toggle {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 0;
+  color: #777;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.solar-reasoning-body {
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  background: #e9e9e9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  color: #555;
+}
