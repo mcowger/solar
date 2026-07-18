@@ -30,13 +30,14 @@
 .solar-tool-calls {
   display: grid;
   gap: 4px;
-  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 .solar-tool-call {
   border-radius: 8px;
-  background: #e9e9e9;
-  color: #555;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  color: var(--color-base-content);
   font-size: 12px;
   overflow: hidden;
 }
@@ -55,7 +56,7 @@
 }
 
 .solar-tool-status {
-  background: #888;
+  background: color-mix(in oklch, var(--color-base-content) 45%, transparent);
   border-radius: 50%;
   height: 6px;
   width: 6px;
@@ -64,19 +65,19 @@
 .solar-tool-status-streaming,
 .solar-tool-status-executing {
   animation: solar-tool-status-pulse 0.9s ease-in-out infinite alternate;
-  background: #4f7dbf;
+  background: var(--color-info);
 }
 
 .solar-tool-status-complete {
-  background: #4c8a5c;
+  background: var(--color-success);
 }
 
 .solar-tool-status-error {
-  background: #b84c4c;
+  background: var(--color-error);
 }
 
 .solar-tool-name {
-  color: #333;
+  color: var(--color-base-content);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -84,19 +85,19 @@
 }
 
 .solar-tool-state {
-  color: #777;
+  color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
   margin-left: auto;
 }
 
 .solar-tool-call-details {
-  border-top: 1px solid #ddd;
+  border-top: 1px solid var(--color-base-300);
   display: grid;
   gap: 3px;
   padding: 6px 8px 8px;
 }
 
 .solar-tool-call-details span {
-  color: #777;
+  color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
   font-size: 11px;
 }
 

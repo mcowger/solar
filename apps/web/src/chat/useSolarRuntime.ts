@@ -30,6 +30,8 @@ interface SolarMessage {
 export interface SolarToolCall {
   id: string;
   name: string;
+  serverName?: string;
+  remoteName?: string;
   args: string;
   status: "streaming" | "executing" | "complete" | "error";
   output?: string;
@@ -127,7 +129,7 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
             reasoning += chunk.delta;
             upsertAssistant(displayId, text, reasoning, toolCalls);
           } else if (chunk.type === "tool-call-start") {
-            toolCalls = [...toolCalls, { id: chunk.toolCallId, name: chunk.toolName, args: "", status: "streaming" }];
+            toolCalls = [...toolCalls, { id: chunk.toolCallId, name: chunk.toolName, serverName: chunk.serverName, remoteName: chunk.remoteName, args: "", status: "streaming" }];
             upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
           } else if (chunk.type === "tool-call-delta") {
             toolCalls = toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, args: call.args + chunk.argsText } : call);
@@ -167,7 +169,7 @@ export function useSolarRuntime(conversationId: string, allowImages: boolean) {
         role: r.role,
         content: r.text,
         reasoning: r.reasoning ?? undefined,
-        toolCalls: toolCallsByMessageRef.current.get(r.id),
+        toolCalls: toolCallsByMessageRef.current.get(r.id) ?? r.toolCalls,
         attachments: r.attachments.length ? r.attachments : undefined,
       })),
     );

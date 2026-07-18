@@ -12,7 +12,7 @@ export type UiChunk =
   | { type: "start"; messageId: string }
   | { type: "text-delta"; textDelta: string }
   | { type: "reasoning-delta"; delta: string }
-  | { type: "tool-call-start"; toolCallId: string; toolName: string }
+  | { type: "tool-call-start"; toolCallId: string; toolName: string; serverName?: string; remoteName?: string }
   | { type: "tool-call-delta"; toolCallId: string; argsText: string }
   | { type: "tool-call-end"; toolCallId: string }
   | {
@@ -40,7 +40,7 @@ export interface ToolCallResultEvent {
  * Maps a single pi-ai event to zero or more UI chunks. The generation loop owns
  * iteration + buffering; this stays a pure mapping (per the Spike 1 adapter).
  */
-export function piEventToUiChunks(event: AssistantMessageEvent | ToolCallResultEvent): UiChunk[] {
+export function piEventToUiChunks(event: AssistantMessageEvent | ToolCallResultEvent, toolDisplayNames: Map<string, { serverName: string; remoteName: string }>): UiChunk[] {
   if (event.type === "tool-call-result") return [event];
   switch (event.type) {
     case "text_delta":
@@ -50,11 +50,13 @@ export function piEventToUiChunks(event: AssistantMessageEvent | ToolCallResultE
     case "toolcall_start": {
       const tool = event.partial.content[event.contentIndex];
       if (tool?.type === "toolCall") {
+        const displayName = toolDisplayNames.get(tool.name);
         return [
           {
             type: "tool-call-start",
             toolCallId: tool.id,
             toolName: tool.name,
+            ...displayName,
           },
         ];
       }

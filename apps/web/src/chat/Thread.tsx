@@ -99,7 +99,7 @@ function ToolCalls() {
         <details key={call.id} className="solar-tool-call" open={call.status === "streaming" || call.status === "executing"}>
           <summary>
             <span className={`solar-tool-status solar-tool-status-${call.status}`} />
-            <span className="solar-tool-name">{call.name}</span>
+            <span className="solar-tool-name">{call.serverName && call.remoteName ? `${call.serverName} (${call.remoteName})` : call.name}</span>
             <span className="solar-tool-state">{call.status === "streaming" ? "Preparing" : call.status === "executing" ? "Running" : call.status === "error" ? "Failed" : "Complete"}</span>
           </summary>
           <div className="solar-tool-call-details">
@@ -167,7 +167,8 @@ function AssistantMessage() {
 
   return (
     <div className="solar-message" style={{ alignSelf: "flex-start", maxWidth: "80%", display: "flex", flexDirection: "column", gap: 2 }}>
-      <div style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}>
+      <ToolCalls />
+      <div className="solar-assistant-output" style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}>
         {isEmpty ? (
           <LoaderCircle className="solar-response-loader" size={18} />
         ) : (
@@ -175,7 +176,6 @@ function AssistantMessage() {
             components={{ Text: MarkdownText, Reasoning }}
           />
         )}
-        <ToolCalls />
       </div>
       <ActionBarPrimitive.Root className="solar-actions" style={{ display: "flex", gap: 4 }}>
         <ActionBarPrimitive.Reload className="solar-action-btn" aria-label="Regenerate response">

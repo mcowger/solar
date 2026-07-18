@@ -67,6 +67,16 @@ function extractReasoning(parts: string | null): string | null {
   }
 }
 
+function extractToolCalls(parts: string | null) {
+  if (!parts) return [];
+  try {
+    const parsed = JSON.parse(parts) as { solarToolCalls?: unknown };
+    return Array.isArray(parsed.solarToolCalls) ? parsed.solarToolCalls : [];
+  } catch {
+    return [];
+  }
+}
+
 const conversationRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const conversations = await db
@@ -368,6 +378,7 @@ const conversationRouter = router({
 
       return messages.map((m) => {
         const reasoning = extractReasoning(m.parts);
+        const toolCalls = extractToolCalls(m.parts);
         return {
           id: m.id,
           role: m.role,
@@ -375,6 +386,7 @@ const conversationRouter = router({
           status: m.status,
           createdAt: m.createdAt,
           reasoning,
+          toolCalls,
           attachments: (attachmentsByMessage.get(m.id) ?? []).map((a) => ({
             id: a.id,
             filename: a.filename,

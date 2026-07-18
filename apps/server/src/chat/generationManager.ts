@@ -30,7 +30,18 @@ interface Generation {
   subscribers: Set<Subscriber>;
   text: string;
   parts: unknown | null;
+  toolCalls: PersistedToolCall[];
   usage: { inputTokens: number; outputTokens: number } | null;
+}
+
+interface PersistedToolCall {
+  id: string;
+  name: string;
+  serverName?: string;
+  remoteName?: string;
+  args: string;
+  status: "streaming" | "executing" | "complete" | "error";
+  output?: string;
 }
 
 interface TitleGeneration {
@@ -85,6 +96,7 @@ class GenerationManager {
       subscribers: new Set(),
       text: "",
       parts: null,
+      toolCalls: [],
       usage: null,
     };
     this.generations.set(opts.messageId, gen);
@@ -164,6 +176,7 @@ class GenerationManager {
       gen.chunks.push(bc);
       for (const s of gen.subscribers) s.push(bc);
     };
+    const toolDisplayNames = new Map(tools.map(({ tool, serverName, remoteName }) => [tool.name, { serverName, remoteName }]));
 
     emit({ type: "start", messageId: gen.messageId });
 
@@ -187,7 +200,18 @@ class GenerationManager {
             outputTokens: event.message.usage.output,
           };
         }
-        for (const chunk of piEventToUiChunks(event)) emit(chunk);
+        for (const chunk of piEventToUiChunks(event, toolDisplayNames)) {
+          if (chunk.type === "tool-call-start") {
+            gen.toolCalls.push({ id: chunk.toolCallId, name: chunk.toolName, serverName: chunk.serverName, remoteName: chunk.remoteName, args: "", status: "streaming" });
+          } else if (chunk.type === "tool-call-delta") {
+            gen.toolCalls = gen.toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, args: call.args + chunk.argsText } : call);
+          } else if (chunk.type === "tool-call-end") {
+            gen.toolCalls = gen.toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, status: "executing" } : call);
+          } else if (chunk.type === "tool-call-result") {
+            gen.toolCalls = gen.toolCalls.map((call) => call.id === chunk.toolCallId ? { ...call, output: chunk.output, status: chunk.isError ? "error" : "complete" } : call);
+          }
+          emit(chunk);
+        }
       }
       const title = await titlePromise;
       if (title) emit({ type: "title-update", title });
@@ -249,7 +273,7 @@ class GenerationManager {
       .updateTable("message")
       .set({
         text: gen.text,
-        parts: gen.parts ? JSON.stringify(gen.parts) : null,
+        parts: gen.parts ? JSON.stringify({ ...(gen.parts as Record<string, unknown>), solarToolCalls: gen.toolCalls }) : null,
         status,
         model: gen.model,
         inputTokens: gen.usage?.inputTokens ?? null,

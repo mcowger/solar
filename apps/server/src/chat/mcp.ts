@@ -5,6 +5,8 @@ import { db } from "../db";
 
 export interface ResolvedTool {
   tool: Tool;
+  serverName: string;
+  remoteName: string;
   execute: (args: Record<string, unknown>) => Promise<{ content: string; isError: boolean }>;
 }
 
@@ -61,12 +63,12 @@ export async function resolveMcpTools(userId: string, conversationId: string): P
     try {
       const discovered = await withClient(server, async (client) => Promise.all([client.listTools(), client.listPrompts(), client.listResources()]));
       for (const remote of discovered[0].tools) {
-        result.push({ tool: { name: toolName(server.id, remote.name), description: `[${server.name}] ${remote.description ?? remote.name}`, parameters: Type.Unsafe(remote.inputSchema) }, execute: async (args) => withClient(server, async (client) => { const response = await client.callTool({ name: remote.name, arguments: args }); return { content: asText(response), isError: "isError" in response && Boolean(response.isError) }; }) });
+        result.push({ tool: { name: toolName(server.id, remote.name), description: `[${server.name}] ${remote.description ?? remote.name}`, parameters: Type.Unsafe(remote.inputSchema) }, serverName: server.name, remoteName: remote.name, execute: async (args) => withClient(server, async (client) => { const response = await client.callTool({ name: remote.name, arguments: args }); return { content: asText(response), isError: "isError" in response && Boolean(response.isError) }; }) });
       }
-      result.push({ tool: { name: toolName(server.id, "list_prompts"), description: `[${server.name}] List available MCP prompts`, parameters: Type.Object({}) }, execute: async () => ({ content: asText(await withClient(server, (client) => client.listPrompts())), isError: false }) });
-      result.push({ tool: { name: toolName(server.id, "get_prompt"), description: `[${server.name}] Get an MCP prompt by name`, parameters: Type.Object({ name: Type.String(), arguments: Type.Optional(Type.Record(Type.String(), Type.String())) }) }, execute: async (args) => ({ content: asText(await withClient(server, (client) => client.getPrompt({ name: String(args.name), arguments: args.arguments as Record<string, string> | undefined }))), isError: false }) });
-      result.push({ tool: { name: toolName(server.id, "list_resources"), description: `[${server.name}] List available MCP resources`, parameters: Type.Object({}) }, execute: async () => ({ content: asText(await withClient(server, (client) => client.listResources())), isError: false }) });
-      result.push({ tool: { name: toolName(server.id, "read_resource"), description: `[${server.name}] Read an MCP resource by URI`, parameters: Type.Object({ uri: Type.String() }) }, execute: async (args) => ({ content: asText(await withClient(server, (client) => client.readResource({ uri: String(args.uri) }))), isError: false }) });
+      result.push({ tool: { name: toolName(server.id, "list_prompts"), description: `[${server.name}] List available MCP prompts`, parameters: Type.Object({}) }, serverName: server.name, remoteName: "list_prompts", execute: async () => ({ content: asText(await withClient(server, (client) => client.listPrompts())), isError: false }) });
+      result.push({ tool: { name: toolName(server.id, "get_prompt"), description: `[${server.name}] Get an MCP prompt by name`, parameters: Type.Object({ name: Type.String(), arguments: Type.Optional(Type.Record(Type.String(), Type.String())) }) }, serverName: server.name, remoteName: "get_prompt", execute: async (args) => ({ content: asText(await withClient(server, (client) => client.getPrompt({ name: String(args.name), arguments: args.arguments as Record<string, string> | undefined }))), isError: false }) });
+      result.push({ tool: { name: toolName(server.id, "list_resources"), description: `[${server.name}] List available MCP resources`, parameters: Type.Object({}) }, serverName: server.name, remoteName: "list_resources", execute: async () => ({ content: asText(await withClient(server, (client) => client.listResources())), isError: false }) });
+      result.push({ tool: { name: toolName(server.id, "read_resource"), description: `[${server.name}] Read an MCP resource by URI`, parameters: Type.Object({ uri: Type.String() }) }, serverName: server.name, remoteName: "read_resource", execute: async (args) => ({ content: asText(await withClient(server, (client) => client.readResource({ uri: String(args.uri) }))), isError: false }) });
     } catch {
       // An unavailable server must not prevent unrelated servers or chat from working.
     }
