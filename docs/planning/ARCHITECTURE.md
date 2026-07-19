@@ -79,8 +79,9 @@ runtime, no meta-framework SSR.
   conversations CRUD, messages, presets, folders/tags, admin (users, model
   enablement, provider config, usage).
 - Streaming is deliberately **out-of-band** from tRPC and runs over SSE (see §5).
-- The tRPC router type is exported from `packages/shared` and consumed by the
-  web app for end-to-end type safety.
+- The tRPC router type (`AppRouter`) is exported from `apps/server`
+  (`@solar/server`) and consumed type-only by the web app for end-to-end type
+  safety. `packages/shared` holds framework-agnostic domain types.
 
 ## 5. Streaming & Generation Lifecycle
 
@@ -412,7 +413,7 @@ apps/
   server/   # Hono + tRPC + generation manager + Kysely + pi integration
   web/      # React + assistant-ui + tRPC/TanStack Query client
 packages/
-  shared/   # tRPC router types, DB schema types, shared domain types
+  shared/   # framework-agnostic domain types shared by server and web
 ```
 
 The server serves `web`'s build output for single-process deployment.

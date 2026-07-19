@@ -170,3 +170,22 @@ bun run build
 The repository is a Bun workspaces monorepo with `apps/server`, `apps/web`, and
 `packages/shared`. The server owns migrations for application tables; Better
 Auth owns its auth migrations.
+
+### Playwright E2E setup (one-time)
+
+On a new Linux machine, install Playwright's host packages once, then install
+browser binaries as the regular user (do not run the second command with
+`sudo`, or the browsers land in root's cache):
+
+```sh
+sudo node ./node_modules/@playwright/test/cli.js install-deps chromium firefox webkit
+bun run test:e2e:install
+```
+
+Run E2E tests with `bun run test:e2e` (Chromium) or `bun run test:e2e:all`
+(Chromium, Firefox, WebKit).
+
+### Deployment note
+
+For real deployments prefer a supervisor (systemd `Restart=always` or PM2) —
+`bun run` itself does not restart on crash or rotate logs.
