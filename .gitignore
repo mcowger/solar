@@ -1,5 +1,6 @@
 .env
 .staging-history.json
+.staging-history/
 
 .spikes/
 

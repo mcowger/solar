@@ -28,10 +28,11 @@ const latestTag = `${imageName}:staging-latest`;
 function runCommand(
 	command: string,
 	args: string[],
-	options: { fatal?: boolean; stream?: boolean } = {},
+	options: { env?: NodeJS.ProcessEnv; fatal?: boolean; stream?: boolean } = {},
 ) {
 	const result = spawnSync(command, args, {
 		encoding: "utf-8",
+		env: options.env,
 		stdio: options.stream ? "inherit" : "pipe",
 	});
 	const success = result.status === 0;
@@ -175,6 +176,38 @@ if (!healthy) {
 	docker(["logs", "--tail", "50", containerName], { fatal: false });
 	process.exit(1);
 }
+
+const historyOutput =
+	process.env.SOLAR_STAGING_HISTORY_OUTPUT ??
+	`.staging-history/${timestamp}.json`;
+console.log(`\nExporting all staging chat history to ${historyOutput}...`);
+runCommand(
+	"bun",
+	[
+		"run",
+		"chat-history",
+		"--",
+		"export-all",
+		"--url",
+		stagingUrl,
+		"--output",
+		historyOutput,
+	],
+	{
+		env: {
+			...process.env,
+			SOLAR_SESSION_COOKIE:
+				process.env.SOLAR_STAGING_SESSION_COOKIE ??
+				process.env.SOLAR_SESSION_COOKIE,
+			SOLAR_ADMIN_EMAIL:
+				process.env.SOLAR_STAGING_ADMIN_EMAIL ?? process.env.SOLAR_ADMIN_EMAIL,
+			SOLAR_ADMIN_PASSWORD:
+				process.env.SOLAR_STAGING_ADMIN_PASSWORD ??
+				process.env.SOLAR_ADMIN_PASSWORD,
+		},
+		stream: true,
+	},
+);
 
 const images = docker(["images", imageName, "--format", "{{.Tag}}"], {
 	fatal: false,

@@ -1,4 +1,6 @@
 import { parseArgs } from "node:util";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 
 const DEFAULT_URL = "http://localhost:3000";
 const SESSION_COOKIE_ENV = "SOLAR_SESSION_COOKIE";
@@ -9,6 +11,7 @@ const usage = `Usage:
   bun run chat-history -- list --user <userId> [authentication options]
   bun run chat-history -- inspect --chat <chatId> [authentication options]
   bun run chat-history -- export --user <userId> --output <path> [authentication options]
+  bun run chat-history -- export-all --output <path> [authentication options]
   bun run chat-history -- import --user <userId> --input <path> [authentication options]
 
 Authentication options:
@@ -22,6 +25,8 @@ type TrpcResponse = {
 	result?: { data?: { json?: unknown } | unknown };
 	error?: { json?: { message?: string } };
 };
+
+type User = { id: string; name: string; email: string; role: string };
 
 function fail(message: string): never {
 	console.error(message);
@@ -124,7 +129,7 @@ if (values.help || positionals.length !== 1) {
 }
 
 const command = positionals[0];
-if (!["list", "inspect", "export", "import"].includes(command)) {
+if (!["list", "inspect", "export", "export-all", "import"].includes(command)) {
 	fail(`Unknown command: ${command}\n\n${usage}`);
 }
 
@@ -175,6 +180,42 @@ if (command === "export") {
 	);
 	await Bun.write(output, `${JSON.stringify(history, null, 2)}\n`);
 	console.log(`Exported chat history for ${userId} to ${output}`);
+}
+
+if (command === "export-all") {
+	const output = readRequired(values.output, "output");
+	const users = (await trpcRequest(
+		baseUrl,
+		cookie,
+		"admin.listUsers",
+		undefined,
+		"GET",
+	)) as User[];
+	const histories = [];
+	for (const user of users) {
+		const history = await trpcRequest(
+			baseUrl,
+			cookie,
+			"admin.history.export",
+			{ userId: user.id },
+			"GET",
+		);
+		histories.push({ user, history });
+	}
+	await mkdir(dirname(output), { recursive: true });
+	await Bun.write(
+		output,
+		`${JSON.stringify(
+			{
+				format: "solar-chat-history-all-users",
+				version: 1,
+				exportedAt: new Date().toISOString(),
+				users: histories,
+			},
+			null,
+		)}\n`,
+	);
+	console.log(`Exported chat history for ${users.length} users to ${output}`);
 }
 
 if (command === "import") {

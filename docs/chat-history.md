@@ -26,6 +26,7 @@ bun run chat-history -- inspect --chat <chat-id>
 
 # Download or upload a versioned Solar JSON history bundle.
 bun run chat-history -- export --user <user-id> --output history.json
+bun run chat-history -- export-all --output .staging-history/all-users.json
 bun run chat-history -- import --user <user-id> --input history.json
 
 bun run chat-history -- --help
@@ -33,6 +34,11 @@ bun run chat-history -- --help
 
 Imports merge without overwriting and reject ID or tag-name conflicts. History
 bundles include attachment metadata but not the underlying attachment files.
+`export-all` writes one bundle containing each user's account metadata and history.
+
+Staging deploys run `export-all` automatically after the new container passes its
+health check. The output defaults to a timestamped file under
+`.staging-history/`; override it with `SOLAR_STAGING_HISTORY_OUTPUT`.
 
 ## `bun run dev:load-history`
 
