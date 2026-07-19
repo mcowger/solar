@@ -3,6 +3,18 @@ import { APIError } from "better-auth/api";
 import { config } from "./config";
 import { dialect, sqlite } from "./db";
 
+/** Throws unless the email's domain is on the (optional) allowlist. */
+function assertAllowedEmailDomain(email: string): void {
+	const allowed = config.allowedEmailDomains;
+	if (allowed.length === 0) return;
+	const domain = email.split("@").at(-1)?.toLowerCase();
+	if (!domain || !allowed.includes(domain)) {
+		throw new APIError("FORBIDDEN", {
+			message: "Email domain is not allowed",
+		});
+	}
+}
+
 /**
  * Better Auth instance. It uses its own Kysely adapter over the *same* SQLite
  * dialect/connection as the app (see `db/index.ts`), so auth tables and app
@@ -25,19 +37,11 @@ export const auth = betterAuth({
 					google: {
 						clientId: config.googleClientId,
 						clientSecret: config.googleClientSecret,
-						// Enforce the optional email-domain allowlist server-side. The
-						// profile email comes from Google's signed ID token, so the
-						// domain claim can be trusted.
+						// Enforce the email-domain allowlist on every Google sign-in
+						// (including linking to existing users). The profile email comes
+						// from Google's signed ID token, so it can be trusted.
 						mapProfileToUser: (profile) => {
-							const allowed = config.googleAllowedDomains;
-							if (allowed.length > 0) {
-								const domain = profile.email.split("@").at(-1)?.toLowerCase();
-								if (!domain || !allowed.includes(domain)) {
-									throw new APIError("FORBIDDEN", {
-										message: "Email domain is not allowed",
-									});
-								}
-							}
+							assertAllowedEmailDomain(profile.email);
 							return {};
 						},
 					},
@@ -69,6 +73,9 @@ export const auth = betterAuth({
 			create: {
 				// First account to register on a deployment becomes the admin.
 				before: async (user) => {
+					// Covers email/password registration (Google is also checked
+					// earlier in mapProfileToUser).
+					assertAllowedEmailDomain(user.email);
 					const row = sqlite.query("SELECT COUNT(*) AS c FROM user").get() as {
 						c: number;
 					};

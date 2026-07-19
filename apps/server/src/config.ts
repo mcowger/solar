@@ -12,9 +12,9 @@ export const config = {
 	authBaseURL,
 	googleClientId: process.env.GOOGLE_CLIENT_ID,
 	googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
-	// Optional comma-separated list of email domains allowed for Google sign-in.
-	// Empty means any domain is allowed.
-	googleAllowedDomains: (process.env.GOOGLE_ALLOWED_DOMAINS ?? "")
+	// Optional comma-separated list of email domains allowed to sign up or sign
+	// in (Google and email/password). Empty means any domain is allowed.
+	allowedEmailDomains: (process.env.AUTH_ALLOWED_DOMAINS ?? "")
 		.split(",")
 		.map((domain) => domain.trim().toLowerCase())
 		.filter(Boolean),
