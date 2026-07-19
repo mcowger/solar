@@ -998,38 +998,44 @@ export function Thread({
 						{pasteError}
 					</div>
 				)}
-				<div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
-					<ComposerPrimitive.AddAttachment
-						className="btn btn-ghost btn-sm btn-square hidden sm:inline-flex"
-						aria-label="Add attachment"
-					>
-						<Paperclip size={18} />
-					</ComposerPrimitive.AddAttachment>
-					<MobileAttachmentPicker />
-					<GenerationControls conversationId={conversationId} />
-					<McpControls
-						conversationId={conversationId}
-						onConfigure={onConfigureMcp}
-					/>
+				<div className="flex flex-col gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
 					<ComposerPrimitive.Input
 						placeholder="Message…"
-						className="textarea textarea-ghost max-h-48 min-h-10 flex-1 overflow-y-auto px-2 py-2"
+						className="textarea textarea-ghost max-h-48 min-h-10 w-full overflow-y-auto px-2 py-2"
 						onPaste={handlePaste}
 					/>
-					<ComposerPrimitive.Send
-						className="btn btn-ghost btn-sm btn-square rounded-xl"
-						title="Send or queue message"
-					>
-						<Send size={18} />
-					</ComposerPrimitive.Send>
-					<ThreadPrimitive.If running>
-						<ComposerPrimitive.Cancel
-							className="btn btn-ghost btn-sm btn-square rounded-xl"
-							title="Interrupt response"
-						>
-							<Square size={16} />
-						</ComposerPrimitive.Cancel>
-					</ThreadPrimitive.If>
+					<div className="flex items-center justify-between gap-2">
+						<div className="flex items-center gap-1">
+							<ComposerPrimitive.AddAttachment
+								className="btn btn-ghost btn-sm btn-square hidden sm:inline-flex"
+								aria-label="Add attachment"
+							>
+								<Paperclip size={18} />
+							</ComposerPrimitive.AddAttachment>
+							<MobileAttachmentPicker />
+							<GenerationControls conversationId={conversationId} />
+							<McpControls
+								conversationId={conversationId}
+								onConfigure={onConfigureMcp}
+							/>
+						</div>
+						<div className="flex items-center gap-1">
+							<ComposerPrimitive.Send
+								className="btn btn-ghost btn-sm btn-square rounded-xl"
+								title="Send or queue message"
+							>
+								<Send size={18} />
+							</ComposerPrimitive.Send>
+							<ThreadPrimitive.If running>
+								<ComposerPrimitive.Cancel
+									className="btn btn-ghost btn-sm btn-square rounded-xl"
+									title="Interrupt response"
+								>
+									<Square size={16} />
+								</ComposerPrimitive.Cancel>
+							</ThreadPrimitive.If>
+						</div>
+					</div>
 				</div>
 			</ComposerPrimitive.Root>
 		</ThreadPrimitive.Root>
