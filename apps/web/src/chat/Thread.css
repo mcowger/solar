@@ -33,6 +33,13 @@
   margin-bottom: 8px;
 }
 
+.solar-summary-event {
+  align-self: center;
+  margin: 4px auto;
+  max-width: 32rem;
+  width: min(100%, 32rem);
+}
+
 .solar-tool-call {
   border-radius: 8px;
   background: var(--color-base-200);

@@ -37,7 +37,11 @@ mock.module("../db", () => ({
 						: undefined
 					: table === "conversation_context_state"
 						? contextState
-						: { compactionTokensBefore: 1234 },
+						: {
+								compactionTokensBefore: 1234,
+								compactionTokensAfter: 321,
+								createdAt: "2026-01-01T00:01:00.000Z",
+							},
 			),
 	},
 	sqlite: {},
@@ -125,6 +129,13 @@ describe("context management metadata", () => {
 			estimatedTokens: 1234,
 			summarized: true,
 			jobError: "Task model unavailable",
+			summaryEvent: {
+				tokensBefore: 1234,
+				tokensAfter: 321,
+				revision: 1,
+				createdAt: "2026-01-01T00:01:00.000Z",
+				retainedMessageBoundaryId: "message",
+			},
 		});
 	});
 

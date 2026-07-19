@@ -248,8 +248,13 @@ const conversationRouter = router({
 			);
 			const latestEstimate = await db
 				.selectFrom("provider_call_telemetry")
-				.select("compactionTokensBefore")
+				.select([
+					"compactionTokensBefore",
+					"compactionTokensAfter",
+					"createdAt",
+				])
 				.where("conversationId", "=", input.conversationId)
+				.where("purpose", "=", "compaction")
 				.where("compactionTokensBefore", "is not", null)
 				.orderBy("createdAt", "desc")
 				.executeTakeFirst();
@@ -263,6 +268,15 @@ const conversationRouter = router({
 				estimatedTokens: latestEstimate?.compactionTokensBefore ?? null,
 				summarized: Boolean(state?.summary),
 				jobError: state?.jobError ?? null,
+				summaryEvent: state?.summary
+					? {
+							tokensBefore: latestEstimate?.compactionTokensBefore ?? null,
+							tokensAfter: latestEstimate?.compactionTokensAfter ?? null,
+							revision: state.summaryRevision,
+							createdAt: latestEstimate?.createdAt ?? null,
+							retainedMessageBoundaryId: state.retainedMessageBoundaryId,
+						}
+					: null,
 			};
 		}),
 

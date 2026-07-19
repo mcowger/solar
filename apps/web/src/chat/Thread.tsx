@@ -19,6 +19,7 @@ import {
 	Paperclip,
 	Podcast,
 	Repeat2,
+	Scissors,
 	Send,
 	Server,
 	Square,
@@ -28,7 +29,7 @@ import {
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
-import type { SolarToolCall } from "./useSolarRuntime";
+import type { SolarSummaryEvent, SolarToolCall } from "./useSolarRuntime";
 import "./Thread.css";
 
 const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
@@ -163,7 +164,7 @@ export function ContextStatusIndicator({ status }: { status?: ContextStatus }) {
 			</span>
 		);
 	}
-	return <span className="badge badge-info badge-xs">History summarized</span>;
+	return null;
 }
 
 function ContextStatusControl({ conversationId }: { conversationId: string }) {
@@ -303,6 +304,65 @@ function ToolCalls() {
 	);
 }
 
+function formatTokens(tokens: number | null): string {
+	if (tokens === null) return "Unknown";
+	return new Intl.NumberFormat("en", {
+		notation: tokens >= 1_000 ? "compact" : "standard",
+		maximumFractionDigits: 1,
+	}).format(tokens);
+}
+
+export function SummaryEventCard({ event }: { event: SolarSummaryEvent }) {
+	const tokenStats = `${formatTokens(event.tokensBefore)} → ${formatTokens(event.tokensAfter)} tokens`;
+	const reduction =
+		event.tokensBefore && event.tokensAfter !== null
+			? Math.max(
+					0,
+					Math.round(
+						((event.tokensBefore - event.tokensAfter) / event.tokensBefore) *
+							100,
+					),
+				)
+			: null;
+
+	return (
+		<div className="solar-summary-event">
+			<div className="card card-border card-xs bg-base-200 text-base-content">
+				<div className="card-body flex-row items-center gap-3">
+					<span className="grid size-7 shrink-0 place-items-center rounded-full bg-base-300 text-info">
+						<Scissors size={14} />
+					</span>
+					<div className="min-w-0 flex-1">
+						<div className="text-xs font-medium">Conversation summarized</div>
+						<div className="mt-0.5 font-mono text-[11px] opacity-65">
+							{tokenStats}
+						</div>
+					</div>
+					{reduction !== null && (
+						<span className="badge badge-sm whitespace-nowrap">
+							{reduction}% smaller
+						</span>
+					)}
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function SummaryEventMarker({ position }: { position: "before" | "after" }) {
+	const event = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| { summaryEvent?: SolarSummaryEvent }
+					| undefined
+			)?.summaryEvent,
+	);
+	return event?.position === position ? (
+		<SummaryEventCard event={event} />
+	) : null;
+}
+
 const iconButton: React.CSSProperties = {
 	border: "none",
 	background: "transparent",
@@ -355,44 +415,52 @@ function SignalMeter({
 
 function UserMessage() {
 	return (
-		<div
-			className="solar-message"
-			style={{
-				alignSelf: "flex-end",
-				maxWidth: "80%",
-				display: "flex",
-				flexDirection: "column",
-				alignItems: "flex-end",
-				gap: 2,
-			}}
-		>
-			<MessagePrimitive.Attachments>
-				{() => <AttachmentChip />}
-			</MessagePrimitive.Attachments>
+		<>
+			<SummaryEventMarker position="before" />
 			<div
-				className="solar-user-output"
-				style={{ background: "#e6f0ff", padding: "8px 12px", borderRadius: 12 }}
+				className="solar-message"
+				style={{
+					alignSelf: "flex-end",
+					maxWidth: "80%",
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "flex-end",
+					gap: 2,
+				}}
 			>
-				<MessagePrimitive.Content />
+				<MessagePrimitive.Attachments>
+					{() => <AttachmentChip />}
+				</MessagePrimitive.Attachments>
+				<div
+					className="solar-user-output"
+					style={{
+						background: "#e6f0ff",
+						padding: "8px 12px",
+						borderRadius: 12,
+					}}
+				>
+					<MessagePrimitive.Content />
+				</div>
+				<ActionBarPrimitive.Root
+					className="solar-actions"
+					style={{ display: "flex", gap: 4 }}
+				>
+					<ActionBarPrimitive.Edit
+						className="solar-action-btn"
+						aria-label="Edit message"
+					>
+						<SquarePen size={16} />
+					</ActionBarPrimitive.Edit>
+					<ActionBarPrimitive.Copy
+						className="solar-action-btn"
+						aria-label="Copy message"
+					>
+						<Copy size={16} />
+					</ActionBarPrimitive.Copy>
+				</ActionBarPrimitive.Root>
 			</div>
-			<ActionBarPrimitive.Root
-				className="solar-actions"
-				style={{ display: "flex", gap: 4 }}
-			>
-				<ActionBarPrimitive.Edit
-					className="solar-action-btn"
-					aria-label="Edit message"
-				>
-					<SquarePen size={16} />
-				</ActionBarPrimitive.Edit>
-				<ActionBarPrimitive.Copy
-					className="solar-action-btn"
-					aria-label="Copy message"
-				>
-					<Copy size={16} />
-				</ActionBarPrimitive.Copy>
-			</ActionBarPrimitive.Root>
-		</div>
+			<SummaryEventMarker position="after" />
+		</>
 	);
 }
 
@@ -446,47 +514,55 @@ function AssistantMessage() {
 	);
 
 	return (
-		<div
-			className="solar-message"
-			style={{
-				alignSelf: "flex-start",
-				maxWidth: "80%",
-				display: "flex",
-				flexDirection: "column",
-				gap: 2,
-			}}
-		>
-			<ToolCalls />
+		<>
+			<SummaryEventMarker position="before" />
 			<div
-				className="solar-assistant-output"
-				style={{ background: "#f2f2f2", padding: "8px 12px", borderRadius: 12 }}
+				className="solar-message"
+				style={{
+					alignSelf: "flex-start",
+					maxWidth: "80%",
+					display: "flex",
+					flexDirection: "column",
+					gap: 2,
+				}}
 			>
-				{isEmpty ? (
-					<LoaderCircle className="solar-response-loader" size={18} />
-				) : (
-					<MessagePrimitive.Content
-						components={{ Text: MarkdownText, Reasoning }}
-					/>
-				)}
+				<ToolCalls />
+				<div
+					className="solar-assistant-output"
+					style={{
+						background: "#f2f2f2",
+						padding: "8px 12px",
+						borderRadius: 12,
+					}}
+				>
+					{isEmpty ? (
+						<LoaderCircle className="solar-response-loader" size={18} />
+					) : (
+						<MessagePrimitive.Content
+							components={{ Text: MarkdownText, Reasoning }}
+						/>
+					)}
+				</div>
+				<ActionBarPrimitive.Root
+					className="solar-actions"
+					style={{ display: "flex", gap: 4 }}
+				>
+					<ActionBarPrimitive.Reload
+						className="solar-action-btn"
+						aria-label="Regenerate response"
+					>
+						<Repeat2 size={16} />
+					</ActionBarPrimitive.Reload>
+					<ActionBarPrimitive.Copy
+						className="solar-action-btn"
+						aria-label="Copy response"
+					>
+						<Copy size={16} />
+					</ActionBarPrimitive.Copy>
+				</ActionBarPrimitive.Root>
 			</div>
-			<ActionBarPrimitive.Root
-				className="solar-actions"
-				style={{ display: "flex", gap: 4 }}
-			>
-				<ActionBarPrimitive.Reload
-					className="solar-action-btn"
-					aria-label="Regenerate response"
-				>
-					<Repeat2 size={16} />
-				</ActionBarPrimitive.Reload>
-				<ActionBarPrimitive.Copy
-					className="solar-action-btn"
-					aria-label="Copy response"
-				>
-					<Copy size={16} />
-				</ActionBarPrimitive.Copy>
-			</ActionBarPrimitive.Root>
-		</div>
+			<SummaryEventMarker position="after" />
+		</>
 	);
 }
 

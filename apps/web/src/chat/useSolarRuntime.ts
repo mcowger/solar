@@ -28,7 +28,16 @@ interface SolarMessage {
 	content: string;
 	reasoning?: string;
 	toolCalls?: SolarToolCall[];
+	summaryEvent?: SolarSummaryEvent;
 	attachments?: SolarAttachmentMeta[];
+}
+
+export interface SolarSummaryEvent {
+	tokensBefore: number | null;
+	tokensAfter: number | null;
+	revision: number | null;
+	createdAt: string | null;
+	position: "before" | "after";
 }
 
 export interface SolarToolCall {
@@ -66,7 +75,9 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
 			{ type: "text", text: m.content },
 		],
 		attachments: m.attachments?.map(toCompleteAttachment),
-		metadata: { custom: { toolCalls: m.toolCalls } },
+		metadata: {
+			custom: { toolCalls: m.toolCalls, summaryEvent: m.summaryEvent },
+		},
 	};
 }
 
@@ -222,16 +233,34 @@ export function useSolarRuntime(
 	// Reload the canonical history from the server, replacing local state so ids
 	// stay in sync with the DB. Returns the rows (for the resume check).
 	const loadHistory = useCallback(async () => {
-		const rows = await trpcClient.conversation.messages.query({
-			conversationId,
-		});
+		const [rows, contextState] = await Promise.all([
+			trpcClient.conversation.messages.query({ conversationId }),
+			trpcClient.conversation.contextState.query({ conversationId }),
+		]);
+		const boundaryIndex = contextState.summaryEvent
+			? rows.findIndex(
+					(row) =>
+						row.id === contextState.summaryEvent?.retainedMessageBoundaryId,
+				)
+			: -1;
+		const markerIndex = boundaryIndex >= 0 ? boundaryIndex : rows.length - 1;
 		setMessages(
-			rows.map((r) => ({
+			rows.map((r, index) => ({
 				id: r.id,
 				role: r.role,
 				content: r.text,
 				reasoning: r.reasoning ?? undefined,
 				toolCalls: toolCallsByMessageRef.current.get(r.id) ?? r.toolCalls,
+				summaryEvent:
+					contextState.summaryEvent && index === markerIndex
+						? {
+								tokensBefore: contextState.summaryEvent.tokensBefore,
+								tokensAfter: contextState.summaryEvent.tokensAfter,
+								revision: contextState.summaryEvent.revision,
+								createdAt: contextState.summaryEvent.createdAt,
+								position: boundaryIndex >= 0 ? "before" : "after",
+							}
+						: undefined,
 				attachments: r.attachments.length ? r.attachments : undefined,
 			})),
 		);
