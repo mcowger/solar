@@ -202,6 +202,7 @@ describe("useSolarRuntime compaction", () => {
 			row("u1", "user", "old question"),
 			row("a1", "assistant", "old answer"),
 			row("u2", "user", "new question"),
+			row("a2", "assistant", "new answer"),
 		];
 		const rendered = renderRuntime();
 		await waitFor(() => expect(historyCalls).toBe(1));
@@ -217,15 +218,24 @@ describe("useSolarRuntime compaction", () => {
 		};
 		rendered.rerender({ summaryRevision: 2 });
 
-		await waitFor(() => expect(historyCalls).toBe(2));
-		const marker = rendered.result.current.thread
-			.getState()
-			.messages.find((message) => message.id === "u2")?.metadata?.custom as
-			| { summaryEvent?: { tokensBefore: number; tokensAfter: number } }
-			| undefined;
-		expect(marker?.summaryEvent).toMatchObject({
-			tokensBefore: 272_000,
-			tokensAfter: 8_000,
+		await waitFor(() => {
+			expect(historyCalls).toBe(2);
+			const marker = rendered.result.current.thread
+				.getState()
+				.messages.find((message) => message.id === "u2")?.metadata?.custom as
+				| {
+						summaryEvent?: {
+							tokensBefore: number;
+							tokensAfter: number;
+							position: string;
+						};
+				  }
+				| undefined;
+			expect(marker?.summaryEvent).toMatchObject({
+				tokensBefore: 272_000,
+				tokensAfter: 8_000,
+				position: "before",
+			});
 		});
 		rendered.unmount();
 	});

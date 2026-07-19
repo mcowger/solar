@@ -124,8 +124,8 @@ export function useSolarRuntime(
 	const lastEventIdRef = useRef(0);
 	const reconnectRef = useRef<(() => void) | null>(null);
 	const finishStreamRef = useRef<(() => void) | null>(null);
-	const loadHistoryRef = useRef<() => Promise<void>>(() => Promise.resolve());
 	const loadedSummaryRevisionRef = useRef<number | null | undefined>(undefined);
+	const loadHistoryRef = useRef<() => Promise<void>>(() => Promise.resolve());
 	const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
 	const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(
 		() => undefined,

@@ -333,7 +333,7 @@ const conversationRouter = router({
 			const [latest, totals] = await Promise.all([
 				db
 					.selectFrom("provider_call_telemetry")
-					.select("inputTokens")
+					.select(["inputTokens", "cacheReadTokens"])
 					.where("conversationId", "=", input.conversationId)
 					.where("purpose", "in", ["chat", "tool_loop"])
 					.orderBy("createdAt", "desc")
@@ -347,7 +347,10 @@ const conversationRouter = router({
 					.executeTakeFirstOrThrow(),
 			]);
 			return {
-				contextTokens: latest?.inputTokens ?? null,
+				contextTokens:
+					latest?.inputTokens === null || latest?.inputTokens === undefined
+						? null
+						: latest.inputTokens + (latest.cacheReadTokens ?? 0),
 				contextWindowTokens,
 				compactionAtTokens: policy.softTriggerTokens,
 				costMicros: totals.costMicros,
