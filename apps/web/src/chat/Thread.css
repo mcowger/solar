@@ -10,6 +10,16 @@
   opacity: 1;
 }
 
+.solar-user-output,
+.solar-assistant-output {
+  overflow-wrap: anywhere;
+}
+
+.solar-assistant-output pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .solar-action-btn {
   display: inline-flex;
   align-items: center;
