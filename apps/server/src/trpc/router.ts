@@ -442,6 +442,12 @@ const allowlistEntrySchema = z.object({
   endpointId: z.string().trim().min(1),
   api: z.string().trim().min(1),
   visibility: z.enum(["public", "private"]).default("public"),
+  name: z.string().trim().optional(),
+  piProvider: z.string().trim().optional(),
+  piModel: z.string().trim().optional(),
+  piOptions: z.record(z.string(), z.unknown()).optional(),
+  reasoning: z.boolean().optional(),
+  vision: z.boolean().optional(),
   documents: z.boolean().optional(),
 });
 

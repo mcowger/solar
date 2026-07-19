@@ -129,6 +129,31 @@ describe("catalog model policy", () => {
     ]);
   });
 
+  test("uses builtin catalog names for custom provider endpoints", async () => {
+    configureModels({
+      provider: "Plexus",
+      apiKey: null,
+      baseUrl: null,
+      enabledModels: [{
+        id: "gpt-5.6-terra",
+        endpointId: "openai-responses",
+        api: "openai-responses",
+        visibility: "public",
+      }],
+    });
+
+    await expect(catalog.listAvailableModels()).resolves.toContainEqual({
+      provider: "Plexus",
+      endpointId: "openai-responses",
+      modelId: "gpt-5.6-terra",
+      api: "openai-responses",
+      name: "GPT-5.6 Terra",
+      reasoning: true,
+      vision: true,
+      documents: false,
+    });
+  });
+
   test("uses the first still-available selection in conversation, user, admin order", async () => {
     configureModels(
       {

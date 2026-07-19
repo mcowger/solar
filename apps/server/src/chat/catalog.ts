@@ -135,7 +135,9 @@ export async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
 }
 
 function catalogModel(provider: string, entry: AllowlistEntry): Model<Api> | undefined {
-  return piModels.getModel(entry.piProvider ?? provider, entry.piModel ?? entry.id);
+  const modelId = entry.piModel ?? entry.id;
+  return piModels.getModel(entry.piProvider ?? provider, modelId) ??
+    piModels.getModels().find((model) => model.id === modelId && model.api === entry.api);
 }
 
 function describe(provider: string, entry: AllowlistEntry): ModelDescriptor {
