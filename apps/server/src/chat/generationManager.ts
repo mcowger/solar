@@ -348,8 +348,8 @@ export class GenerationManager {
 				? await withTimeout(titlePromise, TITLE_TIMEOUT_MS)
 				: null;
 			if (title) emit({ type: "title-update", title });
-			gen.status = "done";
 			await this.persist(gen, "complete");
+			gen.status = "done";
 			logger
 				.withMetadata({
 					conversationId: gen.conversationId,
@@ -367,7 +367,6 @@ export class GenerationManager {
 		} catch (err) {
 			if (gen.controller.signal.aborted) {
 				// Explicit user Stop: keep the partial text, mark complete.
-				gen.status = "done";
 				emit({
 					type: "finish",
 					finishReason: "stop",
@@ -377,6 +376,7 @@ export class GenerationManager {
 					},
 				});
 				await this.persist(gen, "complete");
+				gen.status = "done";
 				logger
 					.withMetadata({
 						conversationId: gen.conversationId,
@@ -392,13 +392,13 @@ export class GenerationManager {
 					})
 					.info("generation stopped");
 			} else {
-				gen.status = "error";
 				const errorText = err instanceof Error ? err.message : String(err);
 				gen.text = gen.text
 					? `${gen.text}\n\n**Error:** ${errorText}`
 					: `**Error:** ${errorText}`;
 				emit({ type: "error", errorText });
 				await this.persist(gen, "error");
+				gen.status = "error";
 				logger
 					.withError(err)
 					.withMetadata({
