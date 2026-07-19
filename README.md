@@ -46,6 +46,7 @@ composer.
 - **Pi under the hood.** `pi-agent-core` drives the agent loop and `pi-ai`
   provides a unified path across configured providers and model APIs. Switch
   models per conversation instead of rebuilding the workspace around one vendor.
+  - This also means excellent support for provider and API specific behaviors.  OpenAI cache keys, Anthropic breakpoints, Deepseek reasoning replay, etc all work out of the box.
 - **Live controls.** Choose reasoning effort, expose provider reasoning output,
   and set answer verbosity when the selected model supports them. Thinking,
   tool calls, Markdown, code, and LaTeX stream into the thread as first-class
@@ -64,14 +65,14 @@ composer.
 - **Persistent by default.** Conversations, native message parts, tool steps,
   summaries, usage, and attachments live in one SQLite database plus a local
   data directory. A dropped browser connection does not cancel generation;
-  reload can resume it on the same node.
+  reload can bring it right back.
 - **Full theme and device support.** Themes are saved automatically, with 37
   available choices including Solar Light and Solar Dark. The responsive shell
   turns the sidebar into a drawer on narrow screens, and the web manifest ships
   standalone PWA metadata and maskable icons.
 - **Lightweight deployment.** A single Bun/Hono process serves the API, SSE
   stream, and React build. No separate frontend host, queue, vector store, or
-  services bundle is required for the default setup.
+  services bundle is required.
 
 ## How it works
 

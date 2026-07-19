@@ -23,11 +23,11 @@ type Citation = {
 };
 
 const SOURCE_BLOCK =
-	/(^|\n\n)(?:\*\*|__)?Sources:(?:\*\*|__)?\s*([\s\S]*?)(?=\n\n|$)/gi;
+	/(^|\n\n)(?:\*\*|__)?Sources?:(?:\*\*|__)?\s*([\s\S]*?)(?=\n\n|$)/gi;
 const MARKDOWN_LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 const MAX_VISIBLE_FAVICONS = 3;
 
-function citationsFrom(text: string) {
+export function citationsFrom(text: string) {
 	const citations: Citation[] = [];
 
 	for (const block of text.matchAll(SOURCE_BLOCK)) {
@@ -56,7 +56,7 @@ function citationsFrom(text: string) {
 	return citations;
 }
 
-function removeCitationBlocks(text: string) {
+export function removeCitationBlocks(text: string) {
 	return text.replace(SOURCE_BLOCK, (block, leading) =>
 		citationsFrom(block).length ? leading : block,
 	);
