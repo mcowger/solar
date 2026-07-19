@@ -56,11 +56,11 @@ function ContextIndicator({ conversationId }: { conversationId: string }) {
 	);
 
 	return (
-		<div className="order-3 flex w-full basis-full shrink-0 items-center gap-2 sm:order-2 sm:w-auto sm:basis-auto sm:shrink sm:flex-1 sm:justify-end">
-			<div className="min-w-0 flex-1 space-y-0.5 sm:flex-none">
+		<div className="order-3 flex w-full basis-full shrink-0 items-center gap-2 min-[1101px]:order-2 min-[1101px]:w-auto min-[1101px]:basis-auto min-[1101px]:shrink min-[1101px]:flex-1 min-[1101px]:justify-end">
+			<div className="min-w-0 flex-1 space-y-0.5 min-[1101px]:flex-none">
 				<div className="flex items-center gap-1">
 					<progress
-						className="progress progress-primary h-1.5 w-full sm:w-16"
+						className="progress progress-primary h-1.5 w-full min-[1101px]:w-16"
 						value={contextPercent}
 						max="100"
 						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.contextWindowTokens)} context`}
@@ -74,7 +74,7 @@ function ContextIndicator({ conversationId }: { conversationId: string }) {
 				</div>
 				<div className="flex items-center gap-1">
 					<progress
-						className="progress progress-warning h-1.5 w-full sm:w-16"
+						className="progress progress-warning h-1.5 w-full min-[1101px]:w-16"
 						value={compactionPercent}
 						max="100"
 						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.compactionAtTokens)} compaction threshold`}
@@ -87,7 +87,7 @@ function ContextIndicator({ conversationId }: { conversationId: string }) {
 					</span>
 				</div>
 			</div>
-			<span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-base-content/70 sm:text-[11px]">
+			<span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-base-content/70 min-[1101px]:text-[11px]">
 				Cost: {formatCost(data.costMicros)}
 			</span>
 		</div>
@@ -242,7 +242,7 @@ export function ChatApp() {
 				onChange={(event) => setDrawerOpen(event.target.checked)}
 			/>
 			<div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
-				<header className="navbar min-h-16 flex-wrap gap-y-1 border-b border-base-300 bg-base-100 px-3 py-2 sm:flex-nowrap sm:px-5">
+				<header className="navbar min-h-16 flex-wrap gap-y-1 border-b border-base-300 bg-base-100 px-3 py-2 min-[1101px]:flex-nowrap min-[1101px]:px-5">
 					<div className="navbar-start order-1 w-auto flex-1 gap-2">
 						<label
 							htmlFor="solar-drawer"
@@ -257,7 +257,7 @@ export function ChatApp() {
 							onClick={() => newChat()}
 						>
 							<SquarePen size={19} />
-							<span className="hidden sm:inline">New chat</span>
+							<span className="hidden min-[500px]:inline">New chat</span>
 						</button>
 					</div>
 					{activeId && <ContextIndicator conversationId={activeId} />}
