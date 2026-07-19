@@ -12,7 +12,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PIDFILE="$ROOT/.dev-server.pid"
 LOGFILE="$ROOT/.dev-server.log"
-SERVER_PORT="${PASEO_PORT:-3000}"
+
+worktree_port() {
+  local digest
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest="$(printf '%s' "$ROOT" | sha256sum | cut -c1-6)"
+  else
+    digest="$(printf '%s' "$ROOT" | shasum -a 256 | cut -c1-6)"
+  fi
+  printf '%d' "$((16#$digest % 1000 + 3000))"
+}
+
+SERVER_PORT="${PASEO_PORT:-$(worktree_port)}"
 
 is_running() {
   [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null

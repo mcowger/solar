@@ -64,7 +64,9 @@ cd apps/server && NODE_ENV=production bun --env-file=../../.env run start
 For real deployments prefer a supervisor (systemd `Restart=always` or PM2) —
 `bun run` itself does not restart on crash or rotate logs.
 
-Then open http://localhost:3000. Override the port with `PORT`, the DB path with
+Then open the URL printed by the command. `bun run dev:start` selects a stable
+worktree-specific port in the 3000–3999 range; set `PASEO_PORT` to override it.
+Override the server port directly with `PORT`, or the DB path with
 `DATABASE_PATH` (see `apps/server/src/config.ts`).
 
 ### Default dev login

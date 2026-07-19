@@ -13,6 +13,10 @@ docker compose up --build
 Open http://localhost:3000. Persistent database and attachment data live in
 `./data`.
 
+For local Bun development, run `bun run dev:start`. It uses a stable
+worktree-specific port (in the 3000–3999 range); set `PASEO_PORT` to override
+it.
+
 ## bunx
 
 After publishing, run:
