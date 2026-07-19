@@ -46,26 +46,49 @@ function ContextIndicator({ conversationId }: { conversationId: string }) {
 	const data = metrics.data;
 	if (!data || data.contextTokens === null) return null;
 
-	const percentUsed = Math.round(
-		(data.contextTokens / data.contextWindowTokens) * 100,
+	const contextPercent = Math.min(
+		100,
+		Math.round((data.contextTokens / data.contextWindowTokens) * 100),
 	);
-	const distanceToCompaction = Math.max(
-		0,
-		data.compactionAtTokens - data.contextTokens,
+	const compactionPercent = Math.min(
+		100,
+		Math.round((data.contextTokens / data.compactionAtTokens) * 100),
 	);
-	const details = [
-		`${formatTokens(data.contextTokens)} of ${formatTokens(data.contextWindowTokens)} context (${percentUsed}%)`,
-		`${formatTokens(distanceToCompaction)} to compaction`,
-		`${formatCost(data.costMicros)} conversation cost`,
-	].join(" · ");
 
 	return (
-		<div className="tooltip tooltip-bottom hidden lg:block" data-tip={details}>
-			<span className="inline-flex h-7 items-center rounded-full border border-base-300 px-2 font-mono text-[11px] text-base-content/55">
-				{formatTokens(data.contextTokens)} /{" "}
-				{formatTokens(data.contextWindowTokens)}
-				<span className="mx-1 text-base-content/25">·</span>
-				{percentUsed}%
+		<div className="order-3 flex w-full basis-full shrink-0 items-center gap-2 sm:order-2 sm:w-auto sm:basis-auto sm:shrink sm:flex-1 sm:justify-end">
+			<div className="min-w-0 flex-1 space-y-0.5 sm:flex-none">
+				<div className="flex items-center gap-1">
+					<progress
+						className="progress progress-primary h-1.5 w-full sm:w-16"
+						value={contextPercent}
+						max="100"
+						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.contextWindowTokens)} context`}
+					/>
+					<span className="font-mono text-[10px] text-base-content/70">
+						{contextPercent}%
+					</span>
+					<span className="text-[10px] font-semibold uppercase text-base-content/50">
+						CTX
+					</span>
+				</div>
+				<div className="flex items-center gap-1">
+					<progress
+						className="progress progress-warning h-1.5 w-full sm:w-16"
+						value={compactionPercent}
+						max="100"
+						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.compactionAtTokens)} compaction threshold`}
+					/>
+					<span className="font-mono text-[10px] text-base-content/70">
+						{compactionPercent}%
+					</span>
+					<span className="text-[10px] font-semibold uppercase text-base-content/50">
+						Compact
+					</span>
+				</div>
+			</div>
+			<span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-base-content/70 sm:text-[11px]">
+				Cost: {formatCost(data.costMicros)}
 			</span>
 		</div>
 	);
@@ -213,8 +236,8 @@ export function ChatApp() {
 				onChange={(event) => setDrawerOpen(event.target.checked)}
 			/>
 			<div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
-				<header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
-					<div className="navbar-start gap-2">
+				<header className="navbar min-h-16 flex-wrap gap-y-1 border-b border-base-300 bg-base-100 px-3 py-2 sm:flex-nowrap sm:px-5">
+					<div className="navbar-start order-1 w-auto flex-1 gap-2">
 						<label
 							htmlFor="solar-drawer"
 							className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"
@@ -228,11 +251,11 @@ export function ChatApp() {
 							onClick={() => newChat()}
 						>
 							<SquarePen size={19} />
-							New chat
+							<span className="hidden sm:inline">New chat</span>
 						</button>
 					</div>
-					<div className="navbar-end gap-1 sm:gap-2">
-						{activeId && <ContextIndicator conversationId={activeId} />}
+					{activeId && <ContextIndicator conversationId={activeId} />}
+					<div className="navbar-end order-2 w-auto gap-1 sm:order-3 sm:gap-2">
 						{activeId && (
 							<div
 								className="tooltip tooltip-bottom hidden sm:block"
