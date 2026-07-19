@@ -9,8 +9,8 @@ import { dialect, sqlite } from "./db";
  * tables co-locate in one `solar.db`. Better Auth owns and migrates its own
  * tables (`user`, `session`, `account`, `verification`).
  *
- * Local email/password accounts are the only sign-in method for now; OAuth is
- * explicitly deferred. Roles and account state are server-assigned fields.
+ * Email addresses are the account identity. Google accounts with a verified
+ * matching email are linked to an existing email/password account.
  */
 export const auth = betterAuth({
 	database: { dialect, type: "sqlite" },
@@ -19,6 +19,28 @@ export const auth = betterAuth({
 	trustedOrigins:
 		process.env.NODE_ENV !== "production" ? ["*"] : [config.authBaseURL],
 	emailAndPassword: { enabled: true },
+	...(config.googleClientId && config.googleClientSecret
+		? {
+				socialProviders: {
+					google: {
+						clientId: config.googleClientId,
+						clientSecret: config.googleClientSecret,
+					},
+				},
+			}
+		: {}),
+	account: {
+		accountLinking: {
+			enabled: true,
+			trustedProviders: ["google"],
+			allowDifferentEmails: false,
+			// This app has no local email-verification flow, so email/password
+			// accounts are never marked verified. Without this opt-out, Better Auth
+			// refuses to implicitly link a Google sign-in to an existing local
+			// account. Google's verified-email claim is the linking trust anchor.
+			requireLocalEmailVerified: false,
+		},
+	},
 	user: {
 		additionalFields: {
 			// Admin/user roles (full enforcement + admin UI land in M4). Assigned by

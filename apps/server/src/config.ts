@@ -10,5 +10,7 @@ export const config = {
 	dbPath: process.env.DATABASE_PATH ?? "solar.db",
 	authSecret: process.env.BETTER_AUTH_SECRET ?? "dev-insecure-secret-change-me",
 	authBaseURL,
+	googleClientId: process.env.GOOGLE_CLIENT_ID,
+	googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
 	attachmentsDataDir: process.env.SOLAR_ATTACHMENTS_DIR ?? "data/attachments",
 } as const;

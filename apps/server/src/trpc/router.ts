@@ -1,5 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { config } from "../config";
 import { db, sqlite } from "../db";
 import {
 	deleteAttachmentFilesForMessages,
@@ -2058,6 +2059,11 @@ export const appRouter = router({
 	}),
 
 	me: publicProcedure.query(({ ctx }) => ({ user: ctx.user })),
+
+	/** Which optional auth providers are configured on this deployment. */
+	authProviders: publicProcedure.query(() => ({
+		google: Boolean(config.googleClientId && config.googleClientSecret),
+	})),
 
 	conversation: conversationRouter,
 	folder: folderRouter,

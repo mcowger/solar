@@ -19,18 +19,30 @@ const signUpEmail = mock(
 		name: string;
 	}): Promise<AuthResult> => ({ error: null }),
 );
+const signInSocial = mock(
+	async (_options: { provider: string }): Promise<AuthResult> => ({
+		error: null,
+	}),
+);
 
 mock.module("./auth", () => ({
-	signIn: { email: signInEmail },
+	signIn: { email: signInEmail, social: signInSocial },
 	signUp: { email: signUpEmail },
 }));
 mock.module("./ThemeToggle", () => ({ ThemeToggle: () => null }));
+
+let googleEnabled = true;
+mock.module("./authProviders", () => ({
+	useGoogleAuthEnabled: () => googleEnabled,
+}));
 
 const { AuthForm } = await import("./AuthForm");
 
 beforeEach(() => {
 	signInEmail.mockClear();
 	signUpEmail.mockClear();
+	signInSocial.mockClear();
+	googleEnabled = true;
 });
 
 describe("AuthForm", () => {
@@ -77,5 +89,25 @@ describe("AuthForm", () => {
 		expect(
 			await screen.findByText("Email is already registered"),
 		).toBeInTheDocument();
+	});
+
+	test("starts Google sign-in", async () => {
+		const user = userEvent.setup();
+		render(<AuthForm />);
+
+		await user.click(
+			screen.getByRole("button", { name: "Continue with Google" }),
+		);
+
+		expect(signInSocial).toHaveBeenCalledWith({ provider: "google" });
+	});
+
+	test("hides the Google button when Google is not configured", () => {
+		googleEnabled = false;
+		render(<AuthForm />);
+
+		expect(
+			screen.queryByRole("button", { name: "Continue with Google" }),
+		).not.toBeInTheDocument();
 	});
 });

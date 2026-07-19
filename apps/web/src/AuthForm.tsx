@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { signIn, signUp } from "./auth";
+import { useGoogleAuthEnabled } from "./authProviders";
 import { ThemeToggle } from "./ThemeToggle";
 
 /** Minimal email/password login + register (M1). */
@@ -10,6 +11,15 @@ export function AuthForm() {
 	const [name, setName] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	const googleEnabled = useGoogleAuthEnabled();
+
+	async function signInWithGoogle() {
+		setBusy(true);
+		setError(null);
+		const res = await signIn.social({ provider: "google" });
+		setBusy(false);
+		if (res.error) setError(res.error.message ?? "Authentication failed");
+	}
 
 	async function submit(e: React.FormEvent) {
 		e.preventDefault();
@@ -73,6 +83,22 @@ export function AuthForm() {
 							{mode === "signin" ? "Sign in" : "Create account"}
 						</button>
 					</form>
+					{googleEnabled && (
+						<>
+							<div className="divider my-0">or</div>
+							<button
+								className="btn w-full"
+								type="button"
+								onClick={signInWithGoogle}
+								disabled={busy}
+							>
+								{busy && (
+									<span className="loading loading-spinner loading-sm" />
+								)}
+								Continue with Google
+							</button>
+						</>
+					)}
 					{error && <p className="text-error">{error}</p>}
 					<button
 						className="btn btn-link justify-start px-0"

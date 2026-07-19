@@ -134,6 +134,7 @@ SQLite and attachments are created relative to the current directory by default.
 | Variable | Purpose |
 | --- | --- |
 | `BETTER_AUTH_SECRET` | Required signing secret; use 32+ random characters |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google OAuth credentials |
 | `DATABASE_PATH` | SQLite file path |
 | `SOLAR_ATTACHMENTS_DIR` | Local attachment storage directory |
 | `PORT` / `PASEO_PORT` | Listening port / managed dev-server override |
@@ -142,6 +143,11 @@ SQLite and attachments are created relative to the current directory by default.
 Provider keys, enabled models, presets, context policies, and MCP servers are
 managed from the authenticated UI. See `.env.example` for the complete runtime
 surface.
+
+Google OAuth is enabled when both Google credentials are set. Configure the
+Google OAuth redirect URI as `${BETTER_AUTH_URL}/api/auth/callback/google`.
+Google sign-ins use the verified Google email address to identify and link the
+account; accounts with different email addresses are not linked.
 
 ## Status
 
