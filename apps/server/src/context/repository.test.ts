@@ -4,6 +4,7 @@ import { Kysely } from "kysely";
 import { BunSqliteDialect } from "kysely-bun-sqlite";
 import type { Database } from "../db/schema";
 import { up } from "../db/migrations/012_context_management";
+import { canonicalPolicyProvider } from "./policy";
 import { ContextRepository } from "./repository";
 
 let sqlite: BunDatabase;
@@ -133,6 +134,22 @@ describe("ContextRepository policy resolution", () => {
 			targetTokens: 45_000,
 			hardInputTokens: 68_000,
 		});
+	});
+
+	test("allows a proxy provider to use the canonical GPT family policy", async () => {
+		await repository.seedDefaultPolicies();
+		const runtimeProvider = "solar:Plexus:50c3793d-fc65-48d7-9ede-60e8ddcee797";
+		const policyProvider = canonicalPolicyProvider("gpt-5.6");
+		expect(policyProvider).toBe("openai");
+
+		expect(
+			await repository.resolvePolicy({
+				provider: policyProvider ?? runtimeProvider,
+				modelId: "gpt-5.6-terra",
+				modelFamily: "gpt-5.6",
+				contextWindowTokens: 600_000,
+			}),
+		).toMatchObject({ source: "model_family", softTriggerTokens: 272_000 });
 	});
 });
 

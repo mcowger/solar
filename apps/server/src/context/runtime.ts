@@ -11,6 +11,7 @@ import {
 } from "../chat/catalog";
 import { assembleContext } from "./assembler";
 import { buildRollingSummaryPrompt, planSummaryChunks } from "./compaction";
+import { canonicalPolicyProvider } from "./policy";
 import { ContextRepository } from "./repository";
 import {
 	estimateRecordTokens,
@@ -58,6 +59,10 @@ function modelFamily(selection: ModelSelection): string | undefined {
 	if (identity.includes("claude")) return "claude-1m";
 	if (identity.includes("gpt-5.6")) return "gpt-5.6";
 	return undefined;
+}
+
+function policyProvider(selection: ModelSelection): string {
+	return canonicalPolicyProvider(modelFamily(selection)) ?? selection.provider;
 }
 
 const defaultPromptProvider: ContextPromptProvider = (
@@ -181,7 +186,7 @@ export class ContextRuntime {
 				: (await resolveModel(selection)).model.contextWindow;
 		const [policy, global, allRecords] = await Promise.all([
 			this.repository.resolvePolicy({
-				provider: selection.provider,
+				provider: policyProvider(selection),
 				modelId: selection.modelId,
 				modelFamily: modelFamily(selection),
 				contextWindowTokens,
@@ -299,7 +304,7 @@ export class ContextRuntime {
 			attachmentSummary,
 		);
 		const policy = await this.repository.resolvePolicy({
-			provider: selection.provider,
+			provider: policyProvider(selection),
 			modelId: selection.modelId,
 			modelFamily: modelFamily(selection),
 			contextWindowTokens:
@@ -367,7 +372,7 @@ export class ContextRuntime {
 	): Promise<void> {
 		const state = await this.repository.ensureState(conversationId);
 		const policy = await this.repository.resolvePolicy({
-			provider: selection.provider,
+			provider: policyProvider(selection),
 			modelId: selection.modelId,
 			modelFamily: modelFamily(selection),
 			contextWindowTokens:
