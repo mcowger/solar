@@ -7,6 +7,12 @@
       "skillPath": "skills/agent-browser/SKILL.md",
       "computedHash": "ecc7641aea05f85ca3b11e7759d32aaf52fe05946ab4b63739c7bf78a41237a2"
     },
+    "beautify-github-readme": {
+      "source": "oil-oil/beautify-github-readme",
+      "sourceType": "github",
+      "skillPath": "skills/beautify-github-readme/SKILL.md",
+      "computedHash": "9bc8ff7556eec6cb8b40b980ab9018f2b6beb4048b07ec753855fc4ad36d06ab"
+    },
     "daisyui": {
       "source": "saadeghi/daisyui",
       "sourceType": "github",
