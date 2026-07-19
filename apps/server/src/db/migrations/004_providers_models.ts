@@ -13,34 +13,34 @@ import { sql, type Kysely } from "kysely";
  *   time.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
-  await db.schema
-    .createTable("provider_config")
-    .addColumn("provider", "text", (col) => col.primaryKey())
-    .addColumn("apiKey", "text")
-    .addColumn("baseUrl", "text")
-    .addColumn("enabledModels", "text", (col) => col.notNull().defaultTo("[]"))
-    .addColumn("updatedAt", "text", (col) =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
-    )
-    .execute();
+	await db.schema
+		.createTable("provider_config")
+		.addColumn("provider", "text", (col) => col.primaryKey())
+		.addColumn("apiKey", "text")
+		.addColumn("baseUrl", "text")
+		.addColumn("enabledModels", "text", (col) => col.notNull().defaultTo("[]"))
+		.addColumn("updatedAt", "text", (col) =>
+			col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+		)
+		.execute();
 
-  await db.schema
-    .alterTable("conversation")
-    .addColumn("provider", "text")
-    .execute();
-  await db.schema
-    .alterTable("conversation")
-    .addColumn("modelId", "text")
-    .execute();
-  await db.schema
-    .alterTable("conversation")
-    .addColumn("modelApi", "text")
-    .execute();
+	await db.schema
+		.alterTable("conversation")
+		.addColumn("provider", "text")
+		.execute();
+	await db.schema
+		.alterTable("conversation")
+		.addColumn("modelId", "text")
+		.execute();
+	await db.schema
+		.alterTable("conversation")
+		.addColumn("modelApi", "text")
+		.execute();
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await db.schema.alterTable("conversation").dropColumn("modelApi").execute();
-  await db.schema.alterTable("conversation").dropColumn("modelId").execute();
-  await db.schema.alterTable("conversation").dropColumn("provider").execute();
-  await db.schema.dropTable("provider_config").execute();
+	await db.schema.alterTable("conversation").dropColumn("modelApi").execute();
+	await db.schema.alterTable("conversation").dropColumn("modelId").execute();
+	await db.schema.alterTable("conversation").dropColumn("provider").execute();
+	await db.schema.dropTable("provider_config").execute();
 }

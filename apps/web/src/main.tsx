@@ -6,30 +6,32 @@ import { trpcClient } from "./trpcClient";
 import { TRPCProvider } from "./trpc";
 
 if (import.meta.hot) {
-  import.meta.hot.on("bun:afterUpdate", () => window.location.reload());
+	import.meta.hot.on("bun:afterUpdate", () => window.location.reload());
 } else if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch((error: unknown) => {
-    console.error("Solar service worker registration failed", error);
-  });
+	navigator.serviceWorker
+		.register("/sw.js", { updateViaCache: "none" })
+		.catch((error: unknown) => {
+			console.error("Solar service worker registration failed", error);
+		});
 }
 
 function Root() {
-  const [queryClient] = useState(() => new QueryClient());
+	const [queryClient] = useState(() => new QueryClient());
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-        <App />
-      </TRPCProvider>
-    </QueryClientProvider>
-  );
+	return (
+		<QueryClientProvider client={queryClient}>
+			<TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+				<App />
+			</TRPCProvider>
+		</QueryClientProvider>
+	);
 }
 
 const el = document.getElementById("root");
 if (el) {
-  createRoot(el).render(
-    <StrictMode>
-      <Root />
-    </StrictMode>,
-  );
+	createRoot(el).render(
+		<StrictMode>
+			<Root />
+		</StrictMode>,
+	);
 }

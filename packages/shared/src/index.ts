@@ -10,6 +10,6 @@ export type Role = "admin" | "user";
 
 /** Placeholder shared type; real domain types land with M1. */
 export interface HealthStatus {
-  ok: boolean;
-  service: string;
+	ok: boolean;
+	service: string;
 }

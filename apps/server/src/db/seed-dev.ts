@@ -13,15 +13,19 @@ export const DEV_EMAIL = "admin@solar.local";
 export const DEV_PASSWORD = "password";
 
 export async function seedDevUser(): Promise<void> {
-  if (process.env.NODE_ENV === "production" || process.env.SOLAR_SEED_DEV_USER !== "1") return;
+	if (
+		process.env.NODE_ENV === "production" ||
+		process.env.SOLAR_SEED_DEV_USER !== "1"
+	)
+		return;
 
-  const row = sqlite.query("SELECT COUNT(*) AS c FROM user").get() as {
-    c: number;
-  };
-  if (row.c > 0) return;
+	const row = sqlite.query("SELECT COUNT(*) AS c FROM user").get() as {
+		c: number;
+	};
+	if (row.c > 0) return;
 
-  await auth.api.signUpEmail({
-    body: { email: DEV_EMAIL, password: DEV_PASSWORD, name: "Dev Admin" },
-  });
-  console.log(`seeded dev admin account: ${DEV_EMAIL} / ${DEV_PASSWORD}`);
+	await auth.api.signUpEmail({
+		body: { email: DEV_EMAIL, password: DEV_PASSWORD, name: "Dev Admin" },
+	});
+	console.log(`seeded dev admin account: ${DEV_EMAIL} / ${DEV_PASSWORD}`);
 }

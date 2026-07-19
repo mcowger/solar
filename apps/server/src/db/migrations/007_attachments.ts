@@ -11,32 +11,32 @@ import { sql, type Kysely } from "kysely";
  * cascade only removes rows, not files).
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
-  await db.schema
-    .createTable("attachment")
-    .addColumn("id", "text", (col) => col.primaryKey())
-    .addColumn("userId", "text", (col) =>
-      col.notNull().references("user.id").onDelete("cascade"),
-    )
-    .addColumn("messageId", "text", (col) =>
-      col.references("message.id").onDelete("cascade"),
-    )
-    .addColumn("filename", "text", (col) => col.notNull())
-    .addColumn("mimeType", "text", (col) => col.notNull())
-    .addColumn("kind", "text", (col) => col.notNull())
-    .addColumn("byteSize", "integer", (col) => col.notNull())
-    .addColumn("storageKey", "text", (col) => col.notNull())
-    .addColumn("createdAt", "text", (col) =>
-      col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
-    )
-    .execute();
+	await db.schema
+		.createTable("attachment")
+		.addColumn("id", "text", (col) => col.primaryKey())
+		.addColumn("userId", "text", (col) =>
+			col.notNull().references("user.id").onDelete("cascade"),
+		)
+		.addColumn("messageId", "text", (col) =>
+			col.references("message.id").onDelete("cascade"),
+		)
+		.addColumn("filename", "text", (col) => col.notNull())
+		.addColumn("mimeType", "text", (col) => col.notNull())
+		.addColumn("kind", "text", (col) => col.notNull())
+		.addColumn("byteSize", "integer", (col) => col.notNull())
+		.addColumn("storageKey", "text", (col) => col.notNull())
+		.addColumn("createdAt", "text", (col) =>
+			col.notNull().defaultTo(sql`CURRENT_TIMESTAMP`),
+		)
+		.execute();
 
-  await db.schema
-    .createIndex("attachment_messageId_idx")
-    .on("attachment")
-    .column("messageId")
-    .execute();
+	await db.schema
+		.createIndex("attachment_messageId_idx")
+		.on("attachment")
+		.column("messageId")
+		.execute();
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
-  await db.schema.dropTable("attachment").execute();
+	await db.schema.dropTable("attachment").execute();
 }

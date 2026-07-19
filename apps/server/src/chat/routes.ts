@@ -1,28 +1,31 @@
 import type {
-  AssistantMessage,
-  Context as PiContext,
-  Message as PiMessage,
+	AssistantMessage,
+	Context as PiContext,
+	Message as PiMessage,
 } from "@earendil-works/pi-ai";
-import { convertToLlm, createCompactionSummaryMessage } from "@earendil-works/pi-agent-core";
+import {
+	convertToLlm,
+	createCompactionSummaryMessage,
+} from "@earendil-works/pi-agent-core";
 import { Hono } from "hono";
 import { auth } from "../auth";
 import { db, sqlite } from "../db";
 import { logger } from "../logger";
 import {
-  deleteAttachmentFilesForMessages,
-  attachmentMetadata,
-  linkAttachments,
-  loadAttachmentContentParts,
-  loadAttachmentSummary,
+	deleteAttachmentFilesForMessages,
+	attachmentMetadata,
+	linkAttachments,
+	loadAttachmentContentParts,
+	loadAttachmentSummary,
 } from "./attachments";
 import {
-  getTitlePrompt,
-  getModelCapabilities,
-  documentInputCapabilities,
-  resolveSelection,
-  resolveTaskModelOrFallback,
-  documentInputMimeTypes,
-  type GenerationParams,
+	getTitlePrompt,
+	getModelCapabilities,
+	documentInputCapabilities,
+	resolveSelection,
+	resolveTaskModelOrFallback,
+	documentInputMimeTypes,
+	type GenerationParams,
 } from "./catalog";
 import { generationManager } from "./generationManager";
 import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
@@ -33,134 +36,165 @@ import { ContextRepository } from "../context/repository";
 export const chatRoutes = new Hono();
 
 interface AuthenticatedUser {
-  id: string;
-  isAdmin: boolean;
+	id: string;
+	isAdmin: boolean;
 }
 
 async function requireUser(req: Request): Promise<AuthenticatedUser | null> {
-  const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return null;
-  const user = sqlite.query("SELECT role, isDisabled FROM user WHERE id = ?").get(session.user.id) as
-    | { role: string; isDisabled: number }
-    | null;
-  if (!user || user.isDisabled) return null;
-  return { id: session.user.id, isAdmin: user.role === "admin" };
+	const session = await auth.api.getSession({ headers: req.headers });
+	if (!session) return null;
+	const user = sqlite
+		.query("SELECT role, isDisabled FROM user WHERE id = ?")
+		.get(session.user.id) as { role: string; isDisabled: number } | null;
+	if (!user || user.isDisabled) return null;
+	return { id: session.user.id, isAdmin: user.role === "admin" };
 }
 
 async function ownsConversation(userId: string, conversationId: string) {
-  const row = await db
-    .selectFrom("conversation")
-    .select("id")
-    .where("id", "=", conversationId)
-    .where("userId", "=", userId)
-    .executeTakeFirst();
-  return Boolean(row);
+	const row = await db
+		.selectFrom("conversation")
+		.select("id")
+		.where("id", "=", conversationId)
+		.where("userId", "=", userId)
+		.executeTakeFirst();
+	return Boolean(row);
 }
 
 /** Reconstruct pi context from persisted messages (DB-canonical, per turn). */
 async function buildContext(
-  conversationId: string,
-  systemPrompt?: string | null,
-  documentInput: DocumentInputCapabilities = {
-    nativeMimeTypes: [],
-    extractedTextMimeTypes: [],
-  },
-  messageIds?: ReadonlySet<string>,
-  summary?: string | null,
-  allowedAttachmentIds?: ReadonlySet<string>,
-): Promise<{ context: PiContext; documents: import("./attachments").NativeDocumentInput[] }> {
-  const rows = await db
-    .selectFrom("message")
-    .select(["id", "role", "text", "parts"])
-    .where("conversationId", "=", conversationId)
-    .where("status", "=", "complete")
-    .orderBy("createdAt", "asc")
-    .execute();
+	conversationId: string,
+	systemPrompt?: string | null,
+	documentInput: DocumentInputCapabilities = {
+		nativeMimeTypes: [],
+		extractedTextMimeTypes: [],
+	},
+	messageIds?: ReadonlySet<string>,
+	summary?: string | null,
+	allowedAttachmentIds?: ReadonlySet<string>,
+): Promise<{
+	context: PiContext;
+	documents: import("./attachments").NativeDocumentInput[];
+}> {
+	const rows = await db
+		.selectFrom("message")
+		.select(["id", "role", "text", "parts"])
+		.where("conversationId", "=", conversationId)
+		.where("status", "=", "complete")
+		.orderBy("createdAt", "asc")
+		.execute();
 
-  const messages: PiMessage[] = [];
-  const documents: import("./attachments").NativeDocumentInput[] = [];
-  for (const r of rows) {
-    if (messageIds && !messageIds.has(r.id)) continue;
-    if (r.role === "user") {
-      const attachmentContent = await loadAttachmentContentParts(r.id, documentInput, allowedAttachmentIds);
-      documents.push(...attachmentContent.documents);
-      const content =
-        attachmentContent.parts.length === 0
-          ? r.text
-          : [
-              ...(r.text ? [{ type: "text" as const, text: r.text }] : []),
-              ...attachmentContent.parts,
-            ];
-      messages.push({ role: "user", content, timestamp: Date.now() });
-    } else if (r.role === "assistant") {
-      const steps = await db.selectFrom("generation_step").select("data")
-        .where("messageId", "=", r.id).orderBy("sequence", "asc").execute();
-      for (const step of steps) {
-        const parsed = JSON.parse(step.data) as { role?: unknown };
-        if (typeof parsed.role === "string") messages.push(parsed as PiMessage);
-      }
-      // Intermediate tool/reasoning messages precede the final persisted reply.
-      if (r.parts) {
-        const message = JSON.parse(r.parts) as AssistantMessage;
-        // Completed thinking is private scratch work; tool calls remain in their persisted steps.
-        messages.push({ ...message, content: message.content.filter((part) => part.type !== "thinking") });
-      }
-      else messages.push({
-        role: "assistant", content: [{ type: "text", text: r.text }], timestamp: Date.now(),
-        api: "unknown", provider: "unknown", model: "unknown", usage: {}, stopReason: "stop",
-      } as AssistantMessage);
-    }
-  }
-  if (summary) {
-    const summaryMessage = convertToLlm([createCompactionSummaryMessage(summary, 0, new Date().toISOString())])[0]!;
-    const firstUserIndex = messages.findIndex((message) => message.role === "user");
-    messages.splice(firstUserIndex < 0 ? 0 : firstUserIndex + 1, 0, summaryMessage);
-  }
-  return { context: systemPrompt ? { systemPrompt, messages } : { messages }, documents };
+	const messages: PiMessage[] = [];
+	const documents: import("./attachments").NativeDocumentInput[] = [];
+	for (const r of rows) {
+		if (messageIds && !messageIds.has(r.id)) continue;
+		if (r.role === "user") {
+			const attachmentContent = await loadAttachmentContentParts(
+				r.id,
+				documentInput,
+				allowedAttachmentIds,
+			);
+			documents.push(...attachmentContent.documents);
+			const content =
+				attachmentContent.parts.length === 0
+					? r.text
+					: [
+							...(r.text ? [{ type: "text" as const, text: r.text }] : []),
+							...attachmentContent.parts,
+						];
+			messages.push({ role: "user", content, timestamp: Date.now() });
+		} else if (r.role === "assistant") {
+			const steps = await db
+				.selectFrom("generation_step")
+				.select("data")
+				.where("messageId", "=", r.id)
+				.orderBy("sequence", "asc")
+				.execute();
+			for (const step of steps) {
+				const parsed = JSON.parse(step.data) as { role?: unknown };
+				if (typeof parsed.role === "string") messages.push(parsed as PiMessage);
+			}
+			// Intermediate tool/reasoning messages precede the final persisted reply.
+			if (r.parts) {
+				const message = JSON.parse(r.parts) as AssistantMessage;
+				// Completed thinking is private scratch work; tool calls remain in their persisted steps.
+				messages.push({
+					...message,
+					content: message.content.filter((part) => part.type !== "thinking"),
+				});
+			} else
+				messages.push({
+					role: "assistant",
+					content: [{ type: "text", text: r.text }],
+					timestamp: Date.now(),
+					api: "unknown",
+					provider: "unknown",
+					model: "unknown",
+					usage: {},
+					stopReason: "stop",
+				} as AssistantMessage);
+		}
+	}
+	if (summary) {
+		const summaryMessage = convertToLlm([
+			createCompactionSummaryMessage(summary, 0, new Date().toISOString()),
+		])[0]!;
+		const firstUserIndex = messages.findIndex(
+			(message) => message.role === "user",
+		);
+		messages.splice(
+			firstUserIndex < 0 ? 0 : firstUserIndex + 1,
+			0,
+			summaryMessage,
+		);
+	}
+	return {
+		context: systemPrompt ? { systemPrompt, messages } : { messages },
+		documents,
+	};
 }
 
 const sseHeaders = {
-  "content-type": "text/event-stream",
-  "cache-control": "no-cache",
-  connection: "keep-alive",
+	"content-type": "text/event-stream",
+	"cache-control": "no-cache",
+	connection: "keep-alive",
 };
 
 /** Deletes messages matching the predicate, freeing their attachments' on-disk
  * files first (SQLite's ON DELETE CASCADE only removes the DB rows). */
 async function deleteMessages(
-  conversationId: string,
-  createdAt: string,
-  op: ">" | ">=",
+	conversationId: string,
+	createdAt: string,
+	op: ">" | ">=",
 ): Promise<void> {
-  const toDelete = await db
-    .selectFrom("message")
-    .select("id")
-    .where("conversationId", "=", conversationId)
-    .where("createdAt", op, createdAt)
-    .execute();
-  await deleteAttachmentFilesForMessages(toDelete.map((m) => m.id));
-  await db
-    .deleteFrom("message")
-    .where("conversationId", "=", conversationId)
-    .where("createdAt", op, createdAt)
-    .execute();
+	const toDelete = await db
+		.selectFrom("message")
+		.select("id")
+		.where("conversationId", "=", conversationId)
+		.where("createdAt", op, createdAt)
+		.execute();
+	await deleteAttachmentFilesForMessages(toDelete.map((m) => m.id));
+	await db
+		.deleteFrom("message")
+		.where("conversationId", "=", conversationId)
+		.where("createdAt", op, createdAt)
+		.execute();
 }
 
 /** Look up a message with its owning user id (for authorization). */
 async function getOwnedMessage(userId: string, messageId: string) {
-  const row = await db
-    .selectFrom("message")
-    .innerJoin("conversation", "conversation.id", "message.conversationId")
-    .select([
-      "message.id",
-      "message.conversationId",
-      "message.role",
-      "message.createdAt",
-      "conversation.userId",
-    ])
-    .where("message.id", "=", messageId)
-    .executeTakeFirst();
-  return row && row.userId === userId ? row : null;
+	const row = await db
+		.selectFrom("message")
+		.innerJoin("conversation", "conversation.id", "message.conversationId")
+		.select([
+			"message.id",
+			"message.conversationId",
+			"message.role",
+			"message.createdAt",
+			"conversation.userId",
+		])
+		.where("message.id", "=", messageId)
+		.executeTakeFirst();
+	return row && row.userId === userId ? row : null;
 }
 
 /**
@@ -170,236 +204,278 @@ async function getOwnedMessage(userId: string, messageId: string) {
  * intended state.
  */
 async function streamNewAssistantTurn(
-  conversationId: string,
-  userId: string,
-  isAdmin: boolean,
-  titleGeneration?: { firstMessage: string },
+	conversationId: string,
+	userId: string,
+	isAdmin: boolean,
+	titleGeneration?: { firstMessage: string },
 ): Promise<Response> {
-  // Resolve the model for this turn, then persist it so the conversation
-  // remembers the effective selection (defaults are resolved lazily).
-  const convo = await db
-    .selectFrom("conversation")
-    .select([
-      "provider",
-      "endpointId",
-      "modelId",
-      "modelApi",
-      "systemPrompt",
-      "reasoningEffort",
-      "presetReasoningEffort",
-      "reasoningSummary",
-      "verbosity",
-      "presetVerbosity",
-      "autoExecuteTools",
-    ])
-    .where("id", "=", conversationId)
-    .executeTakeFirst();
-  const selection = await resolveSelection(
-    {
-      provider: convo?.provider ?? undefined,
-      endpointId: convo?.endpointId ?? undefined,
-      modelId: convo?.modelId ?? undefined,
-      api: convo?.modelApi ?? undefined,
-    },
-    userId,
-    isAdmin,
-  );
-  const [documentInput, capabilities] = await Promise.all([
-    documentInputCapabilities(selection),
-    getModelCapabilities(selection),
-  ]);
-  const assembled = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
-  const { context, documents } = await buildContext(
-    conversationId,
-    convo?.systemPrompt,
-    documentInput,
-    assembled.messageIds,
-    assembled.summary,
-    assembled.allowedAttachmentIds,
-  );
-  const resolvedTools = convo?.autoExecuteTools
-    ? await toolProvider.resolve({ userId, conversationId })
-    : [];
-  context.tools = resolvedTools.map(({ tool }) => tool);
-  const prompt = [...context.messages].reverse().find((message) => message.role === "user");
-  if (prompt && typeof prompt.content === "string") {
-    logger.withMetadata({ conversationId, userId }).trace(prompt.content);
-  }
-  const params: GenerationParams = {
-    systemPrompt: convo?.systemPrompt ?? undefined,
-    reasoningEffort: convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? capabilities.defaultReasoningEffort ?? undefined,
-    reasoningSummary: Boolean(convo?.reasoningSummary),
-    verbosity: convo?.verbosity ?? convo?.presetVerbosity ?? capabilities.defaultVerbosity ?? undefined,
-    documents,
-  };
-  const titleTask = titleGeneration
-    ? {
-        firstMessage: titleGeneration.firstMessage,
-        prompt: await getTitlePrompt(),
-        selection: await resolveTaskModelOrFallback(selection),
-      }
-    : undefined;
-  await db
-    .updateTable("conversation")
-    .set({
-      provider: selection.provider,
-      endpointId: selection.endpointId,
-      modelId: selection.modelId,
-      modelApi: selection.api,
-    })
-    .where("id", "=", conversationId)
-    .execute();
+	// Resolve the model for this turn, then persist it so the conversation
+	// remembers the effective selection (defaults are resolved lazily).
+	const convo = await db
+		.selectFrom("conversation")
+		.select([
+			"provider",
+			"endpointId",
+			"modelId",
+			"modelApi",
+			"systemPrompt",
+			"reasoningEffort",
+			"presetReasoningEffort",
+			"reasoningSummary",
+			"verbosity",
+			"presetVerbosity",
+			"autoExecuteTools",
+		])
+		.where("id", "=", conversationId)
+		.executeTakeFirst();
+	const selection = await resolveSelection(
+		{
+			provider: convo?.provider ?? undefined,
+			endpointId: convo?.endpointId ?? undefined,
+			modelId: convo?.modelId ?? undefined,
+			api: convo?.modelApi ?? undefined,
+		},
+		userId,
+		isAdmin,
+	);
+	const [documentInput, capabilities] = await Promise.all([
+		documentInputCapabilities(selection),
+		getModelCapabilities(selection),
+	]);
+	const assembled = await contextRuntime.assemble(
+		conversationId,
+		selection,
+		convo?.systemPrompt,
+		loadAttachmentSummary,
+	);
+	const { context, documents } = await buildContext(
+		conversationId,
+		convo?.systemPrompt,
+		documentInput,
+		assembled.messageIds,
+		assembled.summary,
+		assembled.allowedAttachmentIds,
+	);
+	const resolvedTools = convo?.autoExecuteTools
+		? await toolProvider.resolve({ userId, conversationId })
+		: [];
+	context.tools = resolvedTools.map(({ tool }) => tool);
+	const prompt = [...context.messages]
+		.reverse()
+		.find((message) => message.role === "user");
+	if (prompt && typeof prompt.content === "string") {
+		logger.withMetadata({ conversationId, userId }).trace(prompt.content);
+	}
+	const params: GenerationParams = {
+		systemPrompt: convo?.systemPrompt ?? undefined,
+		reasoningEffort:
+			convo?.reasoningEffort ??
+			convo?.presetReasoningEffort ??
+			capabilities.defaultReasoningEffort ??
+			undefined,
+		reasoningSummary: Boolean(convo?.reasoningSummary),
+		verbosity:
+			convo?.verbosity ??
+			convo?.presetVerbosity ??
+			capabilities.defaultVerbosity ??
+			undefined,
+		documents,
+	};
+	const titleTask = titleGeneration
+		? {
+				firstMessage: titleGeneration.firstMessage,
+				prompt: await getTitlePrompt(),
+				selection: await resolveTaskModelOrFallback(selection),
+			}
+		: undefined;
+	await db
+		.updateTable("conversation")
+		.set({
+			provider: selection.provider,
+			endpointId: selection.endpointId,
+			modelId: selection.modelId,
+			modelApi: selection.api,
+		})
+		.where("id", "=", conversationId)
+		.execute();
 
-  const assistantMessageId = crypto.randomUUID();
-  await db
-    .insertInto("message")
-    .values({
-      id: assistantMessageId,
-      conversationId,
-      role: "assistant",
-      text: "",
-      status: "generating",
-      createdAt: new Date().toISOString(),
-    })
-    .execute();
+	const assistantMessageId = crypto.randomUUID();
+	await db
+		.insertInto("message")
+		.values({
+			id: assistantMessageId,
+			conversationId,
+			role: "assistant",
+			text: "",
+			status: "generating",
+			createdAt: new Date().toISOString(),
+		})
+		.execute();
 
-  generationManager.start({
-    conversationId,
-    messageId: assistantMessageId,
-    context,
-    selection,
-    params,
-    tools: resolvedTools,
-    titleGeneration: titleTask,
-    retryContext: async () => {
-      await contextRuntime.compactForRetry(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
-      const retryAssembly = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
-      const rebuilt = await buildContext(
-        conversationId, convo?.systemPrompt, documentInput, retryAssembly.messageIds,
-        retryAssembly.summary, retryAssembly.allowedAttachmentIds,
-      );
-      rebuilt.context.tools = resolvedTools.map(({ tool }) => tool);
-      return { context: rebuilt.context, params: { ...params, documents: rebuilt.documents } };
-    },
-  });
+	generationManager.start({
+		conversationId,
+		messageId: assistantMessageId,
+		context,
+		selection,
+		params,
+		tools: resolvedTools,
+		titleGeneration: titleTask,
+		retryContext: async () => {
+			await contextRuntime.compactForRetry(
+				conversationId,
+				selection,
+				convo?.systemPrompt,
+				loadAttachmentSummary,
+			);
+			const retryAssembly = await contextRuntime.assemble(
+				conversationId,
+				selection,
+				convo?.systemPrompt,
+				loadAttachmentSummary,
+			);
+			const rebuilt = await buildContext(
+				conversationId,
+				convo?.systemPrompt,
+				documentInput,
+				retryAssembly.messageIds,
+				retryAssembly.summary,
+				retryAssembly.allowedAttachmentIds,
+			);
+			rebuilt.context.tools = resolvedTools.map(({ tool }) => tool);
+			return {
+				context: rebuilt.context,
+				params: { ...params, documents: rebuilt.documents },
+			};
+		},
+	});
 
-  return new Response(generationManager.subscribe(assistantMessageId, 0), {
-    headers: { ...sseHeaders, "x-message-id": assistantMessageId },
-  });
+	return new Response(generationManager.subscribe(assistantMessageId, 0), {
+		headers: { ...sseHeaders, "x-message-id": assistantMessageId },
+	});
 }
 
 // Send a message: persist user turn, start a decoupled generation, stream it.
 chatRoutes.post("/", async (c) => {
-  const user = await requireUser(c.req.raw);
-  if (!user) return c.json({ error: "unauthorized" }, 401);
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-  const { conversationId, text, attachmentIds } = (await c.req.json()) as {
-    conversationId: string;
-    text: string;
-    attachmentIds?: string[];
-  };
-  const hasAttachments = Boolean(attachmentIds?.length);
-  if (!conversationId || (!text?.trim() && !hasAttachments)) {
-    return c.json(
-      { error: "conversationId and text or an attachment are required" },
-      400,
-    );
-  }
-  if (!(await ownsConversation(user.id, conversationId))) {
-    return c.json({ error: "conversation not found" }, 404);
-  }
-  if (attachmentIds?.length) {
-    const attachments = await attachmentMetadata(attachmentIds, user.id);
-    const documentMimeTypes = attachments
-      .filter((attachment) => attachment.kind === "document")
-      .map((attachment) => attachment.mimeType);
-    if (documentMimeTypes.length) {
-      const convo = await db
-        .selectFrom("conversation")
-        .select(["provider", "endpointId", "modelId", "modelApi"])
-        .where("id", "=", conversationId)
-        .executeTakeFirst();
-      const selection = await resolveSelection(
-        {
-          provider: convo?.provider ?? undefined,
-          endpointId: convo?.endpointId ?? undefined,
-          modelId: convo?.modelId ?? undefined,
-          api: convo?.modelApi ?? undefined,
-        },
-        user.id,
-        user.isAdmin,
-      );
-      const supportedMimeTypes = await documentInputMimeTypes(selection);
-      if (documentMimeTypes.some((mimeType) => !supportedMimeTypes.includes(mimeType))) {
-        return c.json({ error: "The selected model does not support one or more document types" }, 400);
-      }
-    }
-  }
+	const { conversationId, text, attachmentIds } = (await c.req.json()) as {
+		conversationId: string;
+		text: string;
+		attachmentIds?: string[];
+	};
+	const hasAttachments = Boolean(attachmentIds?.length);
+	if (!conversationId || (!text?.trim() && !hasAttachments)) {
+		return c.json(
+			{ error: "conversationId and text or an attachment are required" },
+			400,
+		);
+	}
+	if (!(await ownsConversation(user.id, conversationId))) {
+		return c.json({ error: "conversation not found" }, 404);
+	}
+	if (attachmentIds?.length) {
+		const attachments = await attachmentMetadata(attachmentIds, user.id);
+		const documentMimeTypes = attachments
+			.filter((attachment) => attachment.kind === "document")
+			.map((attachment) => attachment.mimeType);
+		if (documentMimeTypes.length) {
+			const convo = await db
+				.selectFrom("conversation")
+				.select(["provider", "endpointId", "modelId", "modelApi"])
+				.where("id", "=", conversationId)
+				.executeTakeFirst();
+			const selection = await resolveSelection(
+				{
+					provider: convo?.provider ?? undefined,
+					endpointId: convo?.endpointId ?? undefined,
+					modelId: convo?.modelId ?? undefined,
+					api: convo?.modelApi ?? undefined,
+				},
+				user.id,
+				user.isAdmin,
+			);
+			const supportedMimeTypes = await documentInputMimeTypes(selection);
+			if (
+				documentMimeTypes.some(
+					(mimeType) => !supportedMimeTypes.includes(mimeType),
+				)
+			) {
+				return c.json(
+					{
+						error:
+							"The selected model does not support one or more document types",
+					},
+					400,
+				);
+			}
+		}
+	}
 
-  // Explicit ms-resolution timestamps guarantee stable ordering (SQLite's
-  // CURRENT_TIMESTAMP is only second-resolution). User precedes assistant.
-  const userMessageId = crypto.randomUUID();
-  await db
-    .insertInto("message")
-    .values({
-      id: userMessageId,
-      conversationId,
-      role: "user",
-      text: text ?? "",
-      status: "complete",
-      createdAt: new Date().toISOString(),
-    })
-    .execute();
-  if (attachmentIds?.length) {
-    await linkAttachments(attachmentIds, user.id, userMessageId);
-  }
+	// Explicit ms-resolution timestamps guarantee stable ordering (SQLite's
+	// CURRENT_TIMESTAMP is only second-resolution). User precedes assistant.
+	const userMessageId = crypto.randomUUID();
+	await db
+		.insertInto("message")
+		.values({
+			id: userMessageId,
+			conversationId,
+			role: "user",
+			text: text ?? "",
+			status: "complete",
+			createdAt: new Date().toISOString(),
+		})
+		.execute();
+	if (attachmentIds?.length) {
+		await linkAttachments(attachmentIds, user.id, userMessageId);
+	}
 
-  const firstUserMessage = await db
-    .selectFrom("message")
-    .select("id")
-    .where("conversationId", "=", conversationId)
-    .where("role", "=", "user")
-    .limit(2)
-    .execute();
-  return streamNewAssistantTurn(
-    conversationId,
-    user.id,
-    user.isAdmin,
-    firstUserMessage.length === 1 ? { firstMessage: text ?? "" } : undefined,
-  );
+	const firstUserMessage = await db
+		.selectFrom("message")
+		.select("id")
+		.where("conversationId", "=", conversationId)
+		.where("role", "=", "user")
+		.limit(2)
+		.execute();
+	return streamNewAssistantTurn(
+		conversationId,
+		user.id,
+		user.isAdmin,
+		firstUserMessage.length === 1 ? { firstMessage: text ?? "" } : undefined,
+	);
 });
 
 // Edit a user message: rewrite its text, discard everything after it, and
 // regenerate the assistant reply from the amended history.
 chatRoutes.post("/edit", async (c) => {
-  const user = await requireUser(c.req.raw);
-  if (!user) return c.json({ error: "unauthorized" }, 401);
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-  const { messageId, text } = (await c.req.json()) as {
-    messageId: string;
-    text: string;
-  };
-  if (!messageId || !text?.trim()) {
-    return c.json({ error: "messageId and text are required" }, 400);
-  }
+	const { messageId, text } = (await c.req.json()) as {
+		messageId: string;
+		text: string;
+	};
+	if (!messageId || !text?.trim()) {
+		return c.json({ error: "messageId and text are required" }, 400);
+	}
 
-  const msg = await getOwnedMessage(user.id, messageId);
-  if (!msg) return c.json({ error: "message not found" }, 404);
-  if (msg.role !== "user") {
-    return c.json({ error: "only user messages can be edited" }, 400);
-  }
+	const msg = await getOwnedMessage(user.id, messageId);
+	if (!msg) return c.json({ error: "message not found" }, 404);
+	if (msg.role !== "user") {
+		return c.json({ error: "only user messages can be edited" }, 400);
+	}
 
-  await deleteMessages(msg.conversationId, msg.createdAt, ">");
-  await db
-    .updateTable("message")
-    .set({ text })
-    .where("id", "=", messageId)
-    .execute();
-  const contextRepository = new ContextRepository(db);
-  await contextRepository.ensureState(msg.conversationId);
-  await contextRepository.invalidateSummary(msg.conversationId);
+	await deleteMessages(msg.conversationId, msg.createdAt, ">");
+	await db
+		.updateTable("message")
+		.set({ text })
+		.where("id", "=", messageId)
+		.execute();
+	const contextRepository = new ContextRepository(db);
+	await contextRepository.ensureState(msg.conversationId);
+	await contextRepository.invalidateSummary(msg.conversationId);
 
-  return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
+	return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
 
 // Regenerate a reply. `messageId` may be the assistant message to replace
@@ -407,48 +483,50 @@ chatRoutes.post("/edit", async (c) => {
 // onReload passes the parent — discard everything after it). Either way, a
 // fresh reply is generated from the resulting history.
 chatRoutes.post("/regenerate", async (c) => {
-  const user = await requireUser(c.req.raw);
-  if (!user) return c.json({ error: "unauthorized" }, 401);
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-  const { messageId } = (await c.req.json()) as { messageId: string };
-  if (!messageId) return c.json({ error: "messageId required" }, 400);
+	const { messageId } = (await c.req.json()) as { messageId: string };
+	if (!messageId) return c.json({ error: "messageId required" }, 400);
 
-  const msg = await getOwnedMessage(user.id, messageId);
-  if (!msg) return c.json({ error: "message not found" }, 404);
+	const msg = await getOwnedMessage(user.id, messageId);
+	if (!msg) return c.json({ error: "message not found" }, 404);
 
-  await deleteMessages(
-    msg.conversationId,
-    msg.createdAt,
-    msg.role === "assistant" ? ">=" : ">",
-  );
-  const contextRepository = new ContextRepository(db);
-  await contextRepository.ensureState(msg.conversationId);
-  await contextRepository.invalidateSummary(msg.conversationId);
+	await deleteMessages(
+		msg.conversationId,
+		msg.createdAt,
+		msg.role === "assistant" ? ">=" : ">",
+	);
+	const contextRepository = new ContextRepository(db);
+	await contextRepository.ensureState(msg.conversationId);
+	await contextRepository.invalidateSummary(msg.conversationId);
 
-  return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
+	return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
 });
 
 // Resume streaming an in-progress (or just-finished) generation after reconnect.
 chatRoutes.get("/stream", async (c) => {
-  if (!(await requireUser(c.req.raw))) return c.json({ error: "unauthorized" }, 401);
+	if (!(await requireUser(c.req.raw)))
+		return c.json({ error: "unauthorized" }, 401);
 
-  const messageId = c.req.query("messageId");
-  if (!messageId) return c.json({ error: "messageId required" }, 400);
+	const messageId = c.req.query("messageId");
+	if (!messageId) return c.json({ error: "messageId required" }, 400);
 
-  const lastEventId = Number(
-    c.req.header("last-event-id") ?? c.req.query("lastEventId") ?? 0,
-  );
+	const lastEventId = Number(
+		c.req.header("last-event-id") ?? c.req.query("lastEventId") ?? 0,
+	);
 
-  return new Response(generationManager.subscribe(messageId, lastEventId), {
-    headers: sseHeaders,
-  });
+	return new Response(generationManager.subscribe(messageId, lastEventId), {
+		headers: sseHeaders,
+	});
 });
 
 // Explicit user Stop — the only signal that cancels a generation.
 chatRoutes.post("/stop", async (c) => {
-  if (!(await requireUser(c.req.raw))) return c.json({ error: "unauthorized" }, 401);
+	if (!(await requireUser(c.req.raw)))
+		return c.json({ error: "unauthorized" }, 401);
 
-  const { messageId } = (await c.req.json()) as { messageId: string };
-  const stopped = generationManager.stop(messageId);
-  return c.json({ stopped });
+	const { messageId } = (await c.req.json()) as { messageId: string };
+	const stopped = generationManager.stop(messageId);
+	return c.json({ stopped });
 });

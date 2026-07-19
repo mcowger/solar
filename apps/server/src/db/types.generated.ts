@@ -5,267 +5,268 @@
 
 import type { ColumnType } from "kysely";
 
-export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
-  ? ColumnType<S, I | undefined, U>
-  : ColumnType<T, T | undefined, T>;
+export type Generated<T> =
+	T extends ColumnType<infer S, infer I, infer U>
+		? ColumnType<S, I | undefined, U>
+		: ColumnType<T, T | undefined, T>;
 
 export interface Account {
-  accessToken: string | null;
-  accessTokenExpiresAt: string | null;
-  accountId: string;
-  createdAt: string;
-  id: string;
-  idToken: string | null;
-  password: string | null;
-  providerId: string;
-  refreshToken: string | null;
-  refreshTokenExpiresAt: string | null;
-  scope: string | null;
-  updatedAt: string;
-  userId: string;
+	accessToken: string | null;
+	accessTokenExpiresAt: string | null;
+	accountId: string;
+	createdAt: string;
+	id: string;
+	idToken: string | null;
+	password: string | null;
+	providerId: string;
+	refreshToken: string | null;
+	refreshTokenExpiresAt: string | null;
+	scope: string | null;
+	updatedAt: string;
+	userId: string;
 }
 
 export interface AppMeta {
-  key: string | null;
-  updatedAt: Generated<string>;
-  value: string;
+	key: string | null;
+	updatedAt: Generated<string>;
+	value: string;
 }
 
 export interface Attachment {
-  byteSize: number;
-  createdAt: Generated<string>;
-  filename: string;
-  id: string | null;
-  kind: string;
-  messageId: string | null;
-  mimeType: string;
-  storageKey: string;
-  userId: string;
+	byteSize: number;
+	createdAt: Generated<string>;
+	filename: string;
+	id: string | null;
+	kind: string;
+	messageId: string | null;
+	mimeType: string;
+	storageKey: string;
+	userId: string;
 }
 
 export interface ContextPolicy {
-  createdAt: Generated<string>;
-  enabled: Generated<number>;
-  hardInputTokens: number;
-  id: string | null;
-  maxPinnedAttachmentTokens: number;
-  modelFamily: string | null;
-  modelId: string | null;
-  outputReserveTokens: number;
-  provider: string;
-  scope: string;
-  softTriggerTokens: number;
-  targetTokens: number;
-  updatedAt: Generated<string>;
+	createdAt: Generated<string>;
+	enabled: Generated<number>;
+	hardInputTokens: number;
+	id: string | null;
+	maxPinnedAttachmentTokens: number;
+	modelFamily: string | null;
+	modelId: string | null;
+	outputReserveTokens: number;
+	provider: string;
+	scope: string;
+	softTriggerTokens: number;
+	targetTokens: number;
+	updatedAt: Generated<string>;
 }
 
 export interface Conversation {
-  autoExecuteTools: Generated<number>;
-  createdAt: Generated<string>;
-  endpointId: string | null;
-  folderId: string | null;
-  id: string | null;
-  modelApi: string | null;
-  modelId: string | null;
-  presetReasoningEffort: string | null;
-  presetVerbosity: string | null;
-  provider: string | null;
-  reasoningEffort: string | null;
-  reasoningSummary: Generated<number>;
-  systemPrompt: string | null;
-  title: string;
-  updatedAt: Generated<string>;
-  userId: string;
-  verbosity: string | null;
+	autoExecuteTools: Generated<number>;
+	createdAt: Generated<string>;
+	endpointId: string | null;
+	folderId: string | null;
+	id: string | null;
+	modelApi: string | null;
+	modelId: string | null;
+	presetReasoningEffort: string | null;
+	presetVerbosity: string | null;
+	provider: string | null;
+	reasoningEffort: string | null;
+	reasoningSummary: Generated<number>;
+	systemPrompt: string | null;
+	title: string;
+	updatedAt: Generated<string>;
+	userId: string;
+	verbosity: string | null;
 }
 
 export interface ConversationContextState {
-  conversationId: string | null;
-  createdAt: Generated<string>;
-  jobAttempt: Generated<number>;
-  jobError: string | null;
-  jobId: string | null;
-  jobStatus: Generated<string>;
-  jobUpdatedAt: string | null;
-  retainedMessageBoundaryId: string | null;
-  revision: Generated<number>;
-  summary: string | null;
-  summaryRevision: number | null;
-  updatedAt: Generated<string>;
+	conversationId: string | null;
+	createdAt: Generated<string>;
+	jobAttempt: Generated<number>;
+	jobError: string | null;
+	jobId: string | null;
+	jobStatus: Generated<string>;
+	jobUpdatedAt: string | null;
+	retainedMessageBoundaryId: string | null;
+	revision: Generated<number>;
+	summary: string | null;
+	summaryRevision: number | null;
+	updatedAt: Generated<string>;
 }
 
 export interface ConversationMcpServer {
-  conversationId: string;
-  enabled: Generated<number>;
-  serverId: string;
+	conversationId: string;
+	enabled: Generated<number>;
+	serverId: string;
 }
 
 export interface ConversationTag {
-  conversationId: string;
-  tagId: string;
+	conversationId: string;
+	tagId: string;
 }
 
 export interface Folder {
-  createdAt: Generated<string>;
-  id: string | null;
-  name: string;
-  userId: string;
+	createdAt: Generated<string>;
+	id: string | null;
+	name: string;
+	userId: string;
 }
 
 export interface GenerationStep {
-  createdAt: Generated<string>;
-  data: string;
-  messageId: string;
-  sequence: number;
+	createdAt: Generated<string>;
+	data: string;
+	messageId: string;
+	sequence: number;
 }
 
 export interface McpServer {
-  createdAt: string;
-  enabled: Generated<number>;
-  headers: Generated<string>;
-  id: string | null;
-  name: string;
-  updatedAt: string;
-  url: string;
-  userId: string | null;
+	createdAt: string;
+	enabled: Generated<number>;
+	headers: Generated<string>;
+	id: string | null;
+	name: string;
+	updatedAt: string;
+	url: string;
+	userId: string | null;
 }
 
 export interface Message {
-  conversationId: string;
-  createdAt: Generated<string>;
-  id: string | null;
-  inputTokens: number | null;
-  model: string | null;
-  outputTokens: number | null;
-  parts: string | null;
-  role: string;
-  status: Generated<string>;
-  text: Generated<string>;
+	conversationId: string;
+	createdAt: Generated<string>;
+	id: string | null;
+	inputTokens: number | null;
+	model: string | null;
+	outputTokens: number | null;
+	parts: string | null;
+	role: string;
+	status: Generated<string>;
+	text: Generated<string>;
 }
 
 export interface Preset {
-  createdAt: Generated<string>;
-  endpointId: string | null;
-  id: string | null;
-  modelApi: string;
-  modelId: string;
-  name: string;
-  provider: string;
-  reasoningEffort: string | null;
-  reasoningSummary: Generated<number>;
-  scope: Generated<string>;
-  systemPrompt: string | null;
-  userId: string;
-  verbosity: string | null;
+	createdAt: Generated<string>;
+	endpointId: string | null;
+	id: string | null;
+	modelApi: string;
+	modelId: string;
+	name: string;
+	provider: string;
+	reasoningEffort: string | null;
+	reasoningSummary: Generated<number>;
+	scope: Generated<string>;
+	systemPrompt: string | null;
+	userId: string;
+	verbosity: string | null;
 }
 
 export interface ProviderCallTelemetry {
-  api: string;
-  cacheReadTokens: number | null;
-  cacheWriteTokens: number | null;
-  compactionTokensAfter: number | null;
-  compactionTokensBefore: number | null;
-  contextPolicyEnabled: number | null;
-  contextPolicySource: string | null;
-  contextPolicyState: string | null;
-  conversationId: string | null;
-  createdAt: Generated<string>;
-  estimatedCostMicros: number | null;
-  id: string | null;
-  inputTokens: number | null;
-  latencyMs: number | null;
-  messageId: string | null;
-  modelId: string;
-  outputTokens: number | null;
-  overflowed: Generated<number>;
-  provider: string;
-  purpose: string;
-  retryAttempt: Generated<number>;
+	api: string;
+	cacheReadTokens: number | null;
+	cacheWriteTokens: number | null;
+	compactionTokensAfter: number | null;
+	compactionTokensBefore: number | null;
+	contextPolicyEnabled: number | null;
+	contextPolicySource: string | null;
+	contextPolicyState: string | null;
+	conversationId: string | null;
+	createdAt: Generated<string>;
+	estimatedCostMicros: number | null;
+	id: string | null;
+	inputTokens: number | null;
+	latencyMs: number | null;
+	messageId: string | null;
+	modelId: string;
+	outputTokens: number | null;
+	overflowed: Generated<number>;
+	provider: string;
+	purpose: string;
+	retryAttempt: Generated<number>;
 }
 
 export interface ProviderConfig {
-  apiKey: string | null;
-  baseUrl: string | null;
-  enabledModels: Generated<string>;
-  endpoints: Generated<string>;
-  provider: string | null;
-  updatedAt: Generated<string>;
+	apiKey: string | null;
+	baseUrl: string | null;
+	enabledModels: Generated<string>;
+	endpoints: Generated<string>;
+	provider: string | null;
+	updatedAt: Generated<string>;
 }
 
 export interface Session {
-  createdAt: string;
-  expiresAt: string;
-  id: string;
-  ipAddress: string | null;
-  token: string;
-  updatedAt: string;
-  userAgent: string | null;
-  userId: string;
+	createdAt: string;
+	expiresAt: string;
+	id: string;
+	ipAddress: string | null;
+	token: string;
+	updatedAt: string;
+	userAgent: string | null;
+	userId: string;
 }
 
 export interface Tag {
-  createdAt: Generated<string>;
-  id: string | null;
-  name: string;
-  userId: string;
+	createdAt: Generated<string>;
+	id: string | null;
+	name: string;
+	userId: string;
 }
 
 export interface User {
-  createdAt: string;
-  email: string;
-  emailVerified: number;
-  id: string;
-  image: string | null;
-  isDisabled: number;
-  name: string;
-  role: string;
-  updatedAt: string;
+	createdAt: string;
+	email: string;
+	emailVerified: number;
+	id: string;
+	image: string | null;
+	isDisabled: number;
+	name: string;
+	role: string;
+	updatedAt: string;
 }
 
 export interface UserMcpServerPreference {
-  enabled: Generated<number>;
-  serverId: string;
-  userId: string;
+	enabled: Generated<number>;
+	serverId: string;
+	userId: string;
 }
 
 export interface UserSetting {
-  defaultApi: string | null;
-  defaultEndpointId: string | null;
-  defaultModelId: string | null;
-  defaultProvider: string | null;
-  updatedAt: Generated<string>;
-  userId: string | null;
+	defaultApi: string | null;
+	defaultEndpointId: string | null;
+	defaultModelId: string | null;
+	defaultProvider: string | null;
+	updatedAt: Generated<string>;
+	userId: string | null;
 }
 
 export interface Verification {
-  createdAt: string;
-  expiresAt: string;
-  id: string;
-  identifier: string;
-  updatedAt: string;
-  value: string;
+	createdAt: string;
+	expiresAt: string;
+	id: string;
+	identifier: string;
+	updatedAt: string;
+	value: string;
 }
 
 export interface DB {
-  account: Account;
-  app_meta: AppMeta;
-  attachment: Attachment;
-  context_policy: ContextPolicy;
-  conversation: Conversation;
-  conversation_context_state: ConversationContextState;
-  conversation_mcp_server: ConversationMcpServer;
-  conversation_tag: ConversationTag;
-  folder: Folder;
-  generation_step: GenerationStep;
-  mcp_server: McpServer;
-  message: Message;
-  preset: Preset;
-  provider_call_telemetry: ProviderCallTelemetry;
-  provider_config: ProviderConfig;
-  session: Session;
-  tag: Tag;
-  user: User;
-  user_mcp_server_preference: UserMcpServerPreference;
-  user_setting: UserSetting;
-  verification: Verification;
+	account: Account;
+	app_meta: AppMeta;
+	attachment: Attachment;
+	context_policy: ContextPolicy;
+	conversation: Conversation;
+	conversation_context_state: ConversationContextState;
+	conversation_mcp_server: ConversationMcpServer;
+	conversation_tag: ConversationTag;
+	folder: Folder;
+	generation_step: GenerationStep;
+	mcp_server: McpServer;
+	message: Message;
+	preset: Preset;
+	provider_call_telemetry: ProviderCallTelemetry;
+	provider_config: ProviderConfig;
+	session: Session;
+	tag: Tag;
+	user: User;
+	user_mcp_server_preference: UserMcpServerPreference;
+	user_setting: UserSetting;
+	verification: Verification;
 }
