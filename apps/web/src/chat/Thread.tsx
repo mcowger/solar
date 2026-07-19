@@ -475,35 +475,13 @@ function UserMessage() {
 
 function UserEditComposer() {
 	return (
-		<ComposerPrimitive.Root
-			style={{
-				alignSelf: "flex-end",
-				maxWidth: "80%",
-				width: "100%",
-				display: "flex",
-				flexDirection: "column",
-				gap: 6,
-				background: "#eef4ff",
-				padding: 8,
-				borderRadius: 12,
-			}}
-		>
-			<ComposerPrimitive.Input
-				style={{
-					width: "100%",
-					resize: "none",
-					border: "1px solid #cbd8f0",
-					borderRadius: 8,
-					padding: 8,
-					fontFamily: "inherit",
-					fontSize: 14,
-				}}
-			/>
-			<div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-				<ComposerPrimitive.Cancel style={iconButton}>
+		<ComposerPrimitive.Root className="flex w-full max-w-[80%] self-end flex-col gap-1.5 rounded-xl bg-base-200 p-2 text-base-content">
+			<ComposerPrimitive.Input className="textarea w-full resize-none border-base-300 bg-base-100 text-sm" />
+			<div className="flex justify-end gap-2">
+				<ComposerPrimitive.Cancel className="btn btn-ghost btn-sm">
 					Cancel
 				</ComposerPrimitive.Cancel>
-				<ComposerPrimitive.Send style={{ ...iconButton, color: "#1a56db" }}>
+				<ComposerPrimitive.Send className="btn btn-primary btn-sm">
 					Save & submit
 				</ComposerPrimitive.Send>
 			</div>
