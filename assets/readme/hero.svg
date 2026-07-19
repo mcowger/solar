@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Solar — a lightweight self-hosted AI workspace</title>
+  <desc id="desc">A warm editorial diagram of one Bun process connecting Pi, models, remote tools, files, and durable context.</desc>
+  <defs>
+    <linearGradient id="wash" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff8ef"/>
+      <stop offset="1" stop-color="#f2e6dc"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#211827" flood-opacity=".12"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="420" rx="28" fill="url(#wash)"/>
+  <path d="M54 342H1146" stroke="#d9cfc5"/>
+  <g fill="#211827" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <text x="64" y="78" font-size="15" font-weight="700" letter-spacing="2.4" fill="#a05678">SELF-HOSTED AI WORKSPACE</text>
+    <text x="60" y="155" font-family="Georgia,serif" font-size="72" font-weight="700" letter-spacing="-3">Solar</text>
+    <text x="64" y="198" font-size="25" font-weight="600">A small surface for serious agent work.</text>
+    <text x="64" y="236" font-size="17" fill="#665b65">One Bun process. SQLite persistence. Pi-powered models,</text>
+    <text x="64" y="262" font-size="17" fill="#665b65">tools, reasoning, context, and files—without feature sprawl.</text>
+    <text x="64" y="316" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="14" fill="#a05678">bun · hono · react · pi · sqlite</text>
+  </g>
+  <g transform="translate(758 52)" filter="url(#shadow)">
+    <rect width="360" height="264" rx="24" fill="#211827"/>
+    <path d="M26 65H334M26 205H334" stroke="#51424f"/>
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">
+      <text x="28" y="39" fill="#d9cfc5">SOLAR / GENERATION GRAPH</text>
+      <text x="30" y="94" fill="#d9cfc5">user turn</text>
+      <text x="30" y="121" fill="#fff8ef">context → Pi → model</text>
+      <text x="30" y="148" fill="#f0a38d">thinking  ·  tool call  ·  stream</text>
+      <text x="30" y="181" fill="#d9cfc5">durable reply ← SQLite</text>
+      <text x="30" y="235" fill="#a9d5c3">● ready  /  resumable  /  local</text>
+    </g>
+    <circle cx="312" cy="116" r="11" fill="#d66a55"/>
+    <circle cx="312" cy="154" r="7" fill="#a05678"/>
+    <path d="M312 127v20" stroke="#f0a38d" stroke-width="2"/>
+  </g>
+  <g fill="none" stroke="#d66a55" stroke-width="2">
+    <path d="M690 180c-48-40-74-42-104-42"/>
+    <path d="M693 215c-58 10-82 34-106 70"/>
+  </g>
+  <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#a05678">
+    <text x="600" y="128">provider choice</text>
+    <text x="578" y="300">remote + local inputs</text>
+  </g>
+</svg>
