@@ -9,6 +9,10 @@ type AttachmentRow = {
 	mimeType: string;
 	kind: "image" | "text" | "document";
 	byteSize: number;
+	width: number | null;
+	height: number | null;
+	pageCount: number | null;
+	extractedTextChars: number | null;
 	storageKey: string;
 	createdAt: string;
 };
@@ -131,6 +135,10 @@ function row(overrides: Partial<AttachmentRow> = {}): AttachmentRow {
 		mimeType: "text/plain",
 		kind: "text",
 		byteSize: 0,
+		width: null,
+		height: null,
+		pageCount: null,
+		extractedTextChars: null,
 		storageKey: "user-1/attachment-1",
 		createdAt: "2026-01-01T00:00:00.000Z",
 		...overrides,
@@ -144,6 +152,22 @@ afterEach(() => {
 });
 
 describe("attachments", () => {
+	test("stores decoded image dimensions", async () => {
+		await attachments.saveAttachment({
+			userId: "user-1",
+			filename: "pixel.png",
+			mimeType: "image/png",
+			bytes: Uint8Array.from(
+				Buffer.from(
+					"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAF/gL+Cd2fiAAAAABJRU5ErkJggg==",
+					"base64",
+				),
+			),
+		});
+
+		expect([...rows.values()][0]).toMatchObject({ width: 1, height: 1 });
+	});
+
 	test("saves image, text, structured text, and document MIME types with their classified kinds", async () => {
 		const image = await attachments.saveAttachment({
 			userId: "user-1",

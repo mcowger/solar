@@ -35,13 +35,17 @@ export interface AppMeta {
 export interface Attachment {
 	byteSize: number;
 	createdAt: Generated<string>;
+	extractedTextChars: number | null;
 	filename: string;
+	height: number | null;
 	id: string | null;
 	kind: string;
 	messageId: string | null;
 	mimeType: string;
+	pageCount: number | null;
 	storageKey: string;
 	userId: string;
+	width: number | null;
 }
 
 export interface ContextPolicy {

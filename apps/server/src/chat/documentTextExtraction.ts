@@ -20,6 +20,15 @@ async function extractPdf(bytes: Uint8Array): Promise<string> {
 	return text;
 }
 
+export async function pdfMetadata(bytes: Uint8Array): Promise<{
+	pageCount: number;
+	extractedTextChars: number;
+}> {
+	const pdf = await getDocumentProxy(bytes);
+	const { text } = await extractText(pdf, { mergePages: true });
+	return { pageCount: pdf.numPages, extractedTextChars: text.length };
+}
+
 function csvCell(value: unknown): string {
 	const text = value === null || value === undefined ? "" : String(value);
 	return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;

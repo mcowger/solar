@@ -1,10 +1,11 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { DiskResource, PathSpec } from "@struktoai/mirage-node";
+import { imageSize } from "image-size";
 import { config } from "../config";
 import { db } from "../db";
 import type { AttachmentKind } from "../db/schema";
 import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
-import { extractDocumentText } from "./documentTextExtraction";
+import { extractDocumentText, pdfMetadata } from "./documentTextExtraction";
 
 /**
  * Attachment storage (M3): images + plain-text, plus request-scoped extraction
@@ -59,6 +60,19 @@ function classify(mimeType: string): AttachmentKind | null {
 	return null;
 }
 
+function dimensions(bytes: Uint8Array): {
+	width: number | null;
+	height: number | null;
+} {
+	try {
+		const { width, height } = imageSize(bytes);
+		if (typeof width === "number" && typeof height === "number") {
+			return { width, height };
+		}
+	} catch {}
+	return { width: null, height: null };
+}
+
 /** Uploads a file to disk and creates an unlinked (`messageId` null) row. */
 export async function saveAttachment(params: {
 	userId: string;
@@ -73,6 +87,15 @@ export async function saveAttachment(params: {
 	if (params.bytes.byteLength > MAX_BYTES) {
 		throw new AttachmentError("File exceeds the 20 MB limit");
 	}
+	const imageDimensions =
+		kind === "image" ? dimensions(params.bytes) : { width: null, height: null };
+	const documentMetadata =
+		params.mimeType === "application/pdf"
+			? await pdfMetadata(params.bytes).catch(() => ({
+					pageCount: null,
+					extractedTextChars: null,
+				}))
+			: { pageCount: null, extractedTextChars: null };
 
 	await ensureOpen();
 	const id = crypto.randomUUID();
@@ -92,6 +115,8 @@ export async function saveAttachment(params: {
 			mimeType: params.mimeType,
 			kind,
 			byteSize: params.bytes.byteLength,
+			...imageDimensions,
+			...documentMetadata,
 			storageKey,
 			createdAt: new Date().toISOString(),
 		})

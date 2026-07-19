@@ -148,6 +148,10 @@ export interface AttachmentTable {
 	mimeType: string;
 	kind: AttachmentKind;
 	byteSize: number;
+	width: number | null;
+	height: number | null;
+	pageCount: number | null;
+	extractedTextChars: number | null;
 	storageKey: string;
 	createdAt: Generated<string>;
 }

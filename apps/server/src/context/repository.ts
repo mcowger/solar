@@ -1,5 +1,8 @@
 import { sql, type Kysely } from "kysely";
+import type { ModelSelection } from "../chat/catalog";
 import type { Database } from "../db/schema";
+import { estimateImageTokens } from "./imageTokens";
+import { estimateClaudePdfTokens } from "./pdfTokens";
 import type {
 	ContextGlobalSettings,
 	ContextPolicy,
@@ -249,6 +252,7 @@ export class ContextRepository {
 
 	async contextRecords(
 		conversationId: string,
+		selection: ModelSelection,
 		systemPrompt?: string | null,
 		attachmentSummary?: AttachmentSummaryRepresentation,
 	): Promise<ContextRecord[]> {
@@ -273,7 +277,17 @@ export class ContextRepository {
 			if (row.role === "user") {
 				const attachments = await this.db
 					.selectFrom("attachment")
-					.select(["id", "filename", "mimeType", "kind", "byteSize"])
+					.select([
+						"id",
+						"filename",
+						"mimeType",
+						"kind",
+						"byteSize",
+						"width",
+						"height",
+						"pageCount",
+						"extractedTextChars",
+					])
 					.where("messageId", "=", row.id)
 					.execute();
 				records.push({
@@ -287,7 +301,13 @@ export class ContextRepository {
 								id: attachment.id,
 								kind: "attachment" as const,
 								text: attachment.filename,
-								tokenCount: Math.ceil(attachment.byteSize / 4),
+								tokenCount:
+									attachment.kind === "image"
+										? estimateImageTokens(attachment, selection)
+										: attachment.mimeType === "application/pdf" &&
+												selection.api === "anthropic-messages"
+											? estimateClaudePdfTokens(attachment, selection.modelId)
+											: Math.ceil(attachment.byteSize / 4),
 								summary: await (attachmentSummary?.(attachment) ??
 									Promise.resolve(
 										`[Omitted attachment: ${attachment.filename}; type: ${attachment.mimeType}; kind: ${attachment.kind}; bytes: ${attachment.byteSize}]`,

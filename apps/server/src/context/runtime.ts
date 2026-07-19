@@ -194,6 +194,7 @@ export class ContextRuntime {
 			this.settings(),
 			this.repository.contextRecords(
 				conversationId,
+				selection,
 				systemPrompt,
 				attachmentSummary,
 			),
@@ -303,6 +304,7 @@ export class ContextRuntime {
 		const state = await this.repository.ensureState(conversationId);
 		const records = await this.repository.contextRecords(
 			conversationId,
+			selection,
 			systemPrompt,
 			attachmentSummary,
 		);
@@ -385,6 +387,7 @@ export class ContextRuntime {
 		});
 		const records = await this.repository.contextRecords(
 			conversationId,
+			selection,
 			systemPrompt,
 			attachmentSummary,
 		);
