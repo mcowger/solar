@@ -26,11 +26,14 @@ interface SolarMessage {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
+	connectionStatus?: SolarConnectionStatus;
 	reasoning?: string;
 	toolCalls?: SolarToolCall[];
 	summaryEvent?: SolarSummaryEvent;
 	attachments?: SolarAttachmentMeta[];
 }
+
+export type SolarConnectionStatus = "connecting" | "request-sent";
 
 export interface SolarSummaryEvent {
 	tokensBefore: number | null;
@@ -76,7 +79,11 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
 		],
 		attachments: m.attachments?.map(toCompleteAttachment),
 		metadata: {
-			custom: { toolCalls: m.toolCalls, summaryEvent: m.summaryEvent },
+			custom: {
+				connectionStatus: m.connectionStatus,
+				toolCalls: m.toolCalls,
+				summaryEvent: m.summaryEvent,
+			},
 		},
 	};
 }
@@ -124,6 +131,7 @@ export function useSolarRuntime(
 			text: string,
 			reasoning?: string,
 			toolCalls?: SolarToolCall[],
+			connectionStatus?: SolarConnectionStatus,
 		) => {
 			setMessages((prev) => {
 				const exists = prev.some((m) => m.id === id);
@@ -135,6 +143,7 @@ export function useSolarRuntime(
 							? {
 									...m,
 									content: text,
+									connectionStatus: connectionStatus ?? m.connectionStatus,
 									reasoning,
 									toolCalls: toolCalls ?? m.toolCalls,
 								}
@@ -144,7 +153,14 @@ export function useSolarRuntime(
 				if (toolCalls?.length) toolCallsByMessageRef.current.set(id, toolCalls);
 				return [
 					...prev,
-					{ id, role: "assistant", content: text, reasoning, toolCalls },
+					{
+						id,
+						role: "assistant",
+						content: text,
+						connectionStatus,
+						reasoning,
+						toolCalls,
+					},
 				];
 			});
 		},
@@ -163,6 +179,7 @@ export function useSolarRuntime(
 			let reasoning = "";
 			let toolCalls: SolarToolCall[] = [];
 			setIsRunning(true);
+			upsertAssistant(displayId, "", undefined, undefined, "request-sent");
 			try {
 				await readChunkStream(response, (chunk) => {
 					if (chunk.type === "text-delta") {
@@ -304,7 +321,7 @@ export function useSolarRuntime(
 			const displayId = crypto.randomUUID();
 			abortRef.current = abort;
 			setIsRunning(true);
-			upsertAssistant(displayId, "");
+			upsertAssistant(displayId, "", undefined, undefined, "connecting");
 			try {
 				const res = await fetch(url, {
 					method: "POST",

@@ -29,7 +29,11 @@ import {
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
-import type { SolarSummaryEvent, SolarToolCall } from "./useSolarRuntime";
+import type {
+	SolarConnectionStatus,
+	SolarSummaryEvent,
+	SolarToolCall,
+} from "./useSolarRuntime";
 import "./Thread.css";
 
 const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
@@ -513,6 +517,14 @@ function AssistantMessage() {
 		),
 	);
 	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const connectionStatus = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| { connectionStatus?: SolarConnectionStatus }
+					| undefined
+			)?.connectionStatus,
+	);
 
 	return (
 		<>
@@ -537,7 +549,10 @@ function AssistantMessage() {
 					}}
 				>
 					{isEmpty ? (
-						<EmptyAssistantResponse isRunning={isRunning} />
+						<EmptyAssistantResponse
+							isRunning={isRunning}
+							connectionStatus={connectionStatus}
+						/>
 					) : (
 						<MessagePrimitive.Content
 							components={{ Text: MarkdownText, Reasoning }}
@@ -567,9 +582,22 @@ function AssistantMessage() {
 	);
 }
 
-export function EmptyAssistantResponse({ isRunning }: { isRunning: boolean }) {
+export function EmptyAssistantResponse({
+	isRunning,
+	connectionStatus,
+}: {
+	isRunning: boolean;
+	connectionStatus?: SolarConnectionStatus;
+}) {
 	if (isRunning) {
-		return <LoaderCircle className="solar-response-loader" size={18} />;
+		return (
+			<div className="flex items-center gap-2 text-sm text-base-content/60">
+				<LoaderCircle className="solar-response-loader" size={18} />
+				<span>
+					{connectionStatus === "connecting" ? "Connecting…" : "Request sent…"}
+				</span>
+			</div>
+		);
 	}
 
 	return (

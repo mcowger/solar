@@ -84,6 +84,22 @@ describe("SummaryEventCard", () => {
 });
 
 describe("EmptyAssistantResponse", () => {
+	test("shows connection status while a response is starting", () => {
+		const { container, rerender } = render(
+			<EmptyAssistantResponse isRunning={true} connectionStatus="connecting" />,
+		);
+		expect(container.querySelector(".solar-response-loader")).toBeTruthy();
+		expect(screen.getByText("Connecting…")).toBeInTheDocument();
+
+		rerender(
+			<EmptyAssistantResponse
+				isRunning={true}
+				connectionStatus="request-sent"
+			/>,
+		);
+		expect(screen.getByText("Request sent…")).toBeInTheDocument();
+	});
+
 	test("distinguishes a completed empty response from an active generation", () => {
 		const { container, rerender } = render(
 			<EmptyAssistantResponse isRunning={true} />,
