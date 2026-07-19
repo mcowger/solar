@@ -1,7 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Hash, LogOut, Menu, Settings2, SlidersHorizontal } from "lucide-react";
+import { Hash, LogOut, Menu, Settings2, SlidersHorizontal, SquarePen } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { ThemeToggle } from "../ThemeToggle";
@@ -52,6 +52,7 @@ export function ChatApp() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [copiedChatId, setCopiedChatId] = useState<string>();
+  const sidebarRef = useRef<HTMLDivElement>(null);
   // Guards against React StrictMode double-invoking the auto-create effect.
   const autoCreated = useRef(false);
 
@@ -89,6 +90,17 @@ export function ChatApp() {
     }
   }, [conversations.isSuccess, list, activeId, create.isPending]);
 
+  useEffect(() => {
+    if (!drawerOpen || window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches) return;
+
+    const dismiss = (event: PointerEvent) => {
+      if (!sidebarRef.current?.contains(event.target as Node)) setDrawerOpen(false);
+    };
+
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, [drawerOpen]);
+
   function startSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
     if (!window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches) return;
 
@@ -122,7 +134,7 @@ export function ChatApp() {
       <input id="solar-drawer" type="checkbox" className="drawer-toggle" checked={drawerOpen} onChange={(event) => setDrawerOpen(event.target.checked)} />
       <div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
        <header className="navbar min-h-16 border-b border-base-300 bg-base-100 px-3 sm:px-5">
-          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong></div>
+          <div className="navbar-start gap-2"><label htmlFor="solar-drawer" className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"><Menu size={19} /></label><strong className="solar-wordmark text-3xl">Solar</strong><button type="button" className="btn btn-ghost btn-md gap-2" onClick={() => newChat()}><SquarePen size={19} />New chat</button></div>
           <div className="navbar-end gap-1 sm:gap-2">
             {activeId && <div className="tooltip tooltip-bottom hidden sm:block" data-tip="Copy chat ID"><button className="btn btn-ghost btn-xs h-7 min-h-0 gap-1 px-2 font-mono text-[11px] font-normal opacity-45 hover:opacity-100" onClick={() => void copyChatId()}><Hash size={13} />{copiedChatId === activeId ? "Copied" : activeId.slice(0, 8)}</button></div>}
             <div className="tooltip tooltip-bottom" data-tip="Presets"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowPresets(true); setShowSettings(false); setShowMcpServers(false); }}><SlidersHorizontal size={18} /></button></div>
@@ -144,13 +156,12 @@ export function ChatApp() {
         {showMcpServers && <McpServers onClose={() => setShowMcpServers(false)} />}
         {showPresets && <Presets onClose={() => setShowPresets(false)} />}
       </div>
-       <div className="drawer-side solar-sidebar">
+        <div ref={sidebarRef} className="drawer-side solar-sidebar">
          <label htmlFor="solar-drawer" className="drawer-overlay" onClick={() => setDrawerOpen(false)} />
         <Sidebar
           activeId={activeId}
           onClose={() => setDrawerOpen(false)}
           onSelect={(id) => { setActiveId(id); setDrawerOpen(false); }}
-          onNew={() => { newChat(); setDrawerOpen(false); }}
           presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
            onNewWithPreset={(presetId) => { newChat(presetId); setDrawerOpen(false); }}
          />

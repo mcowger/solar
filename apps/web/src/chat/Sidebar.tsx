@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, FolderPlus, Menu, SquarePen } from "lucide-react";
+import { FolderInput, FolderPlus, Menu } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
@@ -16,7 +16,6 @@ const rowButton: React.CSSProperties = {
 interface SidebarProps {
   activeId: string | undefined;
   onSelect: (id: string) => void;
-  onNew: () => void;
   onClose: () => void;
   presets: { id: string; name: string }[];
   onNewWithPreset: (presetId: string) => void;
@@ -25,7 +24,6 @@ interface SidebarProps {
 export function Sidebar({
   activeId,
   onSelect,
-  onNew,
   onClose,
   presets,
   onNewWithPreset,
@@ -157,11 +155,6 @@ export function Sidebar({
     <aside style={{ width: 280, borderRight: "1px solid #ddd", display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ padding: 8, display: "flex", gap: 6 }}>
         <button type="button" className="solar-menu-toggle btn btn-ghost btn-sm btn-circle" onClick={onClose} title="Close menu"><Menu size={19} /></button>
-        <div className="tooltip tooltip-bottom" data-tip="New chat">
-          <button type="button" className="btn btn-ghost btn-sm btn-circle" onClick={onNew}>
-            <SquarePen size={18} />
-          </button>
-        </div>
         <div className="tooltip tooltip-bottom" data-tip="New folder">
           <button
             type="button"
