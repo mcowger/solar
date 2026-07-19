@@ -1,7 +1,7 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { Hash, LogOut, Menu, Server, Settings2, SlidersHorizontal } from "lucide-react";
+import { Hash, LogOut, Menu, Settings2, SlidersHorizontal } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { ThemeToggle } from "../ThemeToggle";
@@ -18,7 +18,7 @@ const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
 const PINNED_SIDEBAR_MEDIA_QUERY = "(min-width: 650px)";
 
-function ConversationView({ conversationId }: { conversationId: string }) {
+function ConversationView({ conversationId, onConfigureMcp }: { conversationId: string; onConfigureMcp: () => void }) {
   const trpc = useTRPC();
   const current = useQuery(
     trpc.model.forConversation.queryOptions({ conversationId }),
@@ -33,7 +33,7 @@ function ConversationView({ conversationId }: { conversationId: string }) {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <ModelPicker conversationId={conversationId} />
         <div className="min-h-0 flex-1">
-          <Thread conversationId={conversationId} />
+          <Thread conversationId={conversationId} onConfigureMcp={onConfigureMcp} />
         </div>
       </div>
     </AssistantRuntimeProvider>
@@ -126,8 +126,7 @@ export function ChatApp() {
           <div className="navbar-end gap-1 sm:gap-2">
             {activeId && <div className="tooltip tooltip-bottom hidden sm:block" data-tip="Copy chat ID"><button className="btn btn-ghost btn-xs h-7 min-h-0 gap-1 px-2 font-mono text-[11px] font-normal opacity-45 hover:opacity-100" onClick={() => void copyChatId()}><Hash size={13} />{copiedChatId === activeId ? "Copied" : activeId.slice(0, 8)}</button></div>}
             <div className="tooltip tooltip-bottom" data-tip="Presets"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowPresets(true); setShowSettings(false); setShowMcpServers(false); }}><SlidersHorizontal size={18} /></button></div>
-            <div className="tooltip tooltip-bottom" data-tip="MCP servers"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowMcpServers(true); setShowSettings(false); setShowPresets(false); }}><Server size={18} /></button></div>
-           {isAdmin && (
+            {isAdmin && (
               <div className="tooltip tooltip-bottom" data-tip="Settings"><button className="btn btn-ghost btn-sm btn-circle" onClick={() => { setShowSettings(true); setShowPresets(false); setShowMcpServers(false); }}><Settings2 size={18} /></button></div>
           )}
           <ThemeToggle />
@@ -136,7 +135,7 @@ export function ChatApp() {
        </header>
        <div className="flex min-h-0 flex-1">
           {activeId ? (
-            <ConversationView key={activeId} conversationId={activeId} />
+            <ConversationView key={activeId} conversationId={activeId} onConfigureMcp={() => { setShowMcpServers(true); setShowSettings(false); setShowPresets(false); }} />
           ) : (
             <p className="p-4">Loading…</p>
           )}

@@ -7,7 +7,7 @@ import {
   useAuiState,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Copy, LoaderCircle, Paperclip, Podcast, Repeat2, Send, Server, Square, SquarePen, X } from "lucide-react";
+import { Brain, Copy, Cog, LoaderCircle, Paperclip, Podcast, Repeat2, Send, Server, Square, SquarePen, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
@@ -285,7 +285,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
   );
 }
 
-function McpControls({ conversationId }: { conversationId: string }) {
+function McpControls({ conversationId, onConfigure }: { conversationId: string; onConfigure: () => void }) {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -293,12 +293,12 @@ function McpControls({ conversationId }: { conversationId: string }) {
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.mcp.forConversation.queryKey({ conversationId }) });
   const setServer = useMutation(trpc.mcp.setConversation.mutationOptions({ onSuccess: invalidate }));
   const setAuto = useMutation(trpc.mcp.setAutoExecute.mutationOptions({ onSuccess: invalidate }));
-  if (!settings.data?.servers.length) return null;
-  return <div className="relative"><button type="button" className="btn btn-ghost btn-sm btn-square" title="MCP tools" onClick={() => setOpen((value) => !value)}><Server size={18} /></button>{open && <div className="absolute bottom-11 left-0 z-10 w-64 rounded-box bg-base-100 p-3 shadow-lg ring-1 ring-base-300"><label className="mb-3 flex items-center justify-between gap-3 text-sm font-medium">Run MCP tools automatically<input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={settings.data.autoExecuteTools} disabled={setAuto.isPending} onChange={(event) => setAuto.mutate({ conversationId, enabled: event.target.checked })} /></label><div className="divide-y divide-base-300">{settings.data.servers.map((server) => <label key={server.id} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="truncate">{server.name}</span><input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={server.enabled} disabled={setServer.isPending} onChange={(event) => setServer.mutate({ conversationId, serverId: server.id, enabled: event.target.checked })} /></label>)}</div></div>}</div>;
+  if (!settings.data) return null;
+  return <div className="relative"><button type="button" className="btn btn-ghost btn-sm btn-square" title="MCP tools" onClick={() => setOpen((value) => !value)}><Server size={18} /></button>{open && <div className="absolute bottom-11 left-0 z-10 w-64 rounded-box bg-base-100 p-3 shadow-lg ring-1 ring-base-300"><div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm font-medium">MCP tools</span><button type="button" className="btn btn-ghost btn-xs btn-square" title="Configure MCP servers" onClick={() => { setOpen(false); onConfigure(); }}><Cog size={16} /></button></div>{settings.data.servers.length ? <><label className="mb-3 flex items-center justify-between gap-3 text-sm font-medium">Run MCP tools automatically<input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={settings.data.autoExecuteTools} disabled={setAuto.isPending} onChange={(event) => setAuto.mutate({ conversationId, enabled: event.target.checked })} /></label><div className="divide-y divide-base-300">{settings.data.servers.map((server) => <label key={server.id} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="truncate">{server.name}</span><input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={server.enabled} disabled={setServer.isPending} onChange={(event) => setServer.mutate({ conversationId, serverId: server.id, enabled: event.target.checked })} /></label>)}</div></> : <p className="text-sm opacity-60">No MCP servers configured.</p>}</div>}</div>;
 }
 
 /** assistant-ui thread surface (M2): markdown/code/LaTeX, edit & regenerate. */
-export function Thread({ conversationId }: { conversationId: string }) {
+export function Thread({ conversationId, onConfigureMcp }: { conversationId: string; onConfigureMcp: () => void }) {
   return (
     <ThreadPrimitive.Root style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ThreadPrimitive.Viewport style={{ flex: 1, overflowY: "auto", padding: "1rem", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -327,7 +327,7 @@ export function Thread({ conversationId }: { conversationId: string }) {
             <Paperclip size={18} />
           </ComposerPrimitive.AddAttachment>
            <GenerationControls conversationId={conversationId} />
-           <McpControls conversationId={conversationId} />
+            <McpControls conversationId={conversationId} onConfigure={onConfigureMcp} />
           <ComposerPrimitive.Input
             placeholder="Message…"
             className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"
