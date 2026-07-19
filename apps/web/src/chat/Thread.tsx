@@ -467,7 +467,10 @@ function UserMessage() {
 function UserEditComposer() {
 	return (
 		<ComposerPrimitive.Root className="flex w-full max-w-[80%] self-end flex-col gap-1.5 rounded-xl bg-base-200 p-2 text-base-content">
-			<ComposerPrimitive.Input className="textarea w-full resize-none border-base-300 bg-base-100 text-sm" />
+			<ComposerPrimitive.Input
+				className="textarea w-full resize-none border-base-300 bg-base-100 text-sm"
+				unstable_insertNewlineOnTouchEnter
+			/>
 			<div className="flex justify-end gap-2">
 				<ComposerPrimitive.Cancel className="btn btn-ghost btn-sm">
 					Cancel
@@ -994,6 +997,7 @@ export function Thread({
 					<ComposerPrimitive.Input
 						placeholder="Message…"
 						className="textarea textarea-ghost max-h-48 min-h-10 w-full overflow-y-auto px-2 py-2"
+						unstable_insertNewlineOnTouchEnter
 						onPaste={handlePaste}
 					/>
 					<div className="flex items-center justify-between gap-2">
