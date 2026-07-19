@@ -4,17 +4,68 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useComposerRuntime,
   useAuiState,
 } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Copy, Cog, LoaderCircle, Paperclip, Podcast, Repeat2, Send, Server, Square, SquarePen, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { Brain, Camera, Copy, Cog, FileUp, Image, LoaderCircle, Paperclip, Podcast, Repeat2, Send, Server, Square, SquarePen, X } from "lucide-react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTRPC } from "../trpc";
 import { MarkdownText } from "./MarkdownText";
 import type { SolarToolCall } from "./useSolarRuntime";
 import "./Thread.css";
 
 const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
+
+function MobileAttachmentPicker() {
+  const composer = useComposerRuntime();
+  const attachmentAccept = useAuiState((state) => state.composer.attachmentAccept);
+  const captureInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const addFiles = (input: HTMLInputElement) => {
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    void Promise.all(files.map((file) => composer.addAttachment(file))).catch(() => undefined);
+  };
+
+  const openInput = (inputRef: RefObject<HTMLInputElement | null>) => {
+    dialogRef.current?.close();
+    inputRef.current?.click();
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm btn-square sm:hidden"
+        aria-label="Add attachment"
+        onClick={() => dialogRef.current?.showModal()}
+      >
+        <Paperclip size={18} />
+      </button>
+      <input ref={captureInputRef} className="hidden" type="file" accept="image/*" capture="environment" onChange={(event) => addFiles(event.currentTarget)} />
+      <input ref={libraryInputRef} className="hidden" type="file" accept="image/*" multiple onChange={(event) => addFiles(event.currentTarget)} />
+      <input ref={fileInputRef} className="hidden" type="file" accept={attachmentAccept === "*" ? undefined : attachmentAccept} multiple onChange={(event) => addFiles(event.currentTarget)} />
+      <dialog ref={dialogRef} className="modal modal-bottom sm:hidden">
+        <div className="modal-box rounded-t-3xl p-3">
+          <h2 className="px-3 pb-2 text-base font-semibold">Add attachment</h2>
+          <ul className="menu w-full p-0">
+            <li><button type="button" className="min-h-12 text-base" onClick={() => openInput(captureInputRef)}><Camera size={20} />Capture</button></li>
+            <li><button type="button" className="min-h-12 text-base" onClick={() => openInput(libraryInputRef)}><Image size={20} />Library</button></li>
+            <li><button type="button" className="min-h-12 text-base" onClick={() => openInput(fileInputRef)}><FileUp size={20} />File</button></li>
+          </ul>
+          <form method="dialog" className="mt-2">
+            <button type="submit" className="btn btn-block">Cancel</button>
+          </form>
+        </div>
+        <form method="dialog" className="modal-backdrop"><button type="submit">close</button></form>
+      </dialog>
+    </>
+  );
+}
 
 export type ContextStatus = {
   state: string;
@@ -369,11 +420,12 @@ export function Thread({ conversationId, onConfigureMcp }: { conversationId: str
         <ContextStatusControl conversationId={conversationId} />
         <div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
           <ComposerPrimitive.AddAttachment
-            className="btn btn-ghost btn-sm btn-square"
+            className="btn btn-ghost btn-sm btn-square hidden sm:inline-flex"
             aria-label="Add attachment"
           >
             <Paperclip size={18} />
           </ComposerPrimitive.AddAttachment>
+          <MobileAttachmentPicker />
            <GenerationControls conversationId={conversationId} />
             <McpControls conversationId={conversationId} onConfigure={onConfigureMcp} />
           <ComposerPrimitive.Input
