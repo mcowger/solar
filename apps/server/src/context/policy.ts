@@ -39,7 +39,9 @@ export function contextPolicyFor(
 	return undefined;
 }
 
-export function canonicalPolicyProvider(modelFamily?: string): string | undefined {
+export function canonicalPolicyProvider(
+	modelFamily?: string,
+): string | undefined {
 	if (modelFamily === "gpt-5.6") return "openai";
 	if (modelFamily === "claude-1m") return "anthropic";
 	return undefined;
