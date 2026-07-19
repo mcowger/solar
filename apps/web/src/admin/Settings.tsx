@@ -102,6 +102,32 @@ function formatTokenCount(tokens: number) {
 	return `${Math.round(tokens / CONTEXT_TOKEN_STEP)}K`;
 }
 
+function contextPolicyInput(policy: ContextPolicy) {
+	return {
+		scope: policy.scope,
+		provider: policy.provider,
+		modelFamily: policy.modelFamily,
+		modelId: policy.modelId,
+		enabled: policy.enabled,
+		softTriggerTokens: policy.softTriggerTokens,
+		targetTokens: policy.targetTokens,
+		hardInputTokens: policy.hardInputTokens,
+		maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens,
+		outputReserveTokens: policy.outputReserveTokens,
+	};
+}
+
+function policyHasChanges(
+	policy: ContextPolicy,
+	saved: ContextPolicy | undefined,
+) {
+	return (
+		!saved ||
+		policy.enabled !== saved.enabled ||
+		contextPolicyFields.some(({ field }) => policy[field] !== saved[field])
+	);
+}
+
 function ContextPolicySlider({
 	label,
 	min,
@@ -314,8 +340,12 @@ function TaskModel() {
 	const taskModel = useQuery(trpc.model.taskModel.queryOptions());
 	const titlePrompt = useQuery(trpc.model.titlePrompt.queryOptions());
 	const [prompt, setPrompt] = useState("");
+	const [savedPrompt, setSavedPrompt] = useState("");
 	useEffect(() => {
-		if (titlePrompt.data !== undefined) setPrompt(titlePrompt.data);
+		if (titlePrompt.data !== undefined) {
+			setPrompt(titlePrompt.data);
+			setSavedPrompt(titlePrompt.data);
+		}
 	}, [titlePrompt.data]);
 	const setTaskModel = useMutation(
 		trpc.model.setTaskModel.mutationOptions({
@@ -325,12 +355,15 @@ function TaskModel() {
 	);
 	const saveTitlePrompt = useMutation(
 		trpc.model.setTitlePrompt.mutationOptions({
-			onSuccess: () =>
-				qc.invalidateQueries({ queryKey: trpc.model.titlePrompt.queryKey() }),
+			onSuccess: (_, variables) => {
+				setSavedPrompt(variables.prompt);
+				qc.invalidateQueries({ queryKey: trpc.model.titlePrompt.queryKey() });
+			},
 		}),
 	);
 	const models = available.data ?? [];
 	const selected = taskModel.data ? modelKey(taskModel.data) : "";
+	const hasTitlePromptChanges = prompt !== savedPrompt;
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
@@ -384,12 +417,25 @@ function TaskModel() {
 					</div>
 				)}
 				<div className="card-actions items-center justify-end">
+					{!hasTitlePromptChanges && saveTitlePrompt.isSuccess && (
+						<span className="text-sm font-medium text-success">
+							Prompt saved
+						</span>
+					)}
 					<button
 						className="btn btn-primary"
-						disabled={!prompt.trim() || saveTitlePrompt.isPending}
+						disabled={
+							!prompt.trim() ||
+							saveTitlePrompt.isPending ||
+							!hasTitlePromptChanges
+						}
 						onClick={() => saveTitlePrompt.mutate({ prompt })}
 					>
-						{saveTitlePrompt.isPending ? "Saving…" : "Save title prompt"}
+						{saveTitlePrompt.isPending
+							? "Saving…"
+							: !hasTitlePromptChanges && saveTitlePrompt.isSuccess
+								? "Saved"
+								: "Save title prompt"}
 					</button>
 				</div>
 				{(setTaskModel.isError || saveTitlePrompt.isError) && (
@@ -1082,6 +1128,7 @@ function ContextManagement() {
 		trpc.admin.contextManagementSettings.queryOptions(),
 	);
 	const [form, setForm] = useState<ContextManagementSettings | null>(null);
+	const [savedPolicyId, setSavedPolicyId] = useState<string | null>(null);
 	useEffect(() => {
 		if (settings.data) setForm(settings.data);
 	}, [settings.data]);
@@ -1112,7 +1159,8 @@ function ContextManagement() {
 		id: string,
 		field: keyof ContextPolicy,
 		value: number | boolean,
-	) =>
+	) => {
+		setSavedPolicyId((current) => (current === id ? null : current));
 		setForm((current) =>
 			current
 				? {
@@ -1123,6 +1171,7 @@ function ContextManagement() {
 					}
 				: current,
 		);
+	};
 
 	if (settings.isError)
 		return (
@@ -1135,6 +1184,10 @@ function ContextManagement() {
 		enabled: form.global.enabled,
 		summaryPromptOverride: form.global.summaryPromptOverride,
 	};
+	const hasGlobalChanges =
+		form.global.enabled !== settings.data?.global.enabled ||
+		form.global.summaryPromptOverride !==
+			settings.data?.global.summaryPromptOverride;
 	const pending =
 		saveGlobal.isPending || savePolicy.isPending || resetPrompt.isPending;
 	return (
@@ -1184,24 +1237,31 @@ function ContextManagement() {
 								</label>
 								<button
 									className="btn btn-primary btn-sm"
-									disabled={pending}
+									disabled={
+										pending ||
+										!policyHasChanges(
+											policy,
+											settings.data?.policies.find(
+												(saved) => saved.id === policy.id,
+											),
+										)
+									}
 									onClick={() =>
-										savePolicy.mutate({
-											scope: policy.scope,
-											provider: policy.provider,
-											modelFamily: policy.modelFamily,
-											modelId: policy.modelId,
-											enabled: policy.enabled,
-											softTriggerTokens: policy.softTriggerTokens,
-											targetTokens: policy.targetTokens,
-											hardInputTokens: policy.hardInputTokens,
-											maxPinnedAttachmentTokens:
-												policy.maxPinnedAttachmentTokens,
-											outputReserveTokens: policy.outputReserveTokens,
+										savePolicy.mutate(contextPolicyInput(policy), {
+											onSuccess: () => setSavedPolicyId(policy.id),
 										})
 									}
 								>
-									{savePolicy.isPending ? "Saving…" : "Save"}
+									{savePolicy.isPending
+										? "Saving…"
+										: !policyHasChanges(
+													policy,
+													settings.data?.policies.find(
+														(saved) => saved.id === policy.id,
+													),
+												) && savedPolicyId === policy.id
+											? "Saved"
+											: "Save"}
 								</button>
 							</div>
 							<div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
@@ -1284,6 +1344,11 @@ function ContextManagement() {
 					</div>
 				)}
 				<div className="card-actions items-center justify-end">
+					{!hasGlobalChanges && saveGlobal.isSuccess && (
+						<span className="text-sm font-medium text-success">
+							Global settings saved
+						</span>
+					)}
 					<button
 						className="btn btn-ghost"
 						disabled={
@@ -1295,10 +1360,14 @@ function ContextManagement() {
 					</button>
 					<button
 						className="btn btn-primary"
-						disabled={pending}
+						disabled={pending || !hasGlobalChanges}
 						onClick={() => saveGlobal.mutate(globalInput)}
 					>
-						{saveGlobal.isPending ? "Saving…" : "Save global settings"}
+						{saveGlobal.isPending
+							? "Saving…"
+							: !hasGlobalChanges && saveGlobal.isSuccess
+								? "Saved"
+								: "Save global settings"}
 					</button>
 				</div>
 			</div>

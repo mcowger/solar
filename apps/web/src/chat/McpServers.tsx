@@ -36,6 +36,7 @@ export function McpServers({ onClose }: { onClose: () => void }) {
 	const headers = headerValue.trim()
 		? { [headerName.trim() || "Authorization"]: headerValue.trim() }
 		: {};
+	const serverSaved = create.isSuccess && !name && !url && !headerValue;
 
 	return (
 		<div className="modal modal-open">
@@ -110,6 +111,11 @@ export function McpServers({ onClose }: { onClose: () => void }) {
 									</label>
 								)}
 								<div className="card-actions items-center justify-end gap-2">
+									{serverSaved && (
+										<span className="text-sm font-medium text-success">
+											Server saved
+										</span>
+									)}
 									{create.isError && (
 										<span className="text-sm text-error">
 											{create.error.message}
@@ -135,7 +141,11 @@ export function McpServers({ onClose }: { onClose: () => void }) {
 											})
 										}
 									>
-										{create.isPending ? "Saving…" : "Save server"}
+										{create.isPending
+											? "Saving…"
+											: serverSaved
+												? "Saved"
+												: "Save server"}
 									</button>
 								</div>
 								{test.data && (
