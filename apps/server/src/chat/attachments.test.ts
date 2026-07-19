@@ -144,7 +144,7 @@ afterEach(() => {
 });
 
 describe("attachments", () => {
-	test("saves image, text, and document MIME types with their classified kinds", async () => {
+	test("saves image, text, structured text, and document MIME types with their classified kinds", async () => {
 		const image = await attachments.saveAttachment({
 			userId: "user-1",
 			filename: "photo.png",
@@ -157,18 +157,26 @@ describe("attachments", () => {
 			mimeType: "text/plain",
 			bytes: new Uint8Array([2]),
 		});
+		const yaml = await attachments.saveAttachment({
+			userId: "user-1",
+			filename: "config.yaml",
+			mimeType: "application/yaml",
+			bytes: new Uint8Array([3]),
+		});
 		const document = await attachments.saveAttachment({
 			userId: "user-1",
 			filename: "report.pdf",
 			mimeType: "application/pdf",
-			bytes: new Uint8Array([3]),
+			bytes: new Uint8Array([4]),
 		});
 
 		expect(image.kind).toBe("image");
 		expect(text.kind).toBe("text");
+		expect(yaml.kind).toBe("text");
 		expect(document.kind).toBe("document");
 		expect([...rows.values()].map((saved) => saved.kind)).toEqual([
 			"image",
+			"text",
 			"text",
 			"document",
 		]);

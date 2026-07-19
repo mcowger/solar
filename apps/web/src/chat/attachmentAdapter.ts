@@ -11,7 +11,7 @@ import type {
  * attachment to the message when the chat turn is sent (see useSolarRuntime).
  */
 const TEXT_ACCEPT =
-	"text/plain,text/markdown,text/csv,text/xml,application/json";
+	"text/*,application/json,application/ld+json,application/rtf,application/sql,application/toml,application/xml,application/yaml";
 const IMAGE_ACCEPT = "image/*";
 const DOCUMENT_ACCEPT =
 	"application/pdf,application/msword,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document";

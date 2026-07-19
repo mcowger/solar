@@ -14,6 +14,15 @@ import { extractDocumentText } from "./documentTextExtraction";
  */
 
 const MAX_BYTES = 20 * 1024 * 1024;
+const TEXT_MIME_TYPES = new Set([
+	"application/json",
+	"application/ld+json",
+	"application/rtf",
+	"application/sql",
+	"application/toml",
+	"application/xml",
+	"application/yaml",
+]);
 const DOCUMENT_MIME_TYPES = new Set([
 	"application/pdf",
 	"application/msword",
@@ -44,7 +53,8 @@ export class AttachmentError extends Error {}
 
 function classify(mimeType: string): AttachmentKind | null {
 	if (mimeType.startsWith("image/")) return "image";
-	if (mimeType.startsWith("text/")) return "text";
+	if (mimeType.startsWith("text/") || TEXT_MIME_TYPES.has(mimeType))
+		return "text";
 	if (DOCUMENT_MIME_TYPES.has(mimeType)) return "document";
 	return null;
 }
