@@ -4,177 +4,239 @@ const DEV_EMAIL = "admin@solar.local";
 const DEV_PASSWORD = "password";
 
 async function signIn(page: import("@playwright/test").Page) {
-  await page.goto("/");
-  await page.getByPlaceholder("Email").fill(DEV_EMAIL);
-  await page.getByPlaceholder("Password (min 8)").fill(DEV_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
+	await page.goto("/");
+	await page.getByPlaceholder("Email").fill(DEV_EMAIL);
+	await page.getByPlaceholder("Password (min 8)").fill(DEV_PASSWORD);
+	await page.getByRole("button", { name: "Sign in" }).click();
 }
 
-test("keeps the iOS viewport at its default scale after sign in", async ({ browser, baseURL }) => {
-  const context = await browser.newContext({ ...devices["iPhone 13"], baseURL });
-  const page = await context.newPage();
+test("keeps the iOS viewport at its default scale after sign in", async ({
+	browser,
+	baseURL,
+}) => {
+	const context = await browser.newContext({
+		...devices["iPhone 13"],
+		baseURL,
+	});
+	const page = await context.newPage();
 
-  await page.goto("/");
-  await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
-    "content",
-    "width=device-width, initial-scale=1, maximum-scale=1",
-  );
-  await signIn(page);
-  await expect(page.getByPlaceholder("Message…")).toBeVisible();
+	await page.goto("/");
+	await expect(page.locator('meta[name="viewport"]')).toHaveAttribute(
+		"content",
+		"width=device-width, initial-scale=1, maximum-scale=1",
+	);
+	await signIn(page);
+	await expect(page.getByPlaceholder("Message…")).toBeVisible();
 
-  const viewport = await page.evaluate(() => ({
-    activeElement: document.activeElement?.tagName,
-    appWidth: document.querySelector(".solar-app")?.getBoundingClientRect().width,
-    documentWidth: document.documentElement.clientWidth,
-  }));
-  expect(viewport.activeElement).toBe("BODY");
-  expect(viewport.appWidth).toBe(viewport.documentWidth);
+	const viewport = await page.evaluate(() => ({
+		activeElement: document.activeElement?.tagName,
+		appWidth: document.querySelector(".solar-app")?.getBoundingClientRect()
+			.width,
+		documentWidth: document.documentElement.clientWidth,
+	}));
+	expect(viewport.activeElement).toBe("BODY");
+	expect(viewport.appWidth).toBe(viewport.documentWidth);
 
-  await context.close();
+	await context.close();
 });
 
-test("keeps provider model controls separated", async ({ browser, baseURL }) => {
-  for (const options of [
-    { ...devices["iPhone 13"], baseURL },
-    { baseURL, viewport: { width: 1024, height: 768 } },
-  ]) {
-    const context = await browser.newContext(options);
-    const page = await context.newPage();
-    let interceptedProviders = false;
-    await page.route("**/trpc/*admin.listProviders*", async (route) => {
-      interceptedProviders = true;
-      const providers = [{
-        provider: "openai",
-        hasApiKey: true,
-        endpoints: [{
-          id: "openai-responses",
-          label: "openai-responses",
-          baseUrl: "https://plexus.example/v1",
-          api: "openai-responses",
-        }],
-        enabledModels: [
-          { id: "gpt-5.6-luna", endpointId: "openai-responses", api: "openai-responses", visibility: "public", documents: true },
-          { id: "gpt-5.6-terra", endpointId: "openai-responses", api: "openai-responses", visibility: "public", documents: false },
-        ],
-        apis: ["openai-responses", "openai-completions", "anthropic-messages", "google-generative-ai"],
-      }];
-      const response = await route.fetch();
-      const body = await response.json();
-      const procedures = new URL(route.request().url()).pathname.split("/").at(-1)?.split(",") ?? [];
-      const providerIndex = procedures.indexOf("admin.listProviders");
-      body[providerIndex].result.data = providers;
-      await route.fulfill({ response, json: body });
-    });
-    await signIn(page);
+test("keeps provider model controls separated", async ({
+	browser,
+	baseURL,
+}) => {
+	for (const options of [
+		{ ...devices["iPhone 13"], baseURL },
+		{ baseURL, viewport: { width: 1024, height: 768 } },
+	]) {
+		const context = await browser.newContext(options);
+		const page = await context.newPage();
+		let interceptedProviders = false;
+		await page.route("**/trpc/*admin.listProviders*", async (route) => {
+			interceptedProviders = true;
+			const providers = [
+				{
+					provider: "openai",
+					hasApiKey: true,
+					endpoints: [
+						{
+							id: "openai-responses",
+							label: "openai-responses",
+							baseUrl: "https://plexus.example/v1",
+							api: "openai-responses",
+						},
+					],
+					enabledModels: [
+						{
+							id: "gpt-5.6-luna",
+							endpointId: "openai-responses",
+							api: "openai-responses",
+							visibility: "public",
+							documents: true,
+						},
+						{
+							id: "gpt-5.6-terra",
+							endpointId: "openai-responses",
+							api: "openai-responses",
+							visibility: "public",
+							documents: false,
+						},
+					],
+					apis: [
+						"openai-responses",
+						"openai-completions",
+						"anthropic-messages",
+						"google-generative-ai",
+					],
+				},
+			];
+			const response = await route.fetch();
+			const body = await response.json();
+			const procedures =
+				new URL(route.request().url()).pathname.split("/").at(-1)?.split(",") ??
+				[];
+			const providerIndex = procedures.indexOf("admin.listProviders");
+			body[providerIndex].result.data = providers;
+			await route.fulfill({ response, json: body });
+		});
+		await signIn(page);
 
-    await page.locator('[data-tip="Settings"] button').click();
-    await page.getByRole("tab", { name: "Providers" }).click();
-    expect(interceptedProviders).toBe(true);
+		await page.locator('[data-tip="Settings"] button').click();
+		await page.getByRole("tab", { name: "Providers" }).click();
+		expect(interceptedProviders).toBe(true);
 
-    const rows = page.getByRole("group", { name: "Imported models" }).locator(":scope > div");
-    await expect(rows).toHaveCount(2);
-    for (const row of await rows.all()) {
-      const boxes = await row.locator("select, label, button").evaluateAll((controls) => controls.map((control) => {
-        const { left, right, top, bottom } = control.getBoundingClientRect();
-        return { left, right, top, bottom };
-      }));
-      const [endpoint, ...actions] = boxes;
-      expect(Math.min(...actions.map((action) => action.top))).toBeGreaterThanOrEqual(endpoint!.bottom);
-      for (let first = 0; first < boxes.length; first += 1) {
-        for (let second = first + 1; second < boxes.length; second += 1) {
-          const firstBox = boxes[first]!;
-          const secondBox = boxes[second]!;
-          const horizontalOverlap = Math.max(firstBox.left, secondBox.left) < Math.min(firstBox.right, secondBox.right);
-          const verticalOverlap = Math.max(firstBox.top, secondBox.top) < Math.min(firstBox.bottom, secondBox.bottom);
-          expect(horizontalOverlap && verticalOverlap).toBe(false);
-        }
-      }
-    }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-      await page.evaluate(() => document.documentElement.clientWidth),
-    );
-    await context.close();
-  }
+		const rows = page
+			.getByRole("group", { name: "Imported models" })
+			.locator(":scope > div");
+		await expect(rows).toHaveCount(2);
+		for (const row of await rows.all()) {
+			const boxes = await row
+				.locator("select, label, button")
+				.evaluateAll((controls) =>
+					controls.map((control) => {
+						const { left, right, top, bottom } =
+							control.getBoundingClientRect();
+						return { left, right, top, bottom };
+					}),
+				);
+			const [endpoint, ...actions] = boxes;
+			expect(
+				Math.min(...actions.map((action) => action.top)),
+			).toBeGreaterThanOrEqual(endpoint!.bottom);
+			for (let first = 0; first < boxes.length; first += 1) {
+				for (let second = first + 1; second < boxes.length; second += 1) {
+					const firstBox = boxes[first]!;
+					const secondBox = boxes[second]!;
+					const horizontalOverlap =
+						Math.max(firstBox.left, secondBox.left) <
+						Math.min(firstBox.right, secondBox.right);
+					const verticalOverlap =
+						Math.max(firstBox.top, secondBox.top) <
+						Math.min(firstBox.bottom, secondBox.bottom);
+					expect(horizontalOverlap && verticalOverlap).toBe(false);
+				}
+			}
+		}
+		expect(
+			await page.evaluate(() => document.documentElement.scrollWidth),
+		).toBeLessThanOrEqual(
+			await page.evaluate(() => document.documentElement.clientWidth),
+		);
+		await context.close();
+	}
 });
 
 test("deletes a provider from settings", async ({ page }) => {
-  await signIn(page);
+	await signIn(page);
 
-  await page.locator('[data-tip="Settings"] button').click();
-  await page.getByRole("tab", { name: "Providers" }).click();
-  await page.getByPlaceholder("Provider name").fill("temporary-provider");
-  await page.getByRole("button", { name: "Add provider" }).click();
+	await page.locator('[data-tip="Settings"] button').click();
+	await page.getByRole("tab", { name: "Providers" }).click();
+	await page.getByPlaceholder("Provider name").fill("temporary-provider");
+	await page.getByRole("button", { name: "Add provider" }).click();
 
-  const provider = page.getByRole("heading", { name: "temporary-provider" }).locator("..");
-  await expect(provider).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await provider.getByRole("button", { name: "Delete provider" }).click();
-  await expect(provider).toBeHidden();
+	const provider = page
+		.getByRole("heading", { name: "temporary-provider" })
+		.locator("..");
+	await expect(provider).toBeVisible();
+	page.once("dialog", (dialog) => dialog.accept());
+	await provider.getByRole("button", { name: "Delete provider" }).click();
+	await expect(provider).toBeHidden();
 });
 
 test("signs in and streams a mock chat response", async ({ page }) => {
-  await signIn(page);
+	await signIn(page);
 
-  const composer = page.getByPlaceholder("Message…");
-  await expect(composer).toBeVisible();
+	const composer = page.getByPlaceholder("Message…");
+	await expect(composer).toBeVisible();
 
-  const prompt = "Hello from the browser test";
-  await composer.fill(prompt);
-  await page.getByTitle("Send or queue message").click();
+	const prompt = "Hello from the browser test";
+	await composer.fill(prompt);
+	await page.getByTitle("Send or queue message").click();
 
-  const response = page.locator(".solar-assistant-output").last();
-  await expect(response).toContainText("Mock reply", { timeout: 20_000 });
-  await expect(response).toContainText(prompt);
-  await response.getByText("4 Sources", { exact: true }).click();
-  await expect(response.getByRole("link", { name: "React documentation" })).toBeVisible();
+	const response = page.locator(".solar-assistant-output").last();
+	await expect(response).toContainText("Mock reply", { timeout: 20_000 });
+	await expect(response).toContainText(prompt);
+	await response.getByText("4 Sources", { exact: true }).click();
+	await expect(
+		response.getByRole("link", { name: "React documentation" }),
+	).toBeVisible();
 });
 
-test("queues a follow-up message until the active response completes", async ({ page }) => {
-  await signIn(page);
+test("queues a follow-up message until the active response completes", async ({
+	page,
+}) => {
+	await signIn(page);
 
-  let releaseFirstRequest!: () => void;
-  let chatRequests = 0;
-  const firstRequestHeld = new Promise<void>((resolve) => {
-    releaseFirstRequest = resolve;
-  });
-  await page.route("**/api/chat", async (route) => {
-    chatRequests++;
-    if (chatRequests === 1) await firstRequestHeld;
-    await route.continue();
-  });
+	let releaseFirstRequest!: () => void;
+	let chatRequests = 0;
+	const firstRequestHeld = new Promise<void>((resolve) => {
+		releaseFirstRequest = resolve;
+	});
+	await page.route("**/api/chat", async (route) => {
+		chatRequests++;
+		if (chatRequests === 1) await firstRequestHeld;
+		await route.continue();
+	});
 
-  const composer = page.getByPlaceholder("Message…");
-  await composer.fill("First queued test message");
-  await page.getByTitle("Send or queue message").click();
-  await expect(page.getByTitle("Interrupt response")).toBeVisible();
+	const composer = page.getByPlaceholder("Message…");
+	await composer.fill("First queued test message");
+	await page.getByTitle("Send or queue message").click();
+	await expect(page.getByTitle("Interrupt response")).toBeVisible();
 
-  await composer.fill("Second queued test message");
-  await page.getByTitle("Send or queue message").click();
-  expect(chatRequests).toBe(1);
+	await composer.fill("Second queued test message");
+	await page.getByTitle("Send or queue message").click();
+	expect(chatRequests).toBe(1);
 
-  releaseFirstRequest();
-  await expect.poll(() => chatRequests).toBe(2);
-  await expect(page.locator(".solar-assistant-output").last()).toContainText("Second queued test message", { timeout: 20_000 });
+	releaseFirstRequest();
+	await expect.poll(() => chatRequests).toBe(2);
+	await expect(page.locator(".solar-assistant-output").last()).toContainText(
+		"Second queued test message",
+		{ timeout: 20_000 },
+	);
 });
 
 test("configures active context management policies", async ({ page }) => {
-  await signIn(page);
+	await signIn(page);
 
-  await page.locator('[data-tip="Settings"] button').click();
-  await page.getByRole("tab", { name: "context management" }).click();
+	await page.locator('[data-tip="Settings"] button').click();
+	await page.getByRole("tab", { name: "context management" }).click();
 
-  await expect(page.getByText("Active chat policies resolve as exact model, family, provider, then derived fallback.")).toBeVisible();
-  const gptPolicy = page.getByRole("group", { name: "openai / gpt-5.6" });
-  const slider = (label: string) => gptPolicy.locator("label").filter({ hasText: label }).locator("input");
-  await expect(slider("Soft trigger")).toHaveValue("272000");
-  await expect(slider("Target")).toHaveValue("180000");
+	await expect(
+		page.getByText(
+			"Active chat policies resolve as exact model, family, provider, then derived fallback.",
+		),
+	).toBeVisible();
+	const gptPolicy = page.getByRole("group", { name: "openai / gpt-5.6" });
+	const slider = (label: string) =>
+		gptPolicy.locator("label").filter({ hasText: label }).locator("input");
+	await expect(slider("Soft trigger")).toHaveValue("272000");
+	await expect(slider("Target")).toHaveValue("180000");
 
-  await slider("Target").evaluate((input) => {
-    const range = input as HTMLInputElement;
-    range.value = "175000";
-    range.dispatchEvent(new Event("input", { bubbles: true }));
-    range.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  await gptPolicy.getByRole("button", { name: "Save" }).click();
-  await expect(slider("Target")).toHaveValue("175000");
+	await slider("Target").evaluate((input) => {
+		const range = input as HTMLInputElement;
+		range.value = "175000";
+		range.dispatchEvent(new Event("input", { bubbles: true }));
+		range.dispatchEvent(new Event("change", { bubbles: true }));
+	});
+	await gptPolicy.getByRole("button", { name: "Save" }).click();
+	await expect(slider("Target")).toHaveValue("175000");
 });
