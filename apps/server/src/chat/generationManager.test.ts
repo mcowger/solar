@@ -5,6 +5,11 @@ const generationSteps: Array<{ messageId: string; steps: unknown[] }> = [];
 const providerCalls: Array<Record<string, unknown>> = [];
 let streamFactory: (...args: any[]) => AsyncIterable<any>;
 let titleFactory: (...args: any[]) => Promise<string>;
+let persistStarted: Promise<void> | null = null;
+let notifyPersistStarted: (() => void) | null = null;
+let persistGate: Promise<void> | null = null;
+let releasePersist: (() => void) | null = null;
+let notifyPersistFinished: (() => void) | null = null;
 
 mock.module("../db", () => ({
 	db: {
@@ -17,7 +22,18 @@ mock.module("../db", () => ({
 				where() {
 					return query;
 				},
-				execute: async () => undefined,
+				execute: async () => {
+					if (notifyPersistStarted && persistGate) {
+						const notify = notifyPersistStarted;
+						const gate = persistGate;
+						notifyPersistStarted = null;
+						persistGate = null;
+						notify();
+						await gate;
+						notifyPersistFinished?.();
+						notifyPersistFinished = null;
+					}
+				},
 				executeTakeFirst: async () => ({ numUpdatedRows: 0n }),
 			};
 			return query;
@@ -116,6 +132,11 @@ describe("GenerationManager SSE lifecycle", () => {
 		providerCalls.length = 0;
 		streamFactory = () => events();
 		titleFactory = async () => "";
+		persistStarted = null;
+		notifyPersistStarted = null;
+		persistGate = null;
+		releasePersist = null;
+		notifyPersistFinished = null;
 	});
 
 	test("streams start, chunks, finish, and completion to a live subscriber", async () => {
@@ -177,6 +198,47 @@ describe("GenerationManager SSE lifecycle", () => {
 			},
 			{ data: "[DONE]" },
 		]);
+	});
+
+	test("does not publish completion before the response is persisted", async () => {
+		let releaseGeneration!: () => void;
+		const generationReleased = new Promise<void>((resolve) => {
+			releaseGeneration = resolve;
+		});
+		persistStarted = new Promise<void>((resolve) => {
+			notifyPersistStarted = resolve;
+		});
+		persistGate = new Promise<void>((resolve) => {
+			releasePersist = resolve;
+		});
+		const persistFinished = new Promise<void>((resolve) => {
+			notifyPersistFinished = resolve;
+		});
+		streamFactory = async function* () {
+			yield { type: "text_delta", delta: "Long response" };
+			await generationReleased;
+			yield doneEvent;
+		};
+		const manager = new GenerationManager();
+		start(manager);
+
+		const first = manager.subscribe("message-1").getReader();
+		await first.read();
+		await first.read();
+		releaseGeneration();
+		await persistStarted;
+
+		const resumed = manager.subscribe("message-1").getReader();
+		expect((await resumed.read()).value).toBeDefined();
+		expect((await resumed.read()).value).toBeDefined();
+		expect((await resumed.read()).value).toBeDefined();
+		expect(manager.isActive("message-1")).toBe(true);
+
+		releasePersist?.();
+		await persistFinished;
+		expect((await resumed.read()).value).toBeDefined();
+		expect((await resumed.read()).done).toBe(true);
+		expect(manager.isActive("message-1")).toBe(false);
 	});
 
 	test("ends an unknown generation subscription immediately", async () => {
