@@ -25,6 +25,9 @@ const SIDEBAR_DEFAULT_WIDTH = 280;
 const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
 const PINNED_SIDEBAR_MEDIA_QUERY = "(min-width: 650px)";
+const SWIPE_EDGE_THRESHOLD = 32;
+const SWIPE_OPEN_THRESHOLD = 64;
+const SWIPE_VERTICAL_TOLERANCE = 80;
 
 function formatTokens(tokens: number) {
 	return `${Math.round(tokens / 1_000)}k`;
@@ -145,6 +148,7 @@ export function ChatApp() {
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
 	const [copiedChatId, setCopiedChatId] = useState<string>();
 	const sidebarRef = useRef<HTMLDivElement>(null);
+	const swipeStart = useRef<{ x: number; y: number } | undefined>(undefined);
 	// Guards against React StrictMode double-invoking the auto-create effect.
 	const autoCreated = useRef(false);
 
@@ -226,6 +230,33 @@ export function ChatApp() {
 		window.addEventListener("pointercancel", stopResize);
 	}
 
+	function startDrawerSwipe(event: React.TouchEvent<HTMLDivElement>) {
+		if (drawerOpen || window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches) {
+			swipeStart.current = undefined;
+			return;
+		}
+
+		const touch = event.touches[0];
+		if (touch && touch.clientX <= SWIPE_EDGE_THRESHOLD) {
+			swipeStart.current = { x: touch.clientX, y: touch.clientY };
+		}
+	}
+
+	function finishDrawerSwipe(event: React.TouchEvent<HTMLDivElement>) {
+		const start = swipeStart.current;
+		swipeStart.current = undefined;
+		if (!start || drawerOpen) return;
+
+		const touch = event.changedTouches[0];
+		if (!touch) return;
+
+		const deltaX = touch.clientX - start.x;
+		const deltaY = Math.abs(touch.clientY - start.y);
+		if (deltaX >= SWIPE_OPEN_THRESHOLD && deltaY <= SWIPE_VERTICAL_TOLERANCE) {
+			setDrawerOpen(true);
+		}
+	}
+
 	async function copyChatId() {
 		if (!activeId) return;
 		await navigator.clipboard.writeText(activeId);
@@ -246,7 +277,14 @@ export function ChatApp() {
 				checked={drawerOpen}
 				onChange={(event) => setDrawerOpen(event.target.checked)}
 			/>
-			<div className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100">
+			<div
+				className="drawer-content solar-main flex min-h-0 flex-col overflow-x-clip bg-base-100"
+				onTouchStart={startDrawerSwipe}
+				onTouchEnd={finishDrawerSwipe}
+				onTouchCancel={() => {
+					swipeStart.current = undefined;
+				}}
+			>
 				<header className="navbar min-h-16 flex-wrap gap-y-1 border-b border-base-300 bg-base-100 px-3 py-2 min-[1101px]:flex-nowrap min-[1101px]:px-5">
 					<div className="navbar-start order-1 w-auto flex-1 gap-2">
 						<label
