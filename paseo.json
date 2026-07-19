@@ -9,8 +9,7 @@
   "scripts": {
     "web": {
       "type": "service",
-      "command": "bun run dev:foreground",
-      "port": 3000
+      "command": "bun run dev:foreground"
     },
     "dev:load-history": {
       "command": "bun run dev:load-history"
