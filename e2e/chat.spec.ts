@@ -236,12 +236,9 @@ test("configures active context management policies", async ({ page }) => {
 	await expect(slider("Soft trigger")).toHaveValue("272000");
 	await expect(slider("Target")).toHaveValue("180000");
 
-	await slider("Target").evaluate((input) => {
-		const range = input as HTMLInputElement;
-		range.value = "175000";
-		range.dispatchEvent(new Event("input", { bubbles: true }));
-		range.dispatchEvent(new Event("change", { bubbles: true }));
-	});
+	const target = slider("Target");
+	await target.focus();
+	for (let i = 0; i < 5; i++) await target.press("ArrowLeft");
 	await gptPolicy.getByRole("button", { name: "Save" }).click();
-	await expect(slider("Target")).toHaveValue("175000");
+	await expect(target).toHaveValue("175000");
 });

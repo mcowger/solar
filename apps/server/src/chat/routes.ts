@@ -208,7 +208,7 @@ async function streamNewAssistantTurn(
 	userId: string,
 	isAdmin: boolean,
 	titleGeneration?: { firstMessage: string },
-): Promise<Response> {
+): Promise<string> {
 	// Resolve the model for this turn, then persist it so the conversation
 	// remembers the effective selection (defaults are resolved lazily).
 	const convo = await db
@@ -349,9 +349,7 @@ async function streamNewAssistantTurn(
 		},
 	});
 
-	return new Response(generationManager.subscribe(assistantMessageId, 0), {
-		headers: { ...sseHeaders, "x-message-id": assistantMessageId },
-	});
+	return assistantMessageId;
 }
 
 // Send a message: persist user turn, start a decoupled generation, stream it.
@@ -437,12 +435,13 @@ chatRoutes.post("/", async (c) => {
 		.where("role", "=", "user")
 		.limit(2)
 		.execute();
-	return streamNewAssistantTurn(
+	const assistantMessageId = await streamNewAssistantTurn(
 		conversationId,
 		user.id,
 		user.isAdmin,
 		firstUserMessage.length === 1 ? { firstMessage: text ?? "" } : undefined,
 	);
+	return c.json({ messageId: assistantMessageId }, 202);
 });
 
 // Edit a user message: rewrite its text, discard everything after it, and
@@ -475,7 +474,12 @@ chatRoutes.post("/edit", async (c) => {
 	await contextRepository.ensureState(msg.conversationId);
 	await contextRepository.invalidateSummary(msg.conversationId);
 
-	return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
+	const assistantMessageId = await streamNewAssistantTurn(
+		msg.conversationId,
+		user.id,
+		user.isAdmin,
+	);
+	return c.json({ messageId: assistantMessageId }, 202);
 });
 
 // Regenerate a reply. `messageId` may be the assistant message to replace
@@ -501,16 +505,23 @@ chatRoutes.post("/regenerate", async (c) => {
 	await contextRepository.ensureState(msg.conversationId);
 	await contextRepository.invalidateSummary(msg.conversationId);
 
-	return streamNewAssistantTurn(msg.conversationId, user.id, user.isAdmin);
+	const assistantMessageId = await streamNewAssistantTurn(
+		msg.conversationId,
+		user.id,
+		user.isAdmin,
+	);
+	return c.json({ messageId: assistantMessageId }, 202);
 });
 
 // Resume streaming an in-progress (or just-finished) generation after reconnect.
 chatRoutes.get("/stream", async (c) => {
-	if (!(await requireUser(c.req.raw)))
-		return c.json({ error: "unauthorized" }, 401);
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
 
 	const messageId = c.req.query("messageId");
 	if (!messageId) return c.json({ error: "messageId required" }, 400);
+	if (!(await getOwnedMessage(user.id, messageId)))
+		return c.json({ error: "message not found" }, 404);
 
 	const lastEventId = Number(
 		c.req.header("last-event-id") ?? c.req.query("lastEventId") ?? 0,
@@ -523,10 +534,13 @@ chatRoutes.get("/stream", async (c) => {
 
 // Explicit user Stop — the only signal that cancels a generation.
 chatRoutes.post("/stop", async (c) => {
-	if (!(await requireUser(c.req.raw)))
-		return c.json({ error: "unauthorized" }, 401);
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
 
 	const { messageId } = (await c.req.json()) as { messageId: string };
+	if (!messageId) return c.json({ error: "messageId required" }, 400);
+	if (!(await getOwnedMessage(user.id, messageId)))
+		return c.json({ error: "message not found" }, 404);
 	const stopped = generationManager.stop(messageId);
 	return c.json({ stopped });
 });

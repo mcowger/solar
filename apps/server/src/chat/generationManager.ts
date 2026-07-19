@@ -20,6 +20,7 @@ interface BufferedChunk {
 
 interface Subscriber {
 	push: (bc: BufferedChunk) => void;
+	heartbeat: () => void;
 	end: () => void;
 }
 
@@ -70,9 +71,12 @@ const sseChunk = (bc: BufferedChunk) =>
 		`id: ${bc.id}\nevent: message\ndata: ${JSON.stringify(bc.chunk)}\n\n`,
 	);
 const sseDone = () => encoder.encode(`event: message\ndata: [DONE]\n\n`);
+const sseHeartbeat = () => encoder.encode(`: heartbeat\n\n`);
 
 /** How long a finished generation stays resumable in memory after completion. */
 const RETENTION_MS = 60_000;
+const HEARTBEAT_MS = 15_000;
+const TITLE_TIMEOUT_MS = 30_000;
 
 /**
  * Owns server-side generation as a task decoupled from any HTTP request.
@@ -165,6 +169,11 @@ export class GenerationManager {
 	subscribe(messageId: string, lastEventId = 0): ReadableStream<Uint8Array> {
 		const gen = this.generations.get(messageId);
 		let subscriber: Subscriber | null = null;
+		let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+		const clearHeartbeat = () => {
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
+			heartbeatTimer = null;
+		};
 
 		return new ReadableStream<Uint8Array>({
 			start: (controller) => {
@@ -189,7 +198,15 @@ export class GenerationManager {
 							/* stream already closed */
 						}
 					},
+					heartbeat: () => {
+						try {
+							controller.enqueue(sseHeartbeat());
+						} catch {
+							/* stream already closed */
+						}
+					},
 					end: () => {
+						clearHeartbeat();
 						try {
 							controller.enqueue(sseDone());
 							controller.close();
@@ -199,8 +216,13 @@ export class GenerationManager {
 					},
 				};
 				gen.subscribers.add(subscriber);
+				heartbeatTimer = setInterval(
+					() => subscriber?.heartbeat(),
+					HEARTBEAT_MS,
+				);
 			},
 			cancel: () => {
+				clearHeartbeat();
 				if (gen && subscriber) gen.subscribers.delete(subscriber);
 			},
 		});
@@ -322,7 +344,9 @@ export class GenerationManager {
 					}
 					throw error;
 				}
-			const title = await titlePromise;
+			const title = titlePromise
+				? await withTimeout(titlePromise, TITLE_TIMEOUT_MS)
+				: null;
 			if (title) emit({ type: "title-update", title });
 			gen.status = "done";
 			await this.persist(gen, "complete");
@@ -497,6 +521,25 @@ function parseTitle(response: string): string | null {
 		// A raw model response is the agreed fallback for invalid JSON.
 	}
 	return raw.slice(0, 200);
+}
+
+async function withTimeout<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+): Promise<T | null> {
+	return new Promise((resolve) => {
+		const timer = setTimeout(() => resolve(null), timeoutMs);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			() => {
+				clearTimeout(timer);
+				resolve(null);
+			},
+		);
+	});
 }
 
 export const generationManager = new GenerationManager();

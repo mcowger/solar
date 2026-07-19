@@ -13,7 +13,7 @@ import {
 	isDocumentMimeType,
 	SolarAttachmentAdapter,
 } from "./attachmentAdapter";
-import { readChunkStream } from "./stream";
+import type { UiChunk } from "./streamTypes";
 
 interface SolarAttachmentMeta {
 	id: string;
@@ -115,6 +115,10 @@ export function useSolarRuntime(
 	const [isRunning, setIsRunning] = useState(false);
 	const assistantIdRef = useRef<string | null>(null);
 	const abortRef = useRef<AbortController | null>(null);
+	const eventSourceRef = useRef<EventSource | null>(null);
+	const lastEventIdRef = useRef(0);
+	const reconnectRef = useRef<(() => void) | null>(null);
+	const finishStreamRef = useRef<(() => void) | null>(null);
 	const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
 	const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(
 		() => undefined,
@@ -168,80 +172,111 @@ export function useSolarRuntime(
 	);
 
 	const consume = useCallback(
-		async (response: Response, displayId: string) => {
-			// The server's canonical message id (for Stop) comes from the response
-			// header; the visible message keeps a stable `displayId` so assistant-ui
-			// reconciliation isn't disrupted mid-stream. The assistant bubble is added
-			// on first content (empty trailing assistant messages are not rendered).
-			assistantIdRef.current =
-				response.headers.get("x-message-id") ?? assistantIdRef.current;
+		async (messageId: string, displayId: string, resetEventId = true) => {
 			let text = "";
 			let reasoning = "";
 			let toolCalls: SolarToolCall[] = [];
+			let source: EventSource | null = null;
+			let resolveCompletion: (() => void) | null = null;
+			const completed = new Promise<void>((resolve) => {
+				resolveCompletion = resolve;
+			});
+			finishStreamRef.current = resolveCompletion;
+			const handleChunk = (chunk: UiChunk, eventId: string) => {
+				const parsedId = Number(eventId);
+				if (
+					Number.isSafeInteger(parsedId) &&
+					parsedId <= lastEventIdRef.current
+				)
+					return;
+				if (Number.isSafeInteger(parsedId)) lastEventIdRef.current = parsedId;
+				if (chunk.type === "text-delta") {
+					text += chunk.textDelta;
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "reasoning-delta") {
+					reasoning += chunk.delta;
+					upsertAssistant(displayId, text, reasoning, toolCalls);
+				} else if (chunk.type === "tool-call-start") {
+					toolCalls = [
+						...toolCalls,
+						{
+							id: chunk.toolCallId,
+							name: chunk.toolName,
+							serverName: chunk.serverName,
+							remoteName: chunk.remoteName,
+							args: "",
+							status: "streaming",
+						},
+					];
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "tool-call-delta") {
+					toolCalls = toolCalls.map((call) =>
+						call.id === chunk.toolCallId
+							? { ...call, args: call.args + chunk.argsText }
+							: call,
+					);
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "tool-call-end") {
+					toolCalls = toolCalls.map((call) =>
+						call.id === chunk.toolCallId
+							? { ...call, status: "executing" }
+							: call,
+					);
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "tool-call-result") {
+					toolCalls = toolCalls.map((call) =>
+						call.id === chunk.toolCallId
+							? {
+									...call,
+									output: chunk.output,
+									status: chunk.isError ? "error" : "complete",
+								}
+							: call,
+					);
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "error") {
+					text += `\n\n_Error: ${chunk.errorText}_`;
+					upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
+				} else if (chunk.type === "title-update") {
+					queryClient.invalidateQueries({
+						queryKey: trpc.conversation.list.queryKey(),
+					});
+				}
+			};
+			const connect = () => {
+				source?.close();
+				const query = new URLSearchParams({ messageId });
+				if (lastEventIdRef.current > 0)
+					query.set("lastEventId", String(lastEventIdRef.current));
+				source = new EventSource(`/api/chat/stream?${query}`);
+				eventSourceRef.current = source;
+				source.onmessage = (event) => {
+					if (event.data === "[DONE]") {
+						source?.close();
+						resolveCompletion?.();
+						return;
+					}
+					handleChunk(JSON.parse(event.data) as UiChunk, event.lastEventId);
+				};
+			};
+			reconnectRef.current = connect;
 			setIsRunning(true);
 			upsertAssistant(displayId, "", undefined, undefined, "request-sent");
+			if (resetEventId) lastEventIdRef.current = 0;
+			connect();
 			try {
-				await readChunkStream(response, (chunk) => {
-					if (chunk.type === "text-delta") {
-						text += chunk.textDelta;
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "reasoning-delta") {
-						reasoning += chunk.delta;
-						upsertAssistant(displayId, text, reasoning, toolCalls);
-					} else if (chunk.type === "tool-call-start") {
-						toolCalls = [
-							...toolCalls,
-							{
-								id: chunk.toolCallId,
-								name: chunk.toolName,
-								serverName: chunk.serverName,
-								remoteName: chunk.remoteName,
-								args: "",
-								status: "streaming",
-							},
-						];
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "tool-call-delta") {
-						toolCalls = toolCalls.map((call) =>
-							call.id === chunk.toolCallId
-								? { ...call, args: call.args + chunk.argsText }
-								: call,
-						);
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "tool-call-end") {
-						toolCalls = toolCalls.map((call) =>
-							call.id === chunk.toolCallId
-								? { ...call, status: "executing" }
-								: call,
-						);
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "tool-call-result") {
-						toolCalls = toolCalls.map((call) =>
-							call.id === chunk.toolCallId
-								? {
-										...call,
-										output: chunk.output,
-										status: chunk.isError ? "error" : "complete",
-									}
-								: call,
-						);
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "error") {
-						text += `\n\n_Error: ${chunk.errorText}_`;
-						upsertAssistant(displayId, text, reasoning || undefined, toolCalls);
-					} else if (chunk.type === "title-update") {
-						queryClient.invalidateQueries({
-							queryKey: trpc.conversation.list.queryKey(),
-						});
-					}
-				});
+				await completed;
 			} finally {
+				eventSourceRef.current?.close();
+				eventSourceRef.current = null;
+				if (reconnectRef.current === connect) reconnectRef.current = null;
+				if (finishStreamRef.current === resolveCompletion)
+					finishStreamRef.current = null;
 				if (toolCalls.length && assistantIdRef.current) {
 					toolCallsByMessageRef.current.set(assistantIdRef.current, toolCalls);
 				}
 				setIsRunning(false);
 				assistantIdRef.current = null;
-				abortRef.current = null;
 			}
 		},
 		[queryClient, trpc.conversation.list, upsertAssistant],
@@ -295,15 +330,12 @@ export function useSolarRuntime(
 			if (active) {
 				assistantIdRef.current = active.id;
 				messageQueue.notifyBusy();
-				const res = await fetch(
-					`/api/chat/stream?messageId=${encodeURIComponent(active.id)}`,
-				);
 				if (cancelled) {
 					messageQueue.notifyIdle();
 					return;
 				}
 				try {
-					await consume(res, active.id);
+					await consume(active.id, active.id);
 					if (!cancelled) await loadHistory();
 				} finally {
 					messageQueue.notifyIdle();
@@ -312,6 +344,8 @@ export function useSolarRuntime(
 		})();
 		return () => {
 			cancelled = true;
+			eventSourceRef.current?.close();
+			finishStreamRef.current?.();
 		};
 	}, [conversationId, consume, loadHistory, messageQueue]);
 
@@ -320,16 +354,22 @@ export function useSolarRuntime(
 			const abort = new AbortController();
 			const displayId = crypto.randomUUID();
 			abortRef.current = abort;
+			const request = fetch(url, {
+				method: "POST",
+				headers: jsonHeaders,
+				body: JSON.stringify(body),
+				signal: abort.signal,
+			});
 			setIsRunning(true);
 			upsertAssistant(displayId, "", undefined, undefined, "connecting");
 			try {
-				const res = await fetch(url, {
-					method: "POST",
-					headers: jsonHeaders,
-					body: JSON.stringify(body),
-					signal: abort.signal,
-				});
-				await consume(res, displayId);
+				const res = await request;
+				if (!res.ok) throw new Error(`Chat request failed (${res.status})`);
+				const result = (await res.json()) as { messageId?: string };
+				if (!result.messageId)
+					throw new Error("Chat request returned no message id");
+				assistantIdRef.current = result.messageId;
+				await consume(result.messageId, displayId);
 				await loadHistory();
 			} catch (error) {
 				setIsRunning(false);
@@ -339,6 +379,15 @@ export function useSolarRuntime(
 		},
 		[consume, loadHistory, upsertAssistant],
 	);
+
+	useEffect(() => {
+		const reconnectWhenVisible = () => {
+			if (document.visibilityState === "visible") reconnectRef.current?.();
+		};
+		document.addEventListener("visibilitychange", reconnectWhenVisible);
+		return () =>
+			document.removeEventListener("visibilitychange", reconnectWhenVisible);
+	}, []);
 
 	const onNew = useCallback(
 		async (message: AppendMessage) => {
@@ -415,6 +464,8 @@ export function useSolarRuntime(
 			});
 		}
 		abortRef.current?.abort();
+		eventSourceRef.current?.close();
+		finishStreamRef.current?.();
 	}, []);
 
 	const attachmentAdapter = useMemo(
