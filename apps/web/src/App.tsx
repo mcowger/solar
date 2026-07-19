@@ -1,10 +1,43 @@
 import { useSession } from "./auth";
 import { AuthForm } from "./AuthForm";
 import { ChatApp } from "./chat/ChatApp";
+import { useEffect, useState } from "react";
+
+const serviceWorkerUpdatedKey = "solar:service-worker-updated";
+const updateNotificationDuration = 5_000;
 
 export function App() {
 	const { data: session, isPending } = useSession();
-	if (isPending)
-		return <p style={{ fontFamily: "system-ui", padding: "2rem" }}>Loading…</p>;
-	return session ? <ChatApp /> : <AuthForm />;
+	const [showUpdateNotification, setShowUpdateNotification] = useState(
+		() => sessionStorage.getItem(serviceWorkerUpdatedKey) === "true",
+	);
+
+	useEffect(() => {
+		if (!showUpdateNotification) return;
+		sessionStorage.removeItem(serviceWorkerUpdatedKey);
+		const timeout = window.setTimeout(
+			() => setShowUpdateNotification(false),
+			updateNotificationDuration,
+		);
+		return () => window.clearTimeout(timeout);
+	}, [showUpdateNotification]);
+
+	return (
+		<>
+			{isPending ? (
+				<p style={{ fontFamily: "system-ui", padding: "2rem" }}>Loading…</p>
+			) : session ? (
+				<ChatApp />
+			) : (
+				<AuthForm />
+			)}
+			{showUpdateNotification && (
+				<div className="toast toast-top toast-end">
+					<div className="alert alert-success">
+						Updated to the latest version.
+					</div>
+				</div>
+			)}
+		</>
+	);
 }
