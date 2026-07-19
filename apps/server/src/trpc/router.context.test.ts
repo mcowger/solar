@@ -51,7 +51,7 @@ mock.module("../chat/attachments", () => ({
 	deleteAttachmentFilesForUser: async () => {},
 }));
 
-const { appRouter, contextPolicySchema } = await import("./router");
+const { appRouter } = await import("./router");
 const { DEFAULT_CONTEXT_GLOBAL_SETTINGS, parseContextGlobalSettings } =
 	await import("../context/settings");
 
@@ -89,34 +89,6 @@ describe("context management metadata", () => {
 		expect(parseContextGlobalSettings(JSON.stringify(settings))).toEqual(
 			DEFAULT_CONTEXT_GLOBAL_SETTINGS,
 		);
-	});
-
-	test("requires ordered policy limits and selectors matching their scope", () => {
-		const policy = {
-			scope: "model_family" as const,
-			provider: "openai",
-			modelFamily: "gpt-5.6",
-			modelId: null,
-			enabled: true,
-			softTriggerTokens: 272_000,
-			targetTokens: 180_000,
-			hardInputTokens: 600_000,
-			maxPinnedAttachmentTokens: 64_000,
-			outputReserveTokens: 32_000,
-		};
-
-		expect(contextPolicySchema.safeParse(policy).success).toBe(true);
-		expect(
-			contextPolicySchema.safeParse({
-				...policy,
-				scope: "exact_model",
-				modelId: null,
-			}).success,
-		).toBe(false);
-		expect(
-			contextPolicySchema.safeParse({ ...policy, targetTokens: 300_000 })
-				.success,
-		).toBe(false);
 	});
 
 	test("returns owner-visible context status without summary content", async () => {

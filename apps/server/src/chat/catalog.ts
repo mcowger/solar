@@ -14,6 +14,7 @@ import { db } from "../db";
 import {
 	parseAllowlist,
 	type AllowlistEntry,
+	type ModelContextPolicy,
 	type ModelVisibility,
 } from "./allowlist";
 import type { NativeDocumentInput } from "./attachments";
@@ -26,6 +27,7 @@ import {
 export {
 	parseAllowlist,
 	type AllowlistEntry,
+	type ModelContextPolicy,
 	type ModelVisibility,
 } from "./allowlist";
 
@@ -433,6 +435,7 @@ export interface ResolvedModel {
 	model: Model<Api>;
 	runtimeProvider: Provider<Api>;
 	apiKey?: string;
+	contextPolicy?: ModelContextPolicy;
 }
 
 export async function getModelCapabilities(selection: ModelSelection) {
@@ -466,6 +469,7 @@ export async function getModelCapabilities(selection: ModelSelection) {
 		supportsVerbosity: selection.api === "openai-responses",
 		defaultReasoningEffort: entry?.reasoningEffort ?? null,
 		defaultVerbosity: entry?.verbosity ?? null,
+		contextWindow: model.contextWindow,
 	};
 }
 
@@ -544,6 +548,7 @@ export async function resolveModel(
 				api: selection.api as Api,
 				baseUrl: endpoint.baseUrl,
 				...(entry?.piOptions ?? {}),
+				...(entry?.contextWindow ? { contextWindow: entry.contextWindow } : {}),
 			} as Model<Api>)
 		: synthesizeModel(selection, endpoint.baseUrl, provider, entry);
 	const runtimeProvider = createProvider({
@@ -553,7 +558,12 @@ export async function resolveModel(
 		models: [model],
 		api: API_STREAMS,
 	});
-	return { model, runtimeProvider, apiKey: config.apiKey ?? undefined };
+	return {
+		model,
+		runtimeProvider,
+		apiKey: config.apiKey ?? undefined,
+		contextPolicy: entry?.contextPolicy,
+	};
 }
 
 function synthesizeModel(
@@ -574,6 +584,7 @@ function synthesizeModel(
 		contextWindow: 128_000,
 		maxTokens: 4096,
 		...(entry?.piOptions ?? {}),
+		...(entry?.contextWindow ? { contextWindow: entry.contextWindow } : {}),
 	} as Model<Api>;
 }
 

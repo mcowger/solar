@@ -46,7 +46,6 @@ function runtimeFixture(
 		jobUpdatedAt: null,
 	};
 	const repository = {
-		seedDefaultPolicies: async () => {},
 		ensureState: async () => ({ ...state }),
 		conversationModel: async () => ({ provider: "mock", modelId: "mock" }),
 		globalSettings: async () => ({

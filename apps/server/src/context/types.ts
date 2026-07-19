@@ -1,8 +1,4 @@
-import type {
-	ContextJobStatus,
-	ContextPolicyScope,
-	ProviderCallPurpose,
-} from "../db/schema";
+import type { ContextJobStatus, ProviderCallPurpose } from "../db/schema";
 
 export type ContextPolicy = {
 	enabled: boolean;
@@ -13,23 +9,11 @@ export type ContextPolicy = {
 	outputReserveTokens: number;
 };
 
-export type ContextPolicySource = ContextPolicyScope | "derived";
+export type ContextPolicySource = "exact_model" | "model_family" | "derived";
 
 export type ResolvedContextPolicy = ContextPolicy & {
 	source: ContextPolicySource;
 };
-
-export type ContextPolicySelector =
-	| {
-			scope: Exclude<ContextPolicyScope, "provider">;
-			provider: string;
-			modelFamily?: string;
-			modelId?: string;
-	  }
-	| {
-			scope: "provider";
-			provider: string;
-	  };
 
 export type ContextState = {
 	conversationId: string;

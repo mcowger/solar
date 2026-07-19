@@ -94,6 +94,51 @@ describe("parseAllowlist", () => {
 		]);
 	});
 
+	test("keeps valid context metadata and discards malformed policy objects", () => {
+		const contextPolicy = {
+			enabled: true,
+			softTriggerTokens: 90_000,
+			targetTokens: 58_000,
+			hardInputTokens: 96_000,
+			maxPinnedAttachmentTokens: 32_000,
+			outputReserveTokens: 32_000,
+		};
+		expect(
+			parseAllowlist(
+				JSON.stringify([
+					{
+						id: "configured",
+						endpointId: "responses",
+						api: "openai-responses",
+						contextWindow: 128_000,
+						contextPolicy,
+					},
+					{
+						id: "malformed",
+						endpointId: "responses",
+						api: "openai-responses",
+						contextPolicy: { enabled: true },
+					},
+				]),
+			),
+		).toEqual([
+			{
+				id: "configured",
+				endpointId: "responses",
+				api: "openai-responses",
+				visibility: "public",
+				contextWindow: 128_000,
+				contextPolicy,
+			},
+			{
+				id: "malformed",
+				endpointId: "responses",
+				api: "openai-responses",
+				visibility: "public",
+			},
+		]);
+	});
+
 	test("returns an empty list for invalid JSON or a non-array value", () => {
 		expect(parseAllowlist("not json")).toEqual([]);
 		expect(parseAllowlist('{"id":"gpt-5"}')).toEqual([]);

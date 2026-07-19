@@ -12,7 +12,22 @@ interface AllowlistEntry {
 	documents?: boolean;
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	verbosity?: "low" | "medium" | "high";
-	capabilities?: { reasoningLevels: string[]; supportsVerbosity: boolean };
+	capabilities?: {
+		reasoningLevels: string[];
+		supportsVerbosity: boolean;
+		contextWindow?: number;
+	};
+	contextWindow?: number;
+	contextPolicy?: ModelContextPolicy;
+}
+
+interface ModelContextPolicy {
+	enabled: boolean;
+	softTriggerTokens: number;
+	targetTokens: number;
+	hardInputTokens: number;
+	maxPinnedAttachmentTokens: number;
+	outputReserveTokens: number;
 }
 
 interface ProviderEndpoint {
@@ -38,20 +53,6 @@ interface ModelDescriptor {
 	name: string;
 }
 
-interface ContextPolicy {
-	id: string;
-	scope: "exact_model" | "model_family" | "provider";
-	provider: string;
-	modelFamily: string | null;
-	modelId: string | null;
-	enabled: boolean;
-	softTriggerTokens: number;
-	targetTokens: number;
-	hardInputTokens: number;
-	maxPinnedAttachmentTokens: number;
-	outputReserveTokens: number;
-}
-
 interface ContextManagementSettings {
 	global: {
 		version: number;
@@ -59,14 +60,6 @@ interface ContextManagementSettings {
 		summaryPromptOverride: string | null;
 		summaryPrompt: string;
 		summaryPromptOverridden: boolean;
-	};
-	policies: ContextPolicy[];
-	fallback: {
-		softTrigger: string;
-		target: string;
-		hardInput: string;
-		maxPinnedAttachmentTokens: number;
-		outputReserveTokens: number;
 	};
 }
 
@@ -78,7 +71,6 @@ interface PasteSettings {
 }
 
 const CONTEXT_TOKEN_STEP = 1_000;
-const MAX_CONTEXT_TOKENS = 2_000_000;
 const thinkingLevels = [
 	"minimal",
 	"low",
@@ -109,42 +101,18 @@ function formatTokenCount(tokens: number) {
 	return `${Math.round(tokens / CONTEXT_TOKEN_STEP)}K`;
 }
 
-function contextPolicyInput(policy: ContextPolicy) {
-	return {
-		scope: policy.scope,
-		provider: policy.provider,
-		modelFamily: policy.modelFamily,
-		modelId: policy.modelId,
-		enabled: policy.enabled,
-		softTriggerTokens: policy.softTriggerTokens,
-		targetTokens: policy.targetTokens,
-		hardInputTokens: policy.hardInputTokens,
-		maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens,
-		outputReserveTokens: policy.outputReserveTokens,
-	};
-}
-
-function policyHasChanges(
-	policy: ContextPolicy,
-	saved: ContextPolicy | undefined,
-) {
-	return (
-		!saved ||
-		policy.enabled !== saved.enabled ||
-		contextPolicyFields.some(({ field }) => policy[field] !== saved[field])
-	);
-}
-
 function ContextPolicySlider({
 	label,
 	min,
 	value,
+	max = 2_000_000,
 	disabled,
 	onChange,
 }: {
 	label: string;
 	min: number;
 	value: number;
+	max?: number;
 	disabled: boolean;
 	onChange: (value: number) => void;
 }) {
@@ -160,7 +128,7 @@ function ContextPolicySlider({
 				className="range range-primary range-xs"
 				type="range"
 				min={min}
-				max={MAX_CONTEXT_TOKENS}
+				max={max}
 				step={CONTEXT_TOKEN_STEP}
 				value={value}
 				disabled={disabled}
@@ -168,6 +136,62 @@ function ContextPolicySlider({
 			/>
 		</label>
 	);
+}
+
+function defaultModelContextPolicy(
+	provider: string,
+	modelId: string,
+	window: number,
+): ModelContextPolicy {
+	const identity = `${provider} ${modelId}`.toLowerCase();
+	const configured = identity.includes("claude")
+		? {
+				enabled: true,
+				softTriggerTokens: 500_000,
+				targetTokens: 300_000,
+				hardInputTokens: 900_000,
+				maxPinnedAttachmentTokens: 64_000,
+				outputReserveTokens: 32_000,
+			}
+		: identity.includes("gpt-5.6")
+			? {
+					enabled: true,
+					softTriggerTokens: 272_000,
+					targetTokens: 180_000,
+					hardInputTokens: 600_000,
+					maxPinnedAttachmentTokens: 64_000,
+					outputReserveTokens: 32_000,
+				}
+			: undefined;
+	const outputReserveTokens = Math.min(
+		configured?.outputReserveTokens ?? 32_000,
+		Math.max(1_000, window - 1_000),
+	);
+	const hardInputTokens = Math.min(
+		configured?.hardInputTokens ?? window - outputReserveTokens,
+		window - outputReserveTokens,
+	);
+	const targetTokens = Math.min(
+		configured?.targetTokens ?? Math.floor(window * 0.45),
+		hardInputTokens,
+	);
+	return {
+		enabled: configured?.enabled ?? true,
+		softTriggerTokens: Math.max(
+			targetTokens,
+			Math.min(
+				configured?.softTriggerTokens ?? Math.floor(window * 0.7),
+				hardInputTokens,
+			),
+		),
+		targetTokens,
+		hardInputTokens,
+		maxPinnedAttachmentTokens: Math.min(
+			configured?.maxPinnedAttachmentTokens ?? 64_000,
+			hardInputTokens,
+		),
+		outputReserveTokens,
+	};
 }
 
 function modelKey(
@@ -195,15 +219,35 @@ function endpointLabel(endpoint: Pick<ProviderEndpoint, "label" | "api">) {
 
 function ModelSettingsModal({
 	model,
+	provider,
 	endpoints,
 	onChange,
 	onClose,
 }: {
 	model: AllowlistEntry;
+	provider: string;
 	endpoints: ProviderEndpoint[];
 	onChange: (patch: Partial<AllowlistEntry>) => void;
 	onClose: () => void;
 }) {
+	const contextWindow =
+		model.contextWindow ?? model.capabilities?.contextWindow ?? 128_000;
+	const policy = model.contextPolicy;
+	const policyError = (() => {
+		if (!policy) return null;
+		if (policy.outputReserveTokens >= contextWindow)
+			return "Output reserve must be smaller than the context window.";
+		if (policy.hardInputTokens > contextWindow - policy.outputReserveTokens)
+			return "Hard input exceeds the usable context window.";
+		if (
+			policy.targetTokens > policy.softTriggerTokens ||
+			policy.softTriggerTokens > policy.hardInputTokens
+		)
+			return "Target, trigger, and hard input must be ordered.";
+		if (policy.maxPinnedAttachmentTokens > policy.hardInputTokens)
+			return "Pinned attachment budget cannot exceed hard input.";
+		return null;
+	})();
 	return (
 		<div
 			className="modal modal-open"
@@ -329,6 +373,108 @@ function ModelSettingsModal({
 							))}
 						</select>
 					</fieldset>
+					<fieldset className="fieldset">
+						<legend className="fieldset-legend">Context window</legend>
+						<input
+							className="input w-full"
+							type="number"
+							min={1_000}
+							max={10_000_000}
+							step={1_000}
+							value={model.contextWindow ?? contextWindow}
+							onChange={(event) => {
+								const value = event.target.valueAsNumber;
+								onChange({
+									contextWindow: Number.isFinite(value) ? value : undefined,
+								});
+							}}
+						/>
+						<p className="label">
+							{model.contextWindow
+								? "Custom model override."
+								: `Detected from the model catalog: ${formatTokenCount(contextWindow)}.`}
+						</p>
+					</fieldset>
+					<section className="rounded-box bg-base-200 p-4">
+						<div className="flex items-start justify-between gap-3">
+							<div>
+								<h4 className="font-semibold">Context management</h4>
+								<p className="text-sm opacity-60">
+									{policy
+										? "Custom values for this model."
+										: "Using built-in defaults."}
+								</p>
+							</div>
+							<button
+								className="btn btn-ghost btn-sm"
+								disabled={!policy}
+								onClick={() => onChange({ contextPolicy: undefined })}
+							>
+								Use built-in defaults
+							</button>
+						</div>
+						{!policy ? (
+							<button
+								className="btn btn-outline btn-sm mt-3"
+								onClick={() =>
+									onChange({
+										contextWindow,
+										contextPolicy: defaultModelContextPolicy(
+											provider,
+											model.id,
+											contextWindow,
+										),
+									})
+								}
+							>
+								Customize context management
+							</button>
+						) : (
+							<>
+								<label className="mt-3 flex items-center justify-between gap-3">
+									<span className="text-sm">Enabled for this model</span>
+									<input
+										className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content"
+										type="checkbox"
+										checked={policy.enabled}
+										onChange={(event) =>
+											onChange({
+												contextPolicy: {
+													...policy,
+													enabled: event.target.checked,
+												},
+											})
+										}
+									/>
+								</label>
+								<div className="mt-4 grid gap-x-4 gap-y-3 sm:grid-cols-2">
+									{contextPolicyFields.map(({ field, label, min }) => (
+										<ContextPolicySlider
+											key={field}
+											label={label}
+											min={min}
+											max={contextWindow}
+											value={policy[field]}
+											disabled={false}
+											onChange={(value) =>
+												onChange({
+													contextPolicy: { ...policy, [field]: value },
+												})
+											}
+										/>
+									))}
+								</div>
+								{policyError && (
+									<div
+										role="alert"
+										className="alert alert-error alert-soft mt-3 text-sm"
+									>
+										{policyError}
+									</div>
+								)}
+							</>
+						)}
+					</section>
 				</div>
 				<div className="modal-action">
 					<button className="btn" onClick={onClose}>
@@ -848,6 +994,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 					{settingsIndex !== null && models[settingsIndex] && (
 						<ModelSettingsModal
 							model={models[settingsIndex]}
+							provider={initial.provider}
 							endpoints={endpoints}
 							onChange={(patch) => updateModel(settingsIndex, patch)}
 							onClose={() => setSettingsIndex(null)}
@@ -1128,58 +1275,34 @@ function Logging() {
 	);
 }
 
-function ContextManagement() {
+function GlobalContextManagement() {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
 	const settings = useQuery(
 		trpc.admin.contextManagementSettings.queryOptions(),
 	);
-	const [form, setForm] = useState<ContextManagementSettings | null>(null);
-	const [savedPolicyId, setSavedPolicyId] = useState<string | null>(null);
-	useEffect(() => {
-		if (settings.data) setForm(settings.data);
-	}, [settings.data]);
-	const invalidate = () =>
-		qc.invalidateQueries({
-			queryKey: trpc.admin.contextManagementSettings.queryKey(),
-		});
-	const saveGlobal = useMutation(
+	const save = useMutation(
 		trpc.admin.setContextManagementGlobal.mutationOptions({
-			onSuccess: invalidate,
+			onSuccess: () =>
+				qc.invalidateQueries({
+					queryKey: trpc.admin.contextManagementSettings.queryKey(),
+				}),
 		}),
 	);
-	const savePolicy = useMutation(
-		trpc.admin.setContextPolicy.mutationOptions({ onSuccess: invalidate }),
-	);
-	const resetPrompt = useMutation(
+	const reset = useMutation(
 		trpc.admin.resetContextSummaryPrompt.mutationOptions({
-			onSuccess: invalidate,
+			onSuccess: () =>
+				qc.invalidateQueries({
+					queryKey: trpc.admin.contextManagementSettings.queryKey(),
+				}),
 		}),
 	);
-	const updateGlobal = (patch: Partial<ContextManagementSettings["global"]>) =>
-		setForm((current) =>
-			current
-				? { ...current, global: { ...current.global, ...patch } }
-				: current,
-		);
-	const updatePolicy = (
-		id: string,
-		field: keyof ContextPolicy,
-		value: number | boolean,
-	) => {
-		setSavedPolicyId((current) => (current === id ? null : current));
-		setForm((current) =>
-			current
-				? {
-						...current,
-						policies: current.policies.map((policy) =>
-							policy.id === id ? { ...policy, [field]: value } : policy,
-						),
-					}
-				: current,
-		);
-	};
-
+	const [form, setForm] = useState<ContextManagementSettings["global"] | null>(
+		null,
+	);
+	useEffect(() => {
+		if (settings.data) setForm(settings.data.global);
+	}, [settings.data]);
 	if (settings.isError)
 		return (
 			<div role="alert" className="alert alert-error alert-soft">
@@ -1187,194 +1310,68 @@ function ContextManagement() {
 			</div>
 		);
 	if (!form) return null;
-	const globalInput = {
-		enabled: form.global.enabled,
-		summaryPromptOverride: form.global.summaryPromptOverride,
-	};
-	const hasGlobalChanges =
-		form.global.enabled !== settings.data?.global.enabled ||
-		form.global.summaryPromptOverride !==
-			settings.data?.global.summaryPromptOverride;
-	const pending =
-		saveGlobal.isPending || savePolicy.isPending || resetPrompt.isPending;
+	const changed =
+		form.enabled !== settings.data?.global.enabled ||
+		form.summaryPromptOverride !== settings.data?.global.summaryPromptOverride;
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
 			<div className="card-body gap-4 p-5">
-				<h3 className="card-title">Context management</h3>
+				<h3 className="card-title">Global context management</h3>
 				<p className="text-sm opacity-70">
-					Active chat policies resolve as exact model, family, provider, then
-					derived fallback.
+					Per-model policies are configured from each model’s settings modal.
 				</p>
-				<fieldset className="fieldset">
-					<label className="flex items-center gap-3">
-						<input
-							className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content"
-							type="checkbox"
-							checked={form.global.enabled}
-							disabled={pending}
-							onChange={(event) =>
-								updateGlobal({ enabled: event.target.checked })
-							}
-						/>
-						<span className="text-sm">Context Management Enabled</span>
-					</label>
-				</fieldset>
-				<div className="grid gap-3 lg:grid-cols-2">
-					{form.policies.map((policy) => (
-						<fieldset key={policy.id} className="rounded-box bg-base-200 p-4">
-							<legend className="mb-3 text-sm font-semibold">
-								{policy.scope === "model_family"
-									? `${policy.provider} / ${policy.modelFamily}`
-									: policy.scope === "exact_model"
-										? `${policy.provider} / ${policy.modelId}`
-										: `${policy.provider} provider`}
-							</legend>
-							<div className="mb-3 flex items-center justify-between gap-3">
-								<label className="flex items-center gap-2 text-sm">
-									<input
-										className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content"
-										type="checkbox"
-										checked={policy.enabled}
-										disabled={pending}
-										onChange={(event) =>
-											updatePolicy(policy.id, "enabled", event.target.checked)
-										}
-									/>{" "}
-									Enabled
-								</label>
-								<button
-									className="btn btn-primary btn-sm"
-									disabled={
-										pending ||
-										!policyHasChanges(
-											policy,
-											settings.data?.policies.find(
-												(saved) => saved.id === policy.id,
-											),
-										)
-									}
-									onClick={() =>
-										savePolicy.mutate(contextPolicyInput(policy), {
-											onSuccess: () => setSavedPolicyId(policy.id),
-										})
-									}
-								>
-									{savePolicy.isPending
-										? "Saving…"
-										: !policyHasChanges(
-													policy,
-													settings.data?.policies.find(
-														(saved) => saved.id === policy.id,
-													),
-												) && savedPolicyId === policy.id
-											? "Saved"
-											: "Save"}
-								</button>
-							</div>
-							<div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">
-								{contextPolicyFields.map(({ field, label, min }) => (
-									<ContextPolicySlider
-										key={field}
-										label={label}
-										min={min}
-										value={policy[field]}
-										disabled={pending}
-										onChange={(value) => updatePolicy(policy.id, field, value)}
-									/>
-								))}
-							</div>
-						</fieldset>
-					))}
-				</div>
-				<section className="rounded-box border border-base-300 bg-base-200 p-4">
-					<div className="mb-3 flex items-center justify-between gap-3">
-						<h4 className="font-semibold">Effective fallback</h4>
-						<span className="badge badge-outline">Derived</span>
-					</div>
-					<dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-						<div className="rounded-box bg-base-100 p-3">
-							<dt className="text-xs opacity-60">Soft trigger</dt>
-							<dd className="mt-1 text-sm font-semibold">
-								{form.fallback.softTrigger}
-							</dd>
-						</div>
-						<div className="rounded-box bg-base-100 p-3">
-							<dt className="text-xs opacity-60">Target</dt>
-							<dd className="mt-1 text-sm font-semibold">
-								{form.fallback.target}
-							</dd>
-						</div>
-						<div className="rounded-box bg-base-100 p-3">
-							<dt className="text-xs opacity-60">Hard input</dt>
-							<dd className="mt-1 text-sm font-semibold">
-								{form.fallback.hardInput}
-							</dd>
-						</div>
-						<div className="rounded-box bg-base-100 p-3">
-							<dt className="text-xs opacity-60">Pinned attachments</dt>
-							<dd className="mt-1 text-sm font-semibold">
-								{formatTokenCount(form.fallback.maxPinnedAttachmentTokens)}
-							</dd>
-						</div>
-						<div className="rounded-box bg-base-100 p-3">
-							<dt className="text-xs opacity-60">Output reserve</dt>
-							<dd className="mt-1 text-sm font-semibold">
-								{formatTokenCount(form.fallback.outputReserveTokens)}
-							</dd>
-						</div>
-					</dl>
-				</section>
+				<label className="flex items-center gap-3">
+					<input
+						className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content"
+						type="checkbox"
+						checked={form.enabled}
+						disabled={save.isPending}
+						onChange={(event) =>
+							setForm({ ...form, enabled: event.target.checked })
+						}
+					/>
+					<span className="text-sm">Context management enabled</span>
+				</label>
 				<fieldset className="fieldset gap-2">
 					<legend className="fieldset-legend">Summary prompt</legend>
 					<textarea
 						className="textarea min-h-48 w-full font-mono text-sm"
-						value={
-							form.global.summaryPromptOverride ?? form.global.summaryPrompt
-						}
-						disabled={pending}
+						value={form.summaryPromptOverride ?? form.summaryPrompt}
+						disabled={save.isPending}
 						onChange={(event) =>
-							updateGlobal({ summaryPromptOverride: event.target.value })
+							setForm({ ...form, summaryPromptOverride: event.target.value })
 						}
 					/>
 					<p className="label">
-						{form.global.summaryPromptOverridden ||
-						form.global.summaryPromptOverride !== null
+						{form.summaryPromptOverridden || form.summaryPromptOverride !== null
 							? "Custom version 1 override."
 							: "Using the built-in version 1 summary prompt."}
 					</p>
 				</fieldset>
-				{(saveGlobal.isError || savePolicy.isError || resetPrompt.isError) && (
+				{(save.isError || reset.isError) && (
 					<div role="alert" className="alert alert-error alert-soft">
-						{saveGlobal.error?.message ??
-							savePolicy.error?.message ??
-							resetPrompt.error?.message}
+						{save.error?.message ?? reset.error?.message}
 					</div>
 				)}
-				<div className="card-actions items-center justify-end">
-					{!hasGlobalChanges && saveGlobal.isSuccess && (
-						<span className="text-sm font-medium text-success">
-							Global settings saved
-						</span>
-					)}
+				<div className="card-actions justify-end">
 					<button
 						className="btn btn-ghost"
-						disabled={
-							!form.global.summaryPromptOverride || resetPrompt.isPending
-						}
-						onClick={() => resetPrompt.mutate()}
+						disabled={!form.summaryPromptOverride || reset.isPending}
+						onClick={() => reset.mutate()}
 					>
 						Reset summary prompt
 					</button>
 					<button
 						className="btn btn-primary"
-						disabled={pending || !hasGlobalChanges}
-						onClick={() => saveGlobal.mutate(globalInput)}
+						disabled={save.isPending || !changed}
+						onClick={() =>
+							save.mutate({
+								enabled: form.enabled,
+								summaryPromptOverride: form.summaryPromptOverride,
+							})
+						}
 					>
-						{saveGlobal.isPending
-							? "Saving…"
-							: !hasGlobalChanges && saveGlobal.isSuccess
-								? "Saved"
-								: "Save global settings"}
+						{save.isPending ? "Saving…" : "Save global settings"}
 					</button>
 				</div>
 			</div>
@@ -1508,7 +1505,6 @@ const sections = [
 	"users",
 	"providers",
 	"task model",
-	"context management",
 	"paste handling",
 	"usage",
 	"logging",
@@ -1569,7 +1565,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
 						{section === "usage" && <Usage />}
 						{section === "logging" && <Logging />}
 						{section === "task model" && <TaskModel />}
-						{section === "context management" && <ContextManagement />}
 						{section === "paste handling" && <PasteHandling />}
 						{section === "providers" && providers.isError && (
 							<div role="alert" className="alert alert-error alert-soft">
@@ -1578,6 +1573,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 						)}
 						{section === "providers" && ready && (
 							<div className="grid gap-4">
+								<GlobalContextManagement />
 								<section className="card card-border bg-base-100 shadow-sm">
 									<div className="card-body gap-3 p-4 sm:p-5">
 										<h3 className="card-title">Add provider</h3>

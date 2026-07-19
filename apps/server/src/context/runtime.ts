@@ -166,7 +166,6 @@ export class ContextRuntime {
 		systemPrompt?: string | null,
 		attachmentSummary = this.attachmentSummary,
 	): Promise<ContextAssemblyResult> {
-		await this.repository.seedDefaultPolicies();
 		let state = await this.repository.ensureState(conversationId);
 		const previousModel =
 			await this.repository.conversationModel(conversationId);
@@ -180,16 +179,17 @@ export class ContextRuntime {
 			await this.repository.invalidateSummary(conversationId);
 			state = await this.repository.ensureState(conversationId);
 		}
+		const resolved =
+			selection.provider === "mock" ? undefined : await resolveModel(selection);
 		const contextWindowTokens =
-			selection.provider === "mock"
-				? MOCK_CONTEXT_WINDOW
-				: (await resolveModel(selection)).model.contextWindow;
+			resolved?.model.contextWindow ?? MOCK_CONTEXT_WINDOW;
 		const [policy, global, allRecords] = await Promise.all([
 			this.repository.resolvePolicy({
 				provider: policyProvider(selection),
 				modelId: selection.modelId,
 				modelFamily: modelFamily(selection),
 				contextWindowTokens,
+				override: resolved?.contextPolicy,
 			}),
 			this.settings(),
 			this.repository.contextRecords(
@@ -308,14 +308,14 @@ export class ContextRuntime {
 			systemPrompt,
 			attachmentSummary,
 		);
+		const resolved =
+			selection.provider === "mock" ? undefined : await resolveModel(selection);
 		const policy = await this.repository.resolvePolicy({
 			provider: policyProvider(selection),
 			modelId: selection.modelId,
 			modelFamily: modelFamily(selection),
-			contextWindowTokens:
-				selection.provider === "mock"
-					? MOCK_CONTEXT_WINDOW
-					: (await resolveModel(selection)).model.contextWindow,
+			contextWindowTokens: resolved?.model.contextWindow ?? MOCK_CONTEXT_WINDOW,
+			override: resolved?.contextPolicy,
 		});
 		const boundary = state.retainedMessageBoundaryId
 			? records.findIndex(
@@ -376,14 +376,14 @@ export class ContextRuntime {
 		attachmentSummary = this.attachmentSummary,
 	): Promise<void> {
 		const state = await this.repository.ensureState(conversationId);
+		const resolved =
+			selection.provider === "mock" ? undefined : await resolveModel(selection);
 		const policy = await this.repository.resolvePolicy({
 			provider: policyProvider(selection),
 			modelId: selection.modelId,
 			modelFamily: modelFamily(selection),
-			contextWindowTokens:
-				selection.provider === "mock"
-					? MOCK_CONTEXT_WINDOW
-					: (await resolveModel(selection)).model.contextWindow,
+			contextWindowTokens: resolved?.model.contextWindow ?? MOCK_CONTEXT_WINDOW,
+			override: resolved?.contextPolicy,
 		});
 		const records = await this.repository.contextRecords(
 			conversationId,

@@ -318,7 +318,24 @@ describe("catalog model policy", () => {
 					api: "openai-completions",
 				},
 			],
-			enabledModels: [],
+			enabledModels: [
+				{
+					id: "gateway-model",
+					endpointId: "openai-completions",
+					api: "openai-completions",
+					visibility: "public",
+					piOptions: { contextWindow: 256_000 },
+					contextWindow: 512_000,
+					contextPolicy: {
+						enabled: true,
+						softTriggerTokens: 350_000,
+						targetTokens: 250_000,
+						hardInputTokens: 450_000,
+						maxPinnedAttachmentTokens: 64_000,
+						outputReserveTokens: 32_000,
+					},
+				},
+			],
 		});
 
 		const resolved = await catalog.resolveModel({
@@ -338,8 +355,16 @@ describe("catalog model policy", () => {
 				reasoning: false,
 				input: ["text"],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				contextWindow: 128_000,
+				contextWindow: 512_000,
 				maxTokens: 4096,
+			},
+			contextPolicy: {
+				enabled: true,
+				softTriggerTokens: 350_000,
+				targetTokens: 250_000,
+				hardInputTokens: 450_000,
+				maxPinnedAttachmentTokens: 64_000,
+				outputReserveTokens: 32_000,
 			},
 		});
 		await expect(

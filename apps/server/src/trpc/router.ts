@@ -316,10 +316,11 @@ const conversationRouter = router({
 				ctx.user.id,
 				ctx.user.role === "admin",
 			);
-			const contextWindowTokens =
+			const resolved =
 				selection.provider === "mock"
-					? 128_000
-					: (await resolveModel(selection)).model.contextWindow;
+					? undefined
+					: await resolveModel(selection);
+			const contextWindowTokens = resolved?.model.contextWindow ?? 128_000;
 			const modelFamily = contextModelFamily(
 				selection.provider,
 				selection.modelId,
@@ -329,6 +330,7 @@ const conversationRouter = router({
 				modelId: selection.modelId,
 				modelFamily,
 				contextWindowTokens,
+				override: resolved?.contextPolicy,
 			});
 			const [latest, totals] = await Promise.all([
 				db
@@ -581,23 +583,74 @@ const conversationRouter = router({
 		}),
 });
 
-const allowlistEntrySchema = z.object({
-	id: z.string().trim().min(1),
-	endpointId: z.string().trim().min(1),
-	api: z.string().trim().min(1),
-	visibility: z.enum(["public", "private"]).default("public"),
-	name: z.string().trim().optional(),
-	piProvider: z.string().trim().optional(),
-	piModel: z.string().trim().optional(),
-	piOptions: z.record(z.string(), z.unknown()).optional(),
-	reasoning: z.boolean().optional(),
-	vision: z.boolean().optional(),
-	documents: z.boolean().optional(),
-	reasoningEffort: z
-		.enum(["minimal", "low", "medium", "high", "xhigh", "max"])
-		.optional(),
-	verbosity: z.enum(["low", "medium", "high"]).optional(),
-});
+const allowlistEntrySchema = z
+	.object({
+		id: z.string().trim().min(1),
+		endpointId: z.string().trim().min(1),
+		api: z.string().trim().min(1),
+		visibility: z.enum(["public", "private"]).default("public"),
+		name: z.string().trim().optional(),
+		piProvider: z.string().trim().optional(),
+		piModel: z.string().trim().optional(),
+		piOptions: z.record(z.string(), z.unknown()).optional(),
+		reasoning: z.boolean().optional(),
+		vision: z.boolean().optional(),
+		documents: z.boolean().optional(),
+		reasoningEffort: z
+			.enum(["minimal", "low", "medium", "high", "xhigh", "max"])
+			.optional(),
+		verbosity: z.enum(["low", "medium", "high"]).optional(),
+		contextWindow: z.number().int().min(1).max(10_000_000).optional(),
+		contextPolicy: z
+			.object({
+				enabled: z.boolean(),
+				softTriggerTokens: z.number().int().min(1).max(10_000_000),
+				targetTokens: z.number().int().min(1).max(10_000_000),
+				hardInputTokens: z.number().int().min(1).max(10_000_000),
+				maxPinnedAttachmentTokens: z.number().int().min(0).max(10_000_000),
+				outputReserveTokens: z.number().int().min(1).max(10_000_000),
+			})
+			.superRefine((policy, ctx) => {
+				if (
+					policy.targetTokens > policy.softTriggerTokens ||
+					policy.softTriggerTokens > policy.hardInputTokens
+				) {
+					ctx.addIssue({
+						code: "custom",
+						path: ["softTriggerTokens"],
+						message: "Target, trigger, and hard input must be ordered",
+					});
+				}
+				if (policy.maxPinnedAttachmentTokens > policy.hardInputTokens)
+					ctx.addIssue({
+						code: "custom",
+						path: ["maxPinnedAttachmentTokens"],
+						message: "Pinned attachment budget cannot exceed hard input",
+					});
+			})
+			.optional(),
+	})
+	.superRefine((entry, ctx) => {
+		if (!entry.contextPolicy) return;
+		const window = entry.contextWindow ?? 10_000_000;
+		if (entry.contextPolicy.outputReserveTokens >= window) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["contextPolicy", "outputReserveTokens"],
+				message: "Output reserve must be smaller than the context window",
+			});
+		}
+		if (
+			entry.contextPolicy.hardInputTokens >
+			window - entry.contextPolicy.outputReserveTokens
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["contextPolicy", "hardInputTokens"],
+				message: "Hard input cannot exceed the usable context window",
+			});
+		}
+	});
 
 const folderHistorySchema = z.object({
 	id: z.string(),
@@ -668,60 +721,6 @@ const historySchema = z.object({
 	),
 });
 
-export const contextPolicySchema = z
-	.object({
-		scope: z.enum(["exact_model", "model_family", "provider"]),
-		provider: z.string().trim().min(1).max(100),
-		modelFamily: z.string().trim().min(1).max(200).nullable(),
-		modelId: z.string().trim().min(1).max(200).nullable(),
-		enabled: z.boolean(),
-		softTriggerTokens: z.number().int().min(1).max(2_000_000),
-		targetTokens: z.number().int().min(1).max(2_000_000),
-		hardInputTokens: z.number().int().min(1).max(2_000_000),
-		maxPinnedAttachmentTokens: z.number().int().min(0).max(2_000_000),
-		outputReserveTokens: z.number().int().min(1).max(2_000_000),
-	})
-	.superRefine((policy, ctx) => {
-		if (policy.scope === "exact_model" && !policy.modelId) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["modelId"],
-				message: "Exact policies require a model ID",
-			});
-		}
-		if (policy.scope === "model_family" && !policy.modelFamily) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["modelFamily"],
-				message: "Family policies require a model family",
-			});
-		}
-		if (policy.scope === "provider" && (policy.modelFamily || policy.modelId)) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["scope"],
-				message: "Provider policies cannot select a model",
-			});
-		}
-		if (
-			policy.targetTokens > policy.softTriggerTokens ||
-			policy.softTriggerTokens > policy.hardInputTokens
-		) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["softTriggerTokens"],
-				message: "Target, trigger, and hard input must be ordered",
-			});
-		}
-		if (policy.maxPinnedAttachmentTokens > policy.hardInputTokens) {
-			ctx.addIssue({
-				code: "custom",
-				path: ["maxPinnedAttachmentTokens"],
-				message: "Pinned attachment budget cannot exceed hard input",
-			});
-		}
-	});
-
 function hasDuplicateIds(rows: { id: string }[]) {
 	return new Set(rows.map((row) => row.id)).size !== rows.length;
 }
@@ -736,34 +735,13 @@ const adminRouter = router({
 		),
 
 	contextManagementSettings: adminProcedure.query(async () => {
-		const repository = new ContextRepository(db);
-		await repository.seedDefaultPolicies();
-		const [global, policies] = await Promise.all([
-			getContextGlobalSettings(),
-			db
-				.selectFrom("context_policy")
-				.selectAll()
-				.orderBy("provider", "asc")
-				.orderBy("scope", "asc")
-				.execute(),
-		]);
+		const global = await getContextGlobalSettings();
 		return {
 			global: {
 				...global,
 				summaryPrompt:
 					global.summaryPromptOverride ?? DEFAULT_CONTEXT_SUMMARY_PROMPT,
 				summaryPromptOverridden: global.summaryPromptOverride !== null,
-			},
-			policies: policies.map((policy) => ({
-				...policy,
-				enabled: Boolean(policy.enabled),
-			})),
-			fallback: {
-				softTrigger: "70% of the model context window",
-				target: "45% of the model context window",
-				hardInput: "Context window minus the output reserve",
-				maxPinnedAttachmentTokens: 64_000,
-				outputReserveTokens: 32_000,
 			},
 		};
 	}),
@@ -775,41 +753,6 @@ const adminRouter = router({
 				version: CONTEXT_GLOBAL_SETTINGS_VERSION,
 				...input,
 			});
-		}),
-
-	setContextPolicy: adminProcedure
-		.input(contextPolicySchema)
-		.mutation(async ({ input }) => {
-			const repository = new ContextRepository(db);
-			const policy = {
-				enabled: input.enabled,
-				softTriggerTokens: input.softTriggerTokens,
-				targetTokens: input.targetTokens,
-				hardInputTokens: input.hardInputTokens,
-				maxPinnedAttachmentTokens: input.maxPinnedAttachmentTokens,
-				outputReserveTokens: input.outputReserveTokens,
-			};
-			if (input.scope === "exact_model") {
-				await repository.savePolicy({
-					...policy,
-					scope: input.scope,
-					provider: input.provider,
-					modelId: input.modelId!,
-				});
-			} else if (input.scope === "model_family") {
-				await repository.savePolicy({
-					...policy,
-					scope: input.scope,
-					provider: input.provider,
-					modelFamily: input.modelFamily!,
-				});
-			} else {
-				await repository.savePolicy({
-					...policy,
-					scope: input.scope,
-					provider: input.provider,
-				});
-			}
 		}),
 
 	resetContextSummaryPrompt: adminProcedure.mutation(async () => {

@@ -227,13 +227,14 @@ messages.
 
 Context policy is **admin-owned** and resolves in this order:
 
-1. exact model override,
-2. model-family default,
-3. provider default,
-4. a conservative fallback derived from the declared context window.
+1. an override stored with the exact provider/endpoint/API/model configuration,
+2. an immutable model-family default,
+3. a conservative fallback derived from the declared context window.
 
-The admin UI shows where each effective value came from and supports resetting
-an override to its inherited value. Each policy defines:
+The model configuration modal shows the effective context window, supports an
+optional context-window override, and can reset the complete policy override to
+built-in defaults. The provider save transaction persists model and context
+changes together. Each policy defines:
 
 ```ts
 type ContextPolicy = {
@@ -258,9 +259,10 @@ window size. Initial defaults are:
 
 The GPT-5.6 trigger is deliberately soft: an occasional request above its 272K
 premium-pricing boundary is acceptable, but Solar should not sustain a long
-conversation in that band. A model's effective hard limit is also bounded by
-its context window minus the requested output reserve and provider framing.
-Policies are enabled by default, with an admin kill switch.
+conversation in that band. A model's effective trigger, target, and hard limit
+are bounded by its context window minus the requested output reserve and
+provider framing. Policies are enabled by default, with a global admin kill
+switch and summary prompt in provider settings.
 
 #### Request assembly
 

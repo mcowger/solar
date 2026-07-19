@@ -4,7 +4,6 @@ import { Kysely } from "kysely";
 import { BunSqliteDialect } from "kysely-bun-sqlite";
 import type { Database } from "../db/schema";
 import { up } from "../db/migrations/012_context_management";
-import { canonicalPolicyProvider } from "./policy";
 import { ContextRepository } from "./repository";
 
 let sqlite: BunDatabase;
@@ -43,85 +42,36 @@ afterEach(async () => {
 });
 
 describe("ContextRepository policy resolution", () => {
-	test("seeds global GPT and Claude family defaults idempotently", async () => {
-		await repository.seedDefaultPolicies();
-		await repository.seedDefaultPolicies();
-
-		const policies = await db
-			.selectFrom("context_policy")
-			.selectAll()
-			.orderBy("modelFamily")
-			.execute();
-		expect(policies).toHaveLength(2);
-		expect(policies.map((policy) => policy.modelFamily)).toEqual([
-			"claude-1m",
-			"gpt-5.6",
-		]);
-	});
-
-	test("resolves exact model, then family, provider, and derived fallback", async () => {
-		await repository.savePolicy({
-			scope: "provider",
-			provider: "openai",
-			enabled: true,
-			softTriggerTokens: 40,
-			targetTokens: 30,
-			hardInputTokens: 90,
-			maxPinnedAttachmentTokens: 10,
-			outputReserveTokens: 10,
-		});
-		await repository.savePolicy({
-			scope: "model_family",
-			provider: "openai",
-			modelFamily: "gpt",
-			enabled: true,
-			softTriggerTokens: 50,
-			targetTokens: 35,
-			hardInputTokens: 80,
-			maxPinnedAttachmentTokens: 10,
-			outputReserveTokens: 10,
-		});
-		await repository.savePolicy({
-			scope: "exact_model",
-			provider: "openai",
-			modelId: "gpt-test",
+	test("resolves exact overrides before immutable family defaults", async () => {
+		const override = {
 			enabled: false,
 			softTriggerTokens: 60,
 			targetTokens: 40,
 			hardInputTokens: 70,
 			maxPinnedAttachmentTokens: 10,
 			outputReserveTokens: 10,
+		};
+		expect(
+			await repository.resolvePolicy({
+				provider: "openai",
+				modelId: "gpt-test",
+				contextWindowTokens: 100,
+				override,
+			}),
+		).toMatchObject({ source: "exact_model", enabled: false });
+		expect(
+			await repository.resolvePolicy({
+				provider: "openai",
+				modelId: "other",
+				modelFamily: "gpt-5.6",
+				contextWindowTokens: 100_000,
+			}),
+		).toMatchObject({
+			source: "model_family",
+			softTriggerTokens: 68_000,
+			targetTokens: 68_000,
+			hardInputTokens: 68_000,
 		});
-
-		expect(
-			(
-				await repository.resolvePolicy({
-					provider: "openai",
-					modelId: "gpt-test",
-					modelFamily: "gpt",
-					contextWindowTokens: 100,
-				})
-			).source,
-		).toBe("exact_model");
-		expect(
-			(
-				await repository.resolvePolicy({
-					provider: "openai",
-					modelId: "other",
-					modelFamily: "gpt",
-					contextWindowTokens: 100,
-				})
-			).source,
-		).toBe("model_family");
-		expect(
-			(
-				await repository.resolvePolicy({
-					provider: "openai",
-					modelId: "other",
-					contextWindowTokens: 100,
-				})
-			).source,
-		).toBe("provider");
 		expect(
 			await repository.resolvePolicy({
 				provider: "unknown",
@@ -134,22 +84,6 @@ describe("ContextRepository policy resolution", () => {
 			targetTokens: 45_000,
 			hardInputTokens: 68_000,
 		});
-	});
-
-	test("allows a proxy provider to use the canonical GPT family policy", async () => {
-		await repository.seedDefaultPolicies();
-		const runtimeProvider = "solar:Plexus:50c3793d-fc65-48d7-9ede-60e8ddcee797";
-		const policyProvider = canonicalPolicyProvider("gpt-5.6");
-		expect(policyProvider).toBe("openai");
-
-		expect(
-			await repository.resolvePolicy({
-				provider: policyProvider ?? runtimeProvider,
-				modelId: "gpt-5.6-terra",
-				modelFamily: "gpt-5.6",
-				contextWindowTokens: 600_000,
-			}),
-		).toMatchObject({ source: "model_family", softTriggerTokens: 272_000 });
 	});
 });
 

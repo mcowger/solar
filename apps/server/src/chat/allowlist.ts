@@ -1,6 +1,15 @@
 /** One allowlist entry stored in `provider_config.enabledModels`. */
 export type ModelVisibility = "public" | "private";
 
+export interface ModelContextPolicy {
+	enabled: boolean;
+	softTriggerTokens: number;
+	targetTokens: number;
+	hardInputTokens: number;
+	maxPinnedAttachmentTokens: number;
+	outputReserveTokens: number;
+}
+
 export interface AllowlistEntry {
 	id: string;
 	endpointId: string;
@@ -15,6 +24,28 @@ export interface AllowlistEntry {
 	documents?: boolean;
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	verbosity?: "low" | "medium" | "high";
+	contextWindow?: number;
+	contextPolicy?: ModelContextPolicy;
+}
+
+function parseContextPolicy(value: unknown): ModelContextPolicy | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return;
+	const policy = value as Record<string, unknown>;
+	if (
+		typeof policy.enabled !== "boolean" ||
+		![
+			"softTriggerTokens",
+			"targetTokens",
+			"hardInputTokens",
+			"maxPinnedAttachmentTokens",
+			"outputReserveTokens",
+		].every(
+			(field) =>
+				typeof policy[field] === "number" && Number.isInteger(policy[field]),
+		)
+	)
+		return;
+	return policy as unknown as ModelContextPolicy;
 }
 
 export function parseAllowlist(json: string): AllowlistEntry[] {
@@ -29,6 +60,7 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
 			) {
 				return [];
 			}
+			const contextPolicy = parseContextPolicy(entry.contextPolicy);
 			return [
 				{
 					id: entry.id,
@@ -68,6 +100,12 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
 					...(["low", "medium", "high"].includes(entry.verbosity)
 						? { verbosity: entry.verbosity as AllowlistEntry["verbosity"] }
 						: {}),
+					...(typeof entry.contextWindow === "number" &&
+					Number.isInteger(entry.contextWindow) &&
+					entry.contextWindow > 0
+						? { contextWindow: entry.contextWindow }
+						: {}),
+					...(contextPolicy ? { contextPolicy } : {}),
 				},
 			];
 		});

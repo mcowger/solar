@@ -6,12 +6,16 @@ import { estimateClaudePdfTokens } from "./pdfTokens";
 import type {
 	ContextGlobalSettings,
 	ContextPolicy,
-	ContextPolicySelector,
 	ContextState,
 	ProviderCallTelemetry,
 	ResolvedContextPolicy,
 	AttachmentSummaryRepresentation,
 } from "./types";
+import {
+	CLAUDE_CONTEXT_POLICY,
+	GPT_CONTEXT_POLICY,
+	type ContextPolicy as ConfiguredContextPolicy,
+} from "./policy";
 import type { ContextRecord } from "./tokens";
 
 const OUTPUT_RESERVE_TOKENS = 32_000;
@@ -54,44 +58,6 @@ function partsFromMessage(parts: string | null, fallback: string) {
 	}
 }
 
-export const DEFAULT_CONTEXT_POLICIES: Array<
-	ContextPolicySelector & ContextPolicy
-> = [
-	{
-		scope: "model_family",
-		provider: "openai",
-		modelFamily: "gpt-5.6",
-		enabled: true,
-		softTriggerTokens: 272_000,
-		targetTokens: 180_000,
-		hardInputTokens: 600_000,
-		maxPinnedAttachmentTokens: MAX_PINNED_ATTACHMENT_TOKENS,
-		outputReserveTokens: OUTPUT_RESERVE_TOKENS,
-	},
-	{
-		scope: "model_family",
-		provider: "anthropic",
-		modelFamily: "claude-1m",
-		enabled: true,
-		softTriggerTokens: 500_000,
-		targetTokens: 300_000,
-		hardInputTokens: 900_000,
-		maxPinnedAttachmentTokens: MAX_PINNED_ATTACHMENT_TOKENS,
-		outputReserveTokens: OUTPUT_RESERVE_TOKENS,
-	},
-];
-
-function rowPolicy(row: {
-	enabled: number;
-	softTriggerTokens: number;
-	targetTokens: number;
-	hardInputTokens: number;
-	maxPinnedAttachmentTokens: number;
-	outputReserveTokens: number;
-}): ContextPolicy {
-	return { ...row, enabled: row.enabled === 1 };
-}
-
 function state(
 	row: Awaited<ReturnType<ContextRepository["getState"]>>,
 ): ContextState | null {
@@ -103,95 +69,29 @@ function state(
 export class ContextRepository {
 	constructor(private readonly db: Kysely<Database>) {}
 
-	async seedDefaultPolicies(): Promise<void> {
-		for (const policy of DEFAULT_CONTEXT_POLICIES) {
-			const existing = await this.findPolicy(policy);
-			if (!existing) await this.savePolicy(policy);
-		}
-	}
-
-	async savePolicy(
-		policy: ContextPolicySelector & ContextPolicy,
-	): Promise<void> {
-		const existing = await this.findPolicy(policy);
-		const values = {
-			enabled: policy.enabled ? 1 : 0,
-			softTriggerTokens: policy.softTriggerTokens,
-			targetTokens: policy.targetTokens,
-			hardInputTokens: policy.hardInputTokens,
-			maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens,
-			outputReserveTokens: policy.outputReserveTokens,
-			updatedAt: new Date().toISOString(),
-		};
-		if (existing) {
-			await this.db
-				.updateTable("context_policy")
-				.set(values)
-				.where("id", "=", existing.id)
-				.execute();
-			return;
-		}
-		await this.db
-			.insertInto("context_policy")
-			.values({
-				id: crypto.randomUUID(),
-				scope: policy.scope,
-				provider: policy.provider,
-				modelFamily:
-					"modelFamily" in policy ? (policy.modelFamily ?? null) : null,
-				modelId: "modelId" in policy ? (policy.modelId ?? null) : null,
-				...values,
-				createdAt: values.updatedAt,
-			})
-			.execute();
-	}
-
 	async resolvePolicy(input: {
 		provider: string;
 		modelId: string;
 		modelFamily?: string;
 		contextWindowTokens: number;
+		override?: ConfiguredContextPolicy;
 	}): Promise<ResolvedContextPolicy> {
-		const exact = await this.db
-			.selectFrom("context_policy")
-			.selectAll()
-			.where("scope", "=", "exact_model")
-			.where("provider", "=", input.provider)
-			.where("modelId", "=", input.modelId)
-			.executeTakeFirst();
-		if (exact)
+		if (input.override)
 			return this.boundedPolicy(
-				rowPolicy(exact),
+				input.override,
 				"exact_model",
 				input.contextWindowTokens,
 			);
-
-		if (input.modelFamily) {
-			const family = await this.db
-				.selectFrom("context_policy")
-				.selectAll()
-				.where("scope", "=", "model_family")
-				.where("provider", "=", input.provider)
-				.where("modelFamily", "=", input.modelFamily)
-				.executeTakeFirst();
-			if (family)
-				return this.boundedPolicy(
-					rowPolicy(family),
-					"model_family",
-					input.contextWindowTokens,
-				);
-		}
-
-		const provider = await this.db
-			.selectFrom("context_policy")
-			.selectAll()
-			.where("scope", "=", "provider")
-			.where("provider", "=", input.provider)
-			.executeTakeFirst();
-		if (provider)
+		const builtIn =
+			input.modelFamily === "gpt-5.6"
+				? GPT_CONTEXT_POLICY
+				: input.modelFamily === "claude-1m"
+					? CLAUDE_CONTEXT_POLICY
+					: undefined;
+		if (builtIn)
 			return this.boundedPolicy(
-				rowPolicy(provider),
-				"provider",
+				builtIn,
+				"model_family",
 				input.contextWindowTokens,
 			);
 		return this.derivedPolicy(input.contextWindowTokens);
@@ -517,19 +417,6 @@ export class ContextRepository {
 		return row.inputTokens + (row.cacheReadTokens ?? 0);
 	}
 
-	private async findPolicy(selector: ContextPolicySelector) {
-		let query = this.db
-			.selectFrom("context_policy")
-			.selectAll()
-			.where("scope", "=", selector.scope)
-			.where("provider", "=", selector.provider);
-		if (selector.scope === "exact_model")
-			query = query.where("modelId", "=", selector.modelId ?? "");
-		if (selector.scope === "model_family")
-			query = query.where("modelFamily", "=", selector.modelFamily ?? "");
-		return query.executeTakeFirst();
-	}
-
 	private boundedPolicy(
 		policy: ContextPolicy,
 		source: ResolvedContextPolicy["source"],
@@ -539,10 +426,15 @@ export class ContextRepository {
 			0,
 			Math.min(policy.hardInputTokens, window - policy.outputReserveTokens),
 		);
+		const targetTokens = Math.min(policy.targetTokens, hardInputTokens);
 		return {
 			...policy,
 			hardInputTokens,
-			targetTokens: Math.min(policy.targetTokens, hardInputTokens),
+			softTriggerTokens: Math.max(
+				targetTokens,
+				Math.min(policy.softTriggerTokens, hardInputTokens),
+			),
+			targetTokens,
 			source,
 		};
 	}

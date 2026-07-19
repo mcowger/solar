@@ -75,6 +75,7 @@ test("shows compact provider model rows with per-model settings", async ({
 							capabilities: {
 								reasoningLevels: ["low", "medium", "high"],
 								supportsVerbosity: true,
+								contextWindow: 600_000,
 							},
 						},
 						{
@@ -129,6 +130,18 @@ test("shows compact provider model rows with per-model settings", async ({
 		await expect(
 			modelSettings.getByRole("checkbox", { name: /Documents/ }),
 		).toBeChecked();
+		await expect(modelSettings.getByRole("spinbutton")).toHaveValue("600000");
+		await modelSettings
+			.getByRole("button", { name: "Customize context management" })
+			.click();
+		const contextSlider = (label: string) =>
+			modelSettings
+				.locator("label")
+				.filter({ hasText: label })
+				.locator("input");
+		await expect(contextSlider("Soft trigger")).toHaveValue("272000");
+		await expect(contextSlider("Target")).toHaveValue("180000");
+		await expect(contextSlider("Hard input")).toHaveValue("568000");
 		await modelSettings.getByRole("button", { name: "Done" }).click();
 		await expect(page.getByText("Model settings")).toBeHidden();
 		expect(
@@ -291,28 +304,4 @@ test("queues a follow-up message until the active response completes", async ({
 		"Second queued test message",
 		{ timeout: 20_000 },
 	);
-});
-
-test("configures active context management policies", async ({ page }) => {
-	await signIn(page);
-
-	await page.locator('[data-tip="Settings"] button').click();
-	await page.getByRole("tab", { name: "context management" }).click();
-
-	await expect(
-		page.getByText(
-			"Active chat policies resolve as exact model, family, provider, then derived fallback.",
-		),
-	).toBeVisible();
-	const gptPolicy = page.getByRole("group", { name: "openai / gpt-5.6" });
-	const slider = (label: string) =>
-		gptPolicy.locator("label").filter({ hasText: label }).locator("input");
-	await expect(slider("Soft trigger")).toHaveValue("272000");
-	await expect(slider("Target")).toHaveValue("180000");
-
-	const target = slider("Target");
-	await target.focus();
-	for (let i = 0; i < 5; i++) await target.press("ArrowLeft");
-	await gptPolicy.getByRole("button", { name: "Save" }).click();
-	await expect(target).toHaveValue("175000");
 });

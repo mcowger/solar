@@ -166,25 +166,6 @@ export interface UserSettingTable {
 	updatedAt: Generated<string>;
 }
 
-export type ContextPolicyScope = "exact_model" | "model_family" | "provider";
-
-/** Admin-owned policy overrides; inheritance is resolved by the context repository. */
-export interface ContextPolicyTable {
-	id: string;
-	scope: ContextPolicyScope;
-	provider: string;
-	modelFamily: string | null;
-	modelId: string | null;
-	enabled: Generated<number>;
-	softTriggerTokens: number;
-	targetTokens: number;
-	hardInputTokens: number;
-	maxPinnedAttachmentTokens: number;
-	outputReserveTokens: number;
-	createdAt: Generated<string>;
-	updatedAt: Generated<string>;
-}
-
 export type ContextJobStatus = "idle" | "queued" | "running" | "failed";
 
 /** Mutable working-memory artifact for one canonical conversation. */
@@ -255,7 +236,6 @@ export interface Database {
 	mcp_server: McpServerTable;
 	user_mcp_server_preference: UserMcpServerPreferenceTable;
 	conversation_mcp_server: ConversationMcpServerTable;
-	context_policy: ContextPolicyTable;
 	conversation_context_state: ConversationContextStateTable;
 	generation_step: GenerationStepTable;
 	provider_call_telemetry: ProviderCallTelemetryTable;

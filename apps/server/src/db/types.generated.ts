@@ -48,22 +48,6 @@ export interface Attachment {
 	width: number | null;
 }
 
-export interface ContextPolicy {
-	createdAt: Generated<string>;
-	enabled: Generated<number>;
-	hardInputTokens: number;
-	id: string | null;
-	maxPinnedAttachmentTokens: number;
-	modelFamily: string | null;
-	modelId: string | null;
-	outputReserveTokens: number;
-	provider: string;
-	scope: string;
-	softTriggerTokens: number;
-	targetTokens: number;
-	updatedAt: Generated<string>;
-}
-
 export interface Conversation {
 	autoExecuteTools: Generated<number>;
 	createdAt: Generated<string>;
@@ -255,7 +239,6 @@ export interface DB {
 	account: Account;
 	app_meta: AppMeta;
 	attachment: Attachment;
-	context_policy: ContextPolicy;
 	conversation: Conversation;
 	conversation_context_state: ConversationContextState;
 	conversation_mcp_server: ConversationMcpServer;
