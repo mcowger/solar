@@ -1,9 +1,10 @@
+colors: false
+no_tty: true
+output: false
+
 pre-commit:
   commands:
-    biome:
-      run: bun run format:check
-
-post-commit:
-  commands:
-    typecheck:
-      run: bun run typecheck
+    format:
+      glob: "*.{ts,tsx,jsx}"
+      run: bunx biome format --write --colors=off --reporter=concise --no-errors-on-unmatched {staged_files}
+      stage_fixed: true
