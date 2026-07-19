@@ -1,0 +1,9 @@
+pre-commit:
+  commands:
+    biome:
+      run: bun run format:check
+
+post-commit:
+  commands:
+    typecheck:
+      run: bun run typecheck
