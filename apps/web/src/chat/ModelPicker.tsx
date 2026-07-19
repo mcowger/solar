@@ -26,6 +26,7 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
   const current = useQuery(
     trpc.model.forConversation.queryOptions({ conversationId }),
   );
+  const userDefault = useQuery(trpc.model.userDefault.queryOptions());
 
   const setModel = useMutation(
     trpc.conversation.setModel.mutationOptions({
@@ -37,10 +38,17 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
       },
     }),
   );
-  const setDefault = useMutation(trpc.model.setUserDefault.mutationOptions());
+  const setDefault = useMutation(
+    trpc.model.setUserDefault.mutationOptions({
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: trpc.model.userDefault.queryKey() });
+      },
+    }),
+  );
 
   const models = available.data ?? [];
   const cur = current.data;
+  const isCurrentDefault = cur && userDefault.data && key(cur) === key(userDefault.data);
 
   if (models.length === 0) {
     return (
@@ -79,7 +87,7 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
           </option>
         ))}
       </select>
-      {cur && (
+      {cur && !isCurrentDefault && (
         <div
           className="tooltip tooltip-bottom"
           data-tip="Use this model as your default for new conversations"
