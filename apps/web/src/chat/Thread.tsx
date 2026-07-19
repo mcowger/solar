@@ -150,6 +150,21 @@ const iconButton: React.CSSProperties = {
   borderRadius: 6,
 };
 
+const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
+const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
+
+function SignalMeter({ level, levels }: { level?: string | null; levels: readonly string[] }) {
+  const strength = level ? Math.ceil(((levels.indexOf(level) + 1) / levels.length) * 3) : 0;
+
+  return (
+    <span title={level ? `${level} strength` : "Default strength"} style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 14 }}>
+      {[5, 9, 13].map((height, index) => (
+        <span key={height} style={{ width: 3, height, borderRadius: 1, background: index < strength ? "currentColor" : "#cbd5e1" }} />
+      ))}
+    </span>
+  );
+}
+
 function UserMessage() {
   return (
     <div className="solar-message" style={{ alignSelf: "flex-end", maxWidth: "80%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
@@ -252,16 +267,17 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
   if (!showReasoning && !showVerbosity) return null;
 
   return (
-    <div ref={controlsRef} style={{ display: "flex", gap: 4, position: "relative" }}>
+    <div ref={controlsRef} style={{ display: "flex", gap: 4 }}>
       {showReasoning && (
-        <>
+        <div style={{ position: "relative" }}>
           <button
             type="button"
             onClick={() => setOpen(open === "reasoning" ? null : "reasoning")}
-            style={{ ...iconButton, color: data?.reasoningEffort ? "#1a56db" : "#666" }}
-            title="Reasoning effort"
+            style={{ ...iconButton, color: data?.reasoningEffort ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
+            title={`Reasoning effort: ${data?.reasoningEffort ?? "default"}`}
           >
             <Brain size={18} />
+            <SignalMeter level={data?.reasoningEffort} levels={data?.reasoningLevels ?? REASONING_LEVELS} />
           </button>
           {open === "reasoning" && (
             <div style={{ position: "absolute", bottom: 30, left: 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
@@ -271,27 +287,28 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
               ))}
             </div>
           )}
-        </>
+        </div>
       )}
       {showVerbosity && (
-        <>
+        <div style={{ position: "relative" }}>
           <button
             type="button"
             onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
-            style={{ ...iconButton, color: data?.verbosity ? "#1a56db" : "#666" }}
-            title="Answer verbosity"
+            style={{ ...iconButton, color: data?.verbosity ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
+            title={`Answer verbosity: ${data?.verbosity ?? "default"}`}
           >
             <Podcast size={18} />
+            <SignalMeter level={data?.verbosity} levels={VERBOSITY_LEVELS} />
           </button>
           {open === "verbosity" && (
-            <div style={{ position: "absolute", bottom: 30, left: showReasoning ? 32 : 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
+            <div style={{ position: "absolute", bottom: 30, left: 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
               <button type="button" onClick={() => update.mutate({ id: conversationId, verbosity: null })} style={iconButton}>Default</button>
-              {(["low", "medium", "high"] as const).map((level) => (
+              {VERBOSITY_LEVELS.map((level) => (
                 <button key={level} type="button" onClick={() => update.mutate({ id: conversationId, verbosity: level })} style={iconButton}>{level}</button>
               ))}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );
