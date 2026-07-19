@@ -78,12 +78,27 @@ const row = (
 });
 
 let historyRows: FakeRow[] = [];
+let contextState: {
+	summaryEvent: null | {
+		tokensBefore: number;
+		tokensAfter: number;
+		revision: number;
+		createdAt: string;
+		retainedMessageBoundaryId: string;
+	};
+} = { summaryEvent: null };
+let historyCalls = 0;
 
 mock.module("../trpcClient", () => ({
 	trpcClient: {
 		conversation: {
-			messages: { query: async () => historyRows },
-			contextState: { query: async () => ({ summaryEvent: null }) },
+			messages: {
+				query: async () => {
+					historyCalls += 1;
+					return historyRows;
+				},
+			},
+			contextState: { query: async () => contextState },
 		},
 	},
 }));
@@ -126,6 +141,8 @@ afterAll(() => {
 
 beforeEach(() => {
 	FakeEventSource.instances = [];
+	contextState = { summaryEvent: null };
+	historyCalls = 0;
 	stopCalls = 0;
 	forceStopCalls = 0;
 	stopHandler = async () =>
@@ -142,15 +159,20 @@ function renderRuntime() {
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false } },
 	});
-	return renderHook(() => useSolarRuntime("conv-1", true, []), {
-		wrapper: ({ children }: { children: ReactNode }) => (
-			<QueryClientProvider client={queryClient}>
-				<TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-					{children}
-				</TRPCProvider>
-			</QueryClientProvider>
-		),
-	});
+	return renderHook(
+		({ summaryRevision }: { summaryRevision?: number }) =>
+			useSolarRuntime("conv-1", true, [], summaryRevision),
+		{
+			initialProps: { summaryRevision: undefined as number | undefined },
+			wrapper: ({ children }: { children: ReactNode }) => (
+				<QueryClientProvider client={queryClient}>
+					<TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
+						{children}
+					</TRPCProvider>
+				</QueryClientProvider>
+			),
+		},
+	);
 }
 
 /** Render with an active generation and wait for the SSE to attach. */
@@ -173,6 +195,41 @@ const lastMessageText = (
 		.map((part) => (part.type === "text" ? part.text : ""))
 		.join("");
 };
+
+describe("useSolarRuntime compaction", () => {
+	test("reloads history when a background summary completes", async () => {
+		historyRows = [
+			row("u1", "user", "old question"),
+			row("a1", "assistant", "old answer"),
+			row("u2", "user", "new question"),
+		];
+		const rendered = renderRuntime();
+		await waitFor(() => expect(historyCalls).toBe(1));
+
+		contextState = {
+			summaryEvent: {
+				tokensBefore: 272_000,
+				tokensAfter: 8_000,
+				revision: 2,
+				createdAt: "2026-07-19T20:14:47.000Z",
+				retainedMessageBoundaryId: "u2",
+			},
+		};
+		rendered.rerender({ summaryRevision: 2 });
+
+		await waitFor(() => expect(historyCalls).toBe(2));
+		const marker = rendered.result.current.thread
+			.getState()
+			.messages.find((message) => message.id === "u2")?.metadata?.custom as
+			| { summaryEvent?: { tokensBefore: number; tokensAfter: number } }
+			| undefined;
+		expect(marker?.summaryEvent).toMatchObject({
+			tokensBefore: 272_000,
+			tokensAfter: 8_000,
+		});
+		rendered.unmount();
+	});
+});
 
 describe("useSolarRuntime cancel (Stop)", () => {
 	test("waits for the server [DONE] after /stop so persisted partial output is loaded", async () => {

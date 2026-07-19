@@ -105,10 +105,15 @@ function ConversationView({
 	const current = useQuery(
 		trpc.model.forConversation.queryOptions({ conversationId }),
 	);
+	const context = useQuery({
+		...trpc.conversation.contextState.queryOptions({ conversationId }),
+		refetchInterval: 2_000,
+	});
 	const runtime = useSolarRuntime(
 		conversationId,
 		current.data?.vision ?? false,
 		current.data?.documentMimeTypes ?? [],
+		context.data?.summaryEvent?.revision,
 	);
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
@@ -118,6 +123,7 @@ function ConversationView({
 					<Thread
 						conversationId={conversationId}
 						onConfigureMcp={onConfigureMcp}
+						contextStatus={context.data}
 					/>
 				</div>
 			</div>

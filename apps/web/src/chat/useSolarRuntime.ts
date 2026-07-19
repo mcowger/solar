@@ -112,6 +112,7 @@ export function useSolarRuntime(
 	conversationId: string,
 	allowImages: boolean,
 	documentMimeTypes: readonly string[],
+	summaryRevision?: number | null,
 ) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -124,6 +125,7 @@ export function useSolarRuntime(
 	const reconnectRef = useRef<(() => void) | null>(null);
 	const finishStreamRef = useRef<(() => void) | null>(null);
 	const loadHistoryRef = useRef<() => Promise<void>>(() => Promise.resolve());
+	const loadedSummaryRevisionRef = useRef<number | null | undefined>(undefined);
 	const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
 	const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(
 		() => undefined,
@@ -318,6 +320,8 @@ export function useSolarRuntime(
 				)
 			: -1;
 		const markerIndex = boundaryIndex >= 0 ? boundaryIndex : rows.length - 1;
+		loadedSummaryRevisionRef.current =
+			contextState.summaryEvent?.revision ?? null;
 		setMessages(
 			rows.map((r, index) => ({
 				id: r.id,
@@ -348,6 +352,16 @@ export function useSolarRuntime(
 	loadHistoryRef.current = async () => {
 		await loadHistory();
 	};
+
+	useEffect(() => {
+		if (
+			summaryRevision == null ||
+			loadedSummaryRevisionRef.current === undefined ||
+			loadedSummaryRevisionRef.current === summaryRevision
+		)
+			return;
+		void loadHistory();
+	}, [loadHistory, summaryRevision]);
 
 	// Load history; resume an in-progress generation if the server has one.
 	useEffect(() => {
