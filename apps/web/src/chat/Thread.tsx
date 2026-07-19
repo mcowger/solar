@@ -177,16 +177,6 @@ export function ContextStatusIndicator({ status }: { status?: ContextStatus }) {
 	return null;
 }
 
-function ContextStatusControl({ conversationId }: { conversationId: string }) {
-	const trpc = useTRPC();
-	const context = useQuery({
-		...trpc.conversation.contextState.queryOptions({ conversationId }),
-		refetchInterval: (query) =>
-			query.state.data?.state === "running" ? 2_000 : false,
-	});
-	return <ContextStatusIndicator status={context.data} />;
-}
-
 /** Small image-or-icon chip for a single attachment (composer or message). */
 function AttachmentChip({ removable }: { removable?: boolean }) {
 	const attachment = useAuiState((s) => s.attachment);
@@ -914,9 +904,11 @@ function McpControls({
 export function Thread({
 	conversationId,
 	onConfigureMcp,
+	contextStatus,
 }: {
 	conversationId: string;
 	onConfigureMcp: () => void;
+	contextStatus?: ContextStatus;
 }) {
 	const composer = useComposerRuntime();
 	const trpc = useTRPC();
@@ -992,7 +984,7 @@ export function Thread({
 						</span>
 					)}
 				</ComposerPrimitive.Queue>
-				<ContextStatusControl conversationId={conversationId} />
+				<ContextStatusIndicator status={contextStatus} />
 				{pasteError && (
 					<div role="alert" className="alert alert-error alert-soft text-sm">
 						{pasteError}
