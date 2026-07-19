@@ -15,6 +15,7 @@ import { createContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 
 const isProduction = process.env.NODE_ENV === "production";
+// Production serves the bundled web assets.
 const index = isProduction
 	? undefined
 	: (await import("@solar/web/index.html")).default;
