@@ -96,6 +96,7 @@ you need model calls.
 | `bun run migrate:auth` | Run Better Auth's own migrations |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
 | `bun run chat-history -- --help` | Admin CLI for chat inspection and history import/export |
+| `bun run sync-staging-history -- --help` | Export staging history and restore it locally |
 | `bun run typecheck` | `tsc` for server, web, shared, and Playwright tests |
 | `bun run test` | Run server and frontend Bun unit tests |
 | `bun run test:server` / `test:web` | Run one Bun unit-test suite |
@@ -134,6 +135,21 @@ bun run chat-history -- --help
 
 Imports merge without overwriting and reject ID or tag-name conflicts. History
 bundles include attachment metadata but not the underlying attachment files.
+
+### Staging history sync
+
+With a running local dev server and an empty local chat history, run:
+
+```bash
+bun run sync-staging-history
+```
+
+This calls the existing staging export and local restore APIs, writes the
+gitignored `.staging-history.json` bundle, and restores staging's
+`devuser@cowger.us` history into local `admin@solar.local`. Override URLs,
+users, and credentials with command options or the `SOLAR_STAGING_*` and
+`SOLAR_*` environment variables. Repeat imports require a clean local history
+because the restore API rejects conflicts.
 
 ## Build, run & dev workflow
 

@@ -27,6 +27,7 @@
     "codegen": "bun run --cwd apps/server codegen",
     "deploy:staging": "bun run scripts/deploy-staging.ts",
     "chat-history": "bun run scripts/chat-history.ts",
+    "sync-staging-history": "bun run scripts/sync-staging-history.ts",
     "typecheck": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json && tsc -p tsconfig.e2e.json",
     "test": "bun run test:server && bun run test:web",
     "test:server": "bun test --isolate apps/server/src",
