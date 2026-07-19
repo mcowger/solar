@@ -53,6 +53,7 @@ interface FakeRow {
 	id: string;
 	role: "user" | "assistant";
 	text: string;
+	status: "complete" | "generating" | "error";
 	reasoning: string | null;
 	toolCalls: undefined;
 	attachments: never[];
@@ -64,10 +65,12 @@ const row = (
 	role: FakeRow["role"],
 	text: string,
 	isActive = false,
+	status: FakeRow["status"] = "complete",
 ): FakeRow => ({
 	id,
 	role,
 	text,
+	status,
 	reasoning: null,
 	toolCalls: undefined,
 	attachments: [],
@@ -90,6 +93,8 @@ const realEventSource = globalThis.EventSource;
 
 let stopHandler: () => Promise<Response>;
 let stopCalls = 0;
+let forceStopHandler: () => Promise<Response>;
+let forceStopCalls = 0;
 
 globalThis.EventSource = FakeEventSource as unknown as typeof EventSource;
 globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -102,6 +107,10 @@ globalThis.fetch = (async (input: RequestInfo | URL) => {
 	if (url === "/api/chat/stop") {
 		stopCalls += 1;
 		return stopHandler();
+	}
+	if (url === "/api/chat/force-stop") {
+		forceStopCalls += 1;
+		return forceStopHandler();
 	}
 	throw new Error(`unexpected fetch in test: ${url}`);
 }) as typeof fetch;
@@ -118,7 +127,12 @@ afterAll(() => {
 beforeEach(() => {
 	FakeEventSource.instances = [];
 	stopCalls = 0;
+	forceStopCalls = 0;
 	stopHandler = async () =>
+		new Response(JSON.stringify({ stopped: true }), {
+			headers: { "content-type": "application/json" },
+		});
+	forceStopHandler = async () =>
 		new Response(JSON.stringify({ stopped: true }), {
 			headers: { "content-type": "application/json" },
 		});
@@ -220,6 +234,20 @@ describe("useSolarRuntime cancel (Stop)", () => {
 			expect(result.current.thread.getState().isRunning).toBe(false),
 		);
 		expect(source.closed).toBe(true);
+		unmount();
+	});
+});
+
+describe("useSolarRuntime stale turns", () => {
+	test("leaves orphaned generating messages for the user to force-stop", async () => {
+		historyRows = [
+			row("u1", "user", "hi"),
+			row("a1", "assistant", "partial answer", false, "generating"),
+		];
+		const { unmount } = renderRuntime();
+
+		await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+		expect(forceStopCalls).toBe(0);
 		unmount();
 	});
 });

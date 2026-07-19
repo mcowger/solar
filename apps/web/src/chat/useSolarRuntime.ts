@@ -27,6 +27,8 @@ interface SolarMessage {
 	role: "user" | "assistant";
 	content: string;
 	connectionStatus?: SolarConnectionStatus;
+	isStale?: boolean;
+	forceStop?: () => Promise<void>;
 	reasoning?: string;
 	toolCalls?: SolarToolCall[];
 	summaryEvent?: SolarSummaryEvent;
@@ -81,6 +83,8 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
 		metadata: {
 			custom: {
 				connectionStatus: m.connectionStatus,
+				isStale: m.isStale,
+				forceStop: m.forceStop,
 				toolCalls: m.toolCalls,
 				summaryEvent: m.summaryEvent,
 			},
@@ -119,6 +123,7 @@ export function useSolarRuntime(
 	const lastEventIdRef = useRef(0);
 	const reconnectRef = useRef<(() => void) | null>(null);
 	const finishStreamRef = useRef<(() => void) | null>(null);
+	const loadHistoryRef = useRef<() => Promise<void>>(() => Promise.resolve());
 	const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
 	const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(
 		() => undefined,
@@ -290,6 +295,15 @@ export function useSolarRuntime(
 		[queryClient, trpc.conversation.list, upsertAssistant],
 	);
 
+	const forceStopStaleTurn = useCallback(async (messageId: string) => {
+		const res = await fetch("/api/chat/force-stop", {
+			method: "POST",
+			headers: jsonHeaders,
+			body: JSON.stringify({ messageId }),
+		});
+		if (res.ok) await loadHistoryRef.current();
+	}, []);
+
 	// Reload the canonical history from the server, replacing local state so ids
 	// stay in sync with the DB. Returns the rows (for the resume check).
 	const loadHistory = useCallback(async () => {
@@ -322,10 +336,18 @@ export function useSolarRuntime(
 							}
 						: undefined,
 				attachments: r.attachments.length ? r.attachments : undefined,
+				isStale: r.status === "generating" && !r.isActive,
+				forceStop:
+					r.status === "generating" && !r.isActive
+						? () => forceStopStaleTurn(r.id)
+						: undefined,
 			})),
 		);
 		return rows;
-	}, [conversationId]);
+	}, [conversationId, forceStopStaleTurn]);
+	loadHistoryRef.current = async () => {
+		await loadHistory();
+	};
 
 	// Load history; resume an in-progress generation if the server has one.
 	useEffect(() => {
@@ -333,7 +355,6 @@ export function useSolarRuntime(
 		(async () => {
 			const rows = await loadHistory();
 			if (cancelled) return;
-
 			const active = rows.find((r) => r.isActive);
 			if (active) {
 				assistantIdRef.current = active.id;

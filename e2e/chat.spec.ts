@@ -186,6 +186,80 @@ test("signs in and streams a mock chat response", async ({ page }) => {
 	).toBeVisible();
 });
 
+test("force-stops a stale response from its hover control", async ({
+	page,
+}) => {
+	await signIn(page);
+	const composer = page.getByPlaceholder("Message…");
+	await composer.fill("Stale response test");
+	await page.getByTitle("Send or queue message").click();
+	await expect(page.locator(".solar-assistant-output").last()).toContainText(
+		"Mock reply",
+		{ timeout: 20_000 },
+	);
+
+	const messageId = "stale-assistant-message";
+	let forceStopped = false;
+	await page.route("**/trpc/*", async (route) => {
+		const response = await route.fetch();
+		const body = await response.json();
+		const procedures =
+			new URL(route.request().url()).pathname.split("/").at(-1)?.split(",") ??
+			[];
+		const messageIndex = procedures.indexOf("conversation.messages");
+		if (messageIndex >= 0) {
+			body[messageIndex].result.data = [
+				{
+					id: "stale-user-message",
+					role: "user",
+					text: "Stale response test",
+					status: "complete",
+					createdAt: "2026-07-19T00:00:00.000Z",
+					reasoning: null,
+					toolCalls: undefined,
+					attachments: [],
+					isActive: false,
+				},
+				{
+					id: messageId,
+					role: "assistant",
+					text: "",
+					status: forceStopped ? "complete" : "generating",
+					createdAt: "2026-07-19T00:00:01.000Z",
+					reasoning: null,
+					toolCalls: undefined,
+					attachments: [],
+					isActive: false,
+				},
+			];
+		}
+		await route.fulfill({ response, json: body });
+	});
+	await page.route("**/api/chat/force-stop", async (route) => {
+		expect(route.request().postDataJSON()).toEqual({ messageId });
+		forceStopped = true;
+		await route.fulfill({ json: { stopped: true } });
+	});
+	await page.reload();
+	const forceStop = page.getByTitle("Force stop response");
+	await expect(forceStop).toBeVisible();
+	await forceStop.hover();
+	await expect(forceStop.locator("svg.lucide-ban")).toBeVisible();
+	await expect(forceStop.locator("svg.solar-response-loader")).toBeHidden();
+
+	const forceStopRequest = page.waitForRequest(
+		(request) =>
+			request.url().endsWith("/api/chat/force-stop") &&
+			request.method() === "POST",
+	);
+	await forceStop.click();
+	await forceStopRequest;
+	await expect(forceStop).toBeHidden();
+	await expect(
+		page.getByText("The model returned an empty response."),
+	).toBeVisible();
+});
+
 test("queues a follow-up message until the active response completes", async ({
 	page,
 }) => {

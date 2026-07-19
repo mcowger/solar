@@ -10,6 +10,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Brain,
+	Ban,
 	Camera,
 	Copy,
 	Cog,
@@ -530,6 +531,25 @@ function AssistantMessage() {
 					| undefined
 			)?.connectionStatus,
 	);
+	const staleTurn = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| {
+							isStale?: boolean;
+							forceStop?: () => Promise<void>;
+					  }
+					| undefined
+			)?.isStale,
+	);
+	const forceStop = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| { forceStop?: () => Promise<void> }
+					| undefined
+			)?.forceStop,
+	);
 
 	return (
 		<>
@@ -557,6 +577,8 @@ function AssistantMessage() {
 						<EmptyAssistantResponse
 							isRunning={isRunning}
 							connectionStatus={connectionStatus}
+							isStale={staleTurn}
+							onForceStop={forceStop}
 						/>
 					) : (
 						<MessagePrimitive.Content
@@ -590,10 +612,35 @@ function AssistantMessage() {
 export function EmptyAssistantResponse({
 	isRunning,
 	connectionStatus,
+	isStale = false,
+	onForceStop,
 }: {
 	isRunning: boolean;
 	connectionStatus?: SolarConnectionStatus;
+	isStale?: boolean;
+	onForceStop?: () => Promise<void>;
 }) {
+	const [forceStopHovered, setForceStopHovered] = useState(false);
+
+	if (isStale && onForceStop) {
+		return (
+			<button
+				type="button"
+				className="btn btn-ghost btn-sm btn-square"
+				title="Force stop response"
+				onClick={() => void onForceStop()}
+				onMouseEnter={() => setForceStopHovered(true)}
+				onMouseLeave={() => setForceStopHovered(false)}
+			>
+				{forceStopHovered ? (
+					<Ban className="text-error" size={18} />
+				) : (
+					<LoaderCircle className="solar-response-loader" size={18} />
+				)}
+			</button>
+		);
+	}
+
 	if (isRunning) {
 		return (
 			<div className="flex items-center gap-2 text-sm text-base-content/60">
