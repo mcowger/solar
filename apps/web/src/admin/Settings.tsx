@@ -70,6 +70,13 @@ interface ContextManagementSettings {
 	};
 }
 
+interface PasteSettings {
+	version: number;
+	enabled: boolean;
+	lineThreshold: number;
+	byteThreshold: number;
+}
+
 const CONTEXT_TOKEN_STEP = 1_000;
 const MAX_CONTEXT_TOKENS = 2_000_000;
 const thinkingLevels = [
@@ -1375,11 +1382,134 @@ function ContextManagement() {
 	);
 }
 
+function PasteHandling() {
+	const trpc = useTRPC();
+	const qc = useQueryClient();
+	const settings = useQuery(trpc.admin.pasteSettings.queryOptions());
+	const [form, setForm] = useState<PasteSettings | null>(null);
+	useEffect(() => {
+		if (settings.data) setForm(settings.data);
+	}, [settings.data]);
+	const save = useMutation(
+		trpc.admin.setPasteSettings.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					qc.invalidateQueries({
+						queryKey: trpc.admin.pasteSettings.queryKey(),
+					}),
+					qc.invalidateQueries({ queryKey: trpc.pasteSettings.queryKey() }),
+				]);
+			},
+		}),
+	);
+
+	if (settings.isError)
+		return (
+			<div role="alert" className="alert alert-error alert-soft">
+				{settings.error.message}
+			</div>
+		);
+	if (!form) return null;
+	const hasChanges =
+		form.enabled !== settings.data?.enabled ||
+		form.lineThreshold !== settings.data?.lineThreshold ||
+		form.byteThreshold !== settings.data?.byteThreshold;
+	const valid =
+		Number.isInteger(form.lineThreshold) &&
+		form.lineThreshold >= 1 &&
+		form.lineThreshold <= 100_000 &&
+		Number.isInteger(form.byteThreshold) &&
+		form.byteThreshold >= 1 &&
+		form.byteThreshold <= 20 * 1024 * 1024;
+	return (
+		<section className="card card-border bg-base-100 shadow-sm">
+			<div className="card-body gap-4 p-5">
+				<div>
+					<h3 className="card-title">Large pasted text</h3>
+					<p className="text-sm opacity-70">
+						Convert large text-only pastes into removable text file attachments.
+					</p>
+				</div>
+				<label className="flex items-center gap-3">
+					<input
+						className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content"
+						type="checkbox"
+						checked={form.enabled}
+						disabled={save.isPending}
+						onChange={(event) =>
+							setForm({ ...form, enabled: event.target.checked })
+						}
+					/>
+					<span className="text-sm">Automatic conversion enabled</span>
+				</label>
+				<div className="grid gap-3 sm:grid-cols-2">
+					<label className="fieldset">
+						<span className="fieldset-legend">Line threshold</span>
+						<input
+							className="input w-full"
+							type="number"
+							min={1}
+							max={100_000}
+							value={form.lineThreshold}
+							disabled={save.isPending}
+							onChange={(event) =>
+								setForm({ ...form, lineThreshold: event.target.valueAsNumber })
+							}
+						/>
+						<span className="label">
+							Convert when paste exceeds this many lines.
+						</span>
+					</label>
+					<label className="fieldset">
+						<span className="fieldset-legend">Size threshold (bytes)</span>
+						<input
+							className="input w-full"
+							type="number"
+							min={1}
+							max={20 * 1024 * 1024}
+							value={form.byteThreshold}
+							disabled={save.isPending}
+							onChange={(event) =>
+								setForm({ ...form, byteThreshold: event.target.valueAsNumber })
+							}
+						/>
+						<span className="label">Uses UTF-8 bytes; maximum is 20 MiB.</span>
+					</label>
+				</div>
+				{save.isError && (
+					<div role="alert" className="alert alert-error alert-soft">
+						{save.error.message}
+					</div>
+				)}
+				<div className="card-actions items-center justify-end">
+					{!hasChanges && save.isSuccess && (
+						<span className="text-sm font-medium text-success">Saved</span>
+					)}
+					<button
+						className="btn btn-primary"
+						disabled={save.isPending || !hasChanges || !valid}
+						onClick={() =>
+							save.mutate({
+								enabled: form.enabled,
+								lineThreshold: form.lineThreshold,
+								byteThreshold: form.byteThreshold,
+							})
+						}
+					>
+						{save.isPending ? "Saving…" : "Save settings"}
+					</button>
+				</div>
+			</div>
+		</section>
+	);
+}
+
 const sections = [
 	"users",
 	"providers",
 	"task model",
 	"context management",
+	"paste handling",
 	"usage",
 	"logging",
 ] as const;
@@ -1440,6 +1570,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 						{section === "logging" && <Logging />}
 						{section === "task model" && <TaskModel />}
 						{section === "context management" && <ContextManagement />}
+						{section === "paste handling" && <PasteHandling />}
 						{section === "providers" && providers.isError && (
 							<div role="alert" className="alert alert-error alert-soft">
 								{providers.error.message}

@@ -37,6 +37,11 @@ import type {
 import "./Thread.css";
 
 const EMPTY_TOOL_CALLS: SolarToolCall[] = [];
+const DEFAULT_PASTE_SETTINGS = {
+	enabled: true,
+	lineThreshold: 20,
+	byteThreshold: 5 * 1024,
+};
 
 function MobileAttachmentPicker() {
 	const composer = useComposerRuntime();
@@ -888,6 +893,36 @@ export function Thread({
 	conversationId: string;
 	onConfigureMcp: () => void;
 }) {
+	const composer = useComposerRuntime();
+	const trpc = useTRPC();
+	const pasteSettings = useQuery(trpc.pasteSettings.queryOptions());
+	const pasteThresholds = pasteSettings.data ?? DEFAULT_PASTE_SETTINGS;
+	const [pasteError, setPasteError] = useState<string | null>(null);
+
+	const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+		setPasteError(null);
+		if (!pasteThresholds.enabled || event.clipboardData.files.length > 0)
+			return;
+		const text = event.clipboardData.getData("text/plain");
+		if (!text || !shouldConvertPastedText(text, pasteThresholds)) return;
+
+		event.preventDefault();
+		const input = event.currentTarget;
+		const currentText = input.value;
+		const start = input.selectionStart ?? currentText.length;
+		const end = input.selectionEnd ?? start;
+		const file = new File([text], createPastedTextFileName(), {
+			type: "text/plain",
+		});
+		void composer.addAttachment(file).catch((error: unknown) => {
+			const message = error instanceof Error ? error.message : "Upload failed";
+			composer.setText(
+				currentText.slice(0, start) + text + currentText.slice(end),
+			);
+			setPasteError(message);
+		});
+	};
+
 	return (
 		<ThreadPrimitive.Root
 			style={{ display: "flex", flexDirection: "column", height: "100%" }}
@@ -933,6 +968,11 @@ export function Thread({
 					)}
 				</ComposerPrimitive.Queue>
 				<ContextStatusControl conversationId={conversationId} />
+				{pasteError && (
+					<div role="alert" className="alert alert-error alert-soft text-sm">
+						{pasteError}
+					</div>
+				)}
 				<div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
 					<ComposerPrimitive.AddAttachment
 						className="btn btn-ghost btn-sm btn-square hidden sm:inline-flex"
@@ -948,7 +988,8 @@ export function Thread({
 					/>
 					<ComposerPrimitive.Input
 						placeholder="Message…"
-						className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"
+						className="textarea textarea-ghost max-h-48 min-h-10 flex-1 overflow-y-auto px-2 py-2"
+						onPaste={handlePaste}
 					/>
 					<ComposerPrimitive.Send
 						className="btn btn-ghost btn-sm btn-square rounded-xl"
@@ -968,4 +1009,24 @@ export function Thread({
 			</ComposerPrimitive.Root>
 		</ThreadPrimitive.Root>
 	);
+}
+
+export function shouldConvertPastedText(
+	text: string,
+	settings: { lineThreshold: number; byteThreshold: number },
+): boolean {
+	const lineCount = text.split(/\r\n|\r|\n/).length;
+	const byteCount = new TextEncoder().encode(text).byteLength;
+	return (
+		lineCount > settings.lineThreshold || byteCount > settings.byteThreshold
+	);
+}
+
+function createPastedTextFileName(): string {
+	const stamp = new Date()
+		.toISOString()
+		.replace(/[-:]/g, "")
+		.replace("T", "-")
+		.replace(/\.\d{3}Z$/, "");
+	return `pasted-text-${stamp}.txt`;
 }

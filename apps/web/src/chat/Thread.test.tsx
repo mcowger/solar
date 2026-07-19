@@ -3,8 +3,33 @@ import { render, screen } from "@testing-library/react";
 import {
 	ContextStatusIndicator,
 	EmptyAssistantResponse,
+	shouldConvertPastedText,
 	SummaryEventCard,
 } from "./Thread";
+
+describe("shouldConvertPastedText", () => {
+	const settings = { lineThreshold: 20, byteThreshold: 5 * 1024 };
+
+	test("converts when either limit is exceeded", () => {
+		expect(
+			shouldConvertPastedText(Array(21).fill("line").join("\n"), settings),
+		).toBe(true);
+		expect(shouldConvertPastedText("x".repeat(5 * 1024 + 1), settings)).toBe(
+			true,
+		);
+	});
+
+	test("does not convert at either exact limit", () => {
+		expect(
+			shouldConvertPastedText(Array(20).fill("x").join("\n"), settings),
+		).toBe(false);
+		expect(shouldConvertPastedText("x".repeat(5 * 1024), settings)).toBe(false);
+	});
+
+	test("measures size as UTF-8 bytes", () => {
+		expect(shouldConvertPastedText("😀".repeat(1_281), settings)).toBe(true);
+	});
+});
 
 describe("ContextStatusIndicator", () => {
 	test("stays hidden for an unsummarized idle conversation", () => {

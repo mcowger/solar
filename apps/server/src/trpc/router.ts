@@ -35,6 +35,12 @@ import {
 	getContextGlobalSettings,
 	setContextGlobalSettings,
 } from "../context/settings";
+import {
+	getPasteSettings,
+	PASTE_SETTINGS_VERSION,
+	pasteSettingsInputSchema,
+	setPasteSettings,
+} from "../chat/pasteSettings";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -651,6 +657,12 @@ function hasDuplicateIds(rows: { id: string }[]) {
 
 const adminRouter = router({
 	logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
+	pasteSettings: adminProcedure.query(() => getPasteSettings()),
+	setPasteSettings: adminProcedure
+		.input(pasteSettingsInputSchema)
+		.mutation(({ input }) =>
+			setPasteSettings({ version: PASTE_SETTINGS_VERSION, ...input }),
+		),
 
 	contextManagementSettings: adminProcedure.query(async () => {
 		const repository = new ContextRepository(db);
@@ -2031,6 +2043,7 @@ const tagRouter = router({
 });
 
 export const appRouter = router({
+	pasteSettings: protectedProcedure.query(() => getPasteSettings()),
 	health: publicProcedure.query(async () => {
 		const row = await db
 			.selectFrom("app_meta")
