@@ -230,7 +230,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
           <div className="min-w-0 flex-1">
             <p className="font-medium">{p.name}</p>
             <p className="text-sm opacity-60">
-              {p.modelId} · {p.scope}
+              {modelList.find((m) => modelKey(m) === modelKey({ provider: p.provider, endpointId: p.endpointId ?? p.modelApi, modelId: p.modelId, api: p.modelApi }))?.name ?? p.modelId} · {p.scope}
               {p.reasoningEffort ? ` · ${p.reasoningEffort}` : ""}
             </p>
           </div>
