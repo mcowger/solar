@@ -544,3 +544,38 @@ chatRoutes.post("/stop", async (c) => {
 	const stopped = generationManager.stop(messageId);
 	return c.json({ stopped });
 });
+
+// Finalize an orphaned assistant placeholder after a process restart or failed
+// generation teardown. Active generations still use the normal Stop path so
+// their buffered output is persisted by the generation manager.
+chatRoutes.post("/force-stop", async (c) => {
+	const user = await requireUser(c.req.raw);
+	if (!user) return c.json({ error: "unauthorized" }, 401);
+
+	const { messageId } = (await c.req.json()) as { messageId: string };
+	if (!messageId) return c.json({ error: "messageId required" }, 400);
+	const message = await getOwnedMessage(user.id, messageId);
+	if (!message) return c.json({ error: "message not found" }, 404);
+	if (message.role !== "assistant") {
+		return c.json(
+			{ error: "only assistant messages can be force-stopped" },
+			400,
+		);
+	}
+	if (generationManager.stop(messageId)) return c.json({ stopped: true });
+
+	const result = await db
+		.updateTable("message")
+		.set({ status: "complete" })
+		.where("id", "=", messageId)
+		.where("status", "=", "generating")
+		.executeTakeFirst();
+	if (result.numUpdatedRows > 0) {
+		await db
+			.updateTable("conversation")
+			.set({ updatedAt: new Date().toISOString() })
+			.where("id", "=", message.conversationId)
+			.execute();
+	}
+	return c.json({ stopped: result.numUpdatedRows > 0 });
+});
