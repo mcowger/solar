@@ -23,6 +23,16 @@ describe("parseAllowlist", () => {
     ]);
   });
 
+  test("keeps valid per-model generation defaults", () => {
+    expect(parseAllowlist(JSON.stringify([
+      { id: "gpt-5", endpointId: "responses", api: "openai-responses", reasoningEffort: "high", verbosity: "low" },
+      { id: "gpt-4.1", endpointId: "responses", api: "openai-responses", reasoningEffort: "invalid", verbosity: "maximum" },
+    ]))).toEqual([
+      { id: "gpt-5", endpointId: "responses", api: "openai-responses", visibility: "public", reasoningEffort: "high", verbosity: "low" },
+      { id: "gpt-4.1", endpointId: "responses", api: "openai-responses", visibility: "public" },
+    ]);
+  });
+
   test("returns an empty list for invalid JSON or a non-array value", () => {
     expect(parseAllowlist("not json")).toEqual([]);
     expect(parseAllowlist('{"id":"gpt-5"}')).toEqual([]);

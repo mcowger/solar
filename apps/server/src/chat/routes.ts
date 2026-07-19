@@ -17,7 +17,6 @@ import {
 } from "./attachments";
 import {
   getTitlePrompt,
-  getGenerationDefaults,
   getModelCapabilities,
   documentInputCapabilities,
   resolveSelection,
@@ -205,10 +204,9 @@ async function streamNewAssistantTurn(
     userId,
     isAdmin,
   );
-  const [documentInput, capabilities, defaults] = await Promise.all([
+  const [documentInput, capabilities] = await Promise.all([
     documentInputCapabilities(selection),
     getModelCapabilities(selection),
-    getGenerationDefaults(),
   ]);
   const assembled = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
   const { context, documents } = await buildContext(
@@ -229,15 +227,9 @@ async function streamNewAssistantTurn(
   }
   const params: GenerationParams = {
     systemPrompt: convo?.systemPrompt ?? undefined,
-    reasoningEffort: convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? (
-      defaults.reasoningEffort && capabilities.reasoningLevels.includes(defaults.reasoningEffort)
-        ? defaults.reasoningEffort
-        : undefined
-    ),
+    reasoningEffort: convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? capabilities.defaultReasoningEffort ?? undefined,
     reasoningSummary: Boolean(convo?.reasoningSummary),
-    verbosity: convo?.verbosity ?? convo?.presetVerbosity ?? (
-      defaults.verbosity && capabilities.supportsVerbosity ? defaults.verbosity : undefined
-    ),
+    verbosity: convo?.verbosity ?? convo?.presetVerbosity ?? capabilities.defaultVerbosity ?? undefined,
     documents,
   };
   const titleTask = titleGeneration

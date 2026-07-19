@@ -5,7 +5,6 @@ import { deleteAttachmentFilesForMessages, deleteAttachmentFilesForUser } from "
 import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
-  getGenerationDefaults,
   getModelCapabilities,
   documentInputMimeTypes,
   getTaskModel,
@@ -18,7 +17,6 @@ import {
   PROVIDER_APIS,
   resolveSelection,
   setAdminDefault,
-  setGenerationDefaults,
   setTaskModel,
   setTitlePrompt,
   setUserDefault,
@@ -451,6 +449,8 @@ const allowlistEntrySchema = z.object({
   reasoning: z.boolean().optional(),
   vision: z.boolean().optional(),
   documents: z.boolean().optional(),
+  reasoningEffort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).optional(),
+  verbosity: z.enum(["low", "medium", "high"]).optional(),
 });
 
 const folderHistorySchema = z.object({
@@ -555,15 +555,6 @@ function hasDuplicateIds(rows: { id: string }[]) {
 
 const adminRouter = router({
   logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
-
-  generationDefaults: adminProcedure.query(() => getGenerationDefaults()),
-
-  setGenerationDefaults: adminProcedure
-    .input(z.object({
-      reasoningEffort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).nullable(),
-      verbosity: z.enum(["low", "medium", "high"]).nullable(),
-    }))
-    .mutation(({ input }) => setGenerationDefaults(input)),
 
   contextManagementSettings: adminProcedure.query(async () => {
     const repository = new ContextRepository(db);
@@ -850,13 +841,16 @@ const adminRouter = router({
 
   listProviders: adminProcedure.query(async () => {
     const configs = await loadProviderConfigs();
-    return configs.map((config) => ({
+    return Promise.all(configs.map(async (config) => ({
       provider: config.provider,
       hasApiKey: Boolean(config.apiKey),
       endpoints: config.endpoints,
-      enabledModels: config.enabledModels,
+      enabledModels: await Promise.all(config.enabledModels.map(async (model) => ({
+        ...model,
+        capabilities: await getModelCapabilities({ provider: config.provider, endpointId: model.endpointId, modelId: model.id, api: model.api }),
+      }))),
       apis: PROVIDER_APIS,
-    }));
+    })));
   }),
 
   setProvider: adminProcedure
@@ -1111,19 +1105,10 @@ const modelRouter = router({
           m.modelId === selection.modelId &&
           m.api === selection.api,
       );
-      const [capabilities, defaults] = await Promise.all([
-        getModelCapabilities(selection),
-        getGenerationDefaults(),
-      ]);
+      const capabilities = await getModelCapabilities(selection);
       const documentMimeTypes = await documentInputMimeTypes(selection);
-      const effectiveReasoningEffort = convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? (
-        defaults.reasoningEffort && capabilities.reasoningLevels.includes(defaults.reasoningEffort)
-          ? defaults.reasoningEffort
-          : null
-      );
-      const effectiveVerbosity = convo?.verbosity ?? convo?.presetVerbosity ?? (
-        defaults.verbosity && capabilities.supportsVerbosity ? defaults.verbosity : null
-      );
+      const effectiveReasoningEffort = convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? capabilities.defaultReasoningEffort;
+      const effectiveVerbosity = convo?.verbosity ?? convo?.presetVerbosity ?? capabilities.defaultVerbosity;
       return {
         ...(descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false, documents: false }),
         ...capabilities,

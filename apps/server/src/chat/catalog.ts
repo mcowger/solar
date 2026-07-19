@@ -169,14 +169,8 @@ export async function listAvailableModels(isAdmin = false): Promise<ModelDescrip
 const ADMIN_DEFAULT_KEY = "default_model";
 const TASK_MODEL_KEY = "task_model";
 const TITLE_PROMPT_KEY = "title_prompt";
-const GENERATION_DEFAULTS_KEY = "generation_defaults";
 export const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
 export const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
-
-export interface GenerationDefaults {
-  reasoningEffort: (typeof THINKING_LEVELS)[number] | null;
-  verbosity: (typeof VERBOSITY_LEVELS)[number] | null;
-}
 
 export const DEFAULT_TITLE_PROMPT = `### Task: Generate a concise, 3-5 word title with an emoji summarizing the first user message.
 ### Guidelines:
@@ -262,25 +256,6 @@ export async function setTitlePrompt(prompt: string): Promise<void> {
   await db.insertInto("app_meta").values({ key: TITLE_PROMPT_KEY, value: prompt }).onConflict((oc) => oc.column("key").doUpdateSet({ value: prompt })).execute();
 }
 
-export async function getGenerationDefaults(): Promise<GenerationDefaults> {
-  const row = await db.selectFrom("app_meta").select("value").where("key", "=", GENERATION_DEFAULTS_KEY).executeTakeFirst();
-  if (!row) return { reasoningEffort: null, verbosity: null };
-  try {
-    const value = JSON.parse(row.value) as Partial<GenerationDefaults>;
-    return {
-      reasoningEffort: THINKING_LEVELS.includes(value.reasoningEffort as (typeof THINKING_LEVELS)[number]) ? value.reasoningEffort! : null,
-      verbosity: VERBOSITY_LEVELS.includes(value.verbosity as (typeof VERBOSITY_LEVELS)[number]) ? value.verbosity! : null,
-    };
-  } catch {
-    return { reasoningEffort: null, verbosity: null };
-  }
-}
-
-export async function setGenerationDefaults(defaults: GenerationDefaults): Promise<void> {
-  const value = JSON.stringify(defaults);
-  await db.insertInto("app_meta").values({ key: GENERATION_DEFAULTS_KEY, value }).onConflict((oc) => oc.column("key").doUpdateSet({ value })).execute();
-}
-
 export async function resolveTaskModel(): Promise<ModelSelection> {
   const taskModel = findAvailable(await listAvailableModels(), await getTaskModel());
   if (!taskModel) throw new Error("No task model is configured. Select one in admin settings.");
@@ -328,12 +303,19 @@ export interface ResolvedModel {
 }
 
 export async function getModelCapabilities(selection: ModelSelection) {
-  if (selection.provider === "mock") return { reasoningLevels: [...THINKING_LEVELS], supportsVerbosity: false };
+  if (selection.provider === "mock") return { reasoningLevels: [...THINKING_LEVELS], supportsVerbosity: false, defaultReasoningEffort: null, defaultVerbosity: null };
   const { model } = await resolveModel(selection);
+  const config = (await loadProviderConfigs()).find((candidate) => candidate.provider === selection.provider);
+  const entry = config?.enabledModels.find((candidate) => candidate.id === selection.modelId && candidate.endpointId === selection.endpointId && candidate.api === selection.api);
   const reasoningLevels = model.reasoning
     ? THINKING_LEVELS.filter((level) => model.thinkingLevelMap?.[level] !== null && (level !== "xhigh" && level !== "max" || model.thinkingLevelMap?.[level] !== undefined))
     : [];
-  return { reasoningLevels, supportsVerbosity: selection.api === "openai-responses" };
+  return {
+    reasoningLevels,
+    supportsVerbosity: selection.api === "openai-responses",
+    defaultReasoningEffort: entry?.reasoningEffort ?? null,
+    defaultVerbosity: entry?.verbosity ?? null,
+  };
 }
 
 const NO_DOCUMENT_INPUT: DocumentInputCapabilities = {

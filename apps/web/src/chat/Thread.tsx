@@ -154,13 +154,12 @@ const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
 
 function SignalMeter({ level, levels }: { level?: string | null; levels: readonly string[] }) {
-  const strength = level ? Math.ceil(((levels.indexOf(level) + 1) / levels.length) * 3) : 0;
+  const levelIndex = level ? levels.indexOf(level) : -1;
+  const strength = levelIndex < 0 ? 0 : ((levelIndex + 1) / levels.length) * 100;
 
   return (
-    <span title={level ? `${level} strength` : "Default strength"} style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 14 }}>
-      {[5, 9, 13].map((height, index) => (
-        <span key={height} style={{ width: 3, height, borderRadius: 1, background: index < strength ? "currentColor" : "#cbd5e1" }} />
-      ))}
+    <span title={level ? `${level} strength` : "Provider default"} style={{ position: "relative", width: 4, height: 14, overflow: "hidden", borderRadius: 2, background: "#cbd5e1" }}>
+      <span style={{ position: "absolute", right: 0, bottom: 0, left: 0, height: `${strength}%`, background: "currentColor" }} />
     </span>
   );
 }

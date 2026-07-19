@@ -13,6 +13,8 @@ export interface AllowlistEntry {
   reasoning?: boolean;
   vision?: boolean;
   documents?: boolean;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+  verbosity?: "low" | "medium" | "high";
 }
 
 export function parseAllowlist(json: string): AllowlistEntry[] {
@@ -37,6 +39,8 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
         ...(typeof entry.reasoning === "boolean" ? { reasoning: entry.reasoning } : {}),
         ...(typeof entry.vision === "boolean" ? { vision: entry.vision } : {}),
         ...(typeof entry.documents === "boolean" ? { documents: entry.documents } : {}),
+        ...(["minimal", "low", "medium", "high", "xhigh", "max"].includes(entry.reasoningEffort) ? { reasoningEffort: entry.reasoningEffort as AllowlistEntry["reasoningEffort"] } : {}),
+        ...(["low", "medium", "high"].includes(entry.verbosity) ? { verbosity: entry.verbosity as AllowlistEntry["verbosity"] } : {}),
       }];
     });
   } catch {
