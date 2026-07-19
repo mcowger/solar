@@ -343,6 +343,11 @@ export function Thread({ conversationId, onConfigureMcp }: { conversationId: str
         <ComposerPrimitive.Attachments>
           {() => <AttachmentChip removable />}
         </ComposerPrimitive.Attachments>
+        <ComposerPrimitive.Queue>
+          {({ queueItem }) => (
+            <span className="badge badge-info badge-sm self-start">Queued: {queueItem.prompt}</span>
+          )}
+        </ComposerPrimitive.Queue>
         <ContextStatusControl conversationId={conversationId} />
         <div className="flex items-center gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
           <ComposerPrimitive.AddAttachment
@@ -357,13 +362,11 @@ export function Thread({ conversationId, onConfigureMcp }: { conversationId: str
             placeholder="Message…"
             className="textarea textarea-ghost min-h-10 flex-1 px-2 py-2"
           />
-          <ThreadPrimitive.If running={false}>
-            <ComposerPrimitive.Send className="btn btn-ghost btn-sm btn-square rounded-xl" title="Send">
-              <Send size={18} />
-            </ComposerPrimitive.Send>
-          </ThreadPrimitive.If>
+          <ComposerPrimitive.Send className="btn btn-ghost btn-sm btn-square rounded-xl" title="Send or queue message">
+            <Send size={18} />
+          </ComposerPrimitive.Send>
           <ThreadPrimitive.If running>
-            <ComposerPrimitive.Cancel className="btn btn-ghost btn-sm btn-square rounded-xl" title="Stop">
+            <ComposerPrimitive.Cancel className="btn btn-ghost btn-sm btn-square rounded-xl" title="Interrupt response">
               <Square size={16} />
             </ComposerPrimitive.Cancel>
           </ThreadPrimitive.If>

@@ -70,7 +70,7 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
       >
         {cur && !models.some((m) => key(m) === key(cur)) && (
           <option value={key(cur)}>
-            {cur.modelId} (unavailable)
+            {cur.name ?? cur.modelId} (unavailable)
           </option>
         )}
         {models.map((m) => (

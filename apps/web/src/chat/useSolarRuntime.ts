@@ -1,5 +1,6 @@
 import {
   useExternalStoreRuntime,
+  createMessageQueue,
   type CompleteAttachment,
   type ThreadMessageLike,
   type AppendMessage,
@@ -94,6 +95,12 @@ export function useSolarRuntime(
   const assistantIdRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const toolCallsByMessageRef = useRef(new Map<string, SolarToolCall[]>());
+  const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(() => undefined);
+  const [messageQueue] = useState(() =>
+    createMessageQueue({
+      run: (message) => runQueuedTurnRef.current(message),
+    }),
+  );
 
   const upsertAssistant = useCallback(
     (id: string, text: string, reasoning?: string, toolCalls?: SolarToolCall[]) => {
@@ -190,33 +197,48 @@ export function useSolarRuntime(
       const active = rows.find((r) => r.isActive);
       if (active) {
         assistantIdRef.current = active.id;
+        messageQueue.notifyBusy();
         const res = await fetch(
           `/api/chat/stream?messageId=${encodeURIComponent(active.id)}`,
         );
-        if (cancelled) return;
-        await consume(res, active.id);
-        if (!cancelled) await loadHistory();
+        if (cancelled) {
+          messageQueue.notifyIdle();
+          return;
+        }
+        try {
+          await consume(res, active.id);
+          if (!cancelled) await loadHistory();
+        } finally {
+          messageQueue.notifyIdle();
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [conversationId, consume, loadHistory]);
+  }, [conversationId, consume, loadHistory, messageQueue]);
 
   const streamTurn = useCallback(
     async (url: string, body: unknown) => {
       const abort = new AbortController();
       const displayId = crypto.randomUUID();
       abortRef.current = abort;
+      setIsRunning(true);
       upsertAssistant(displayId, "");
-      const res = await fetch(url, {
-        method: "POST",
-        headers: jsonHeaders,
-        body: JSON.stringify(body),
-        signal: abort.signal,
-      });
-      await consume(res, displayId);
-      await loadHistory();
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify(body),
+          signal: abort.signal,
+        });
+        await consume(res, displayId);
+        await loadHistory();
+      } catch (error) {
+        setIsRunning(false);
+        abortRef.current = null;
+        throw error;
+      }
     },
     [consume, loadHistory, upsertAssistant],
   );
@@ -244,10 +266,15 @@ export function useSolarRuntime(
           })),
         },
       ]);
-      await streamTurn("/api/chat", { conversationId, text, attachmentIds });
+      try {
+        await streamTurn("/api/chat", { conversationId, text, attachmentIds });
+      } finally {
+        messageQueue.notifyIdle();
+      }
     },
-    [conversationId, streamTurn],
+    [conversationId, messageQueue, streamTurn],
   );
+  runQueuedTurnRef.current = onNew;
 
   const onEdit = useCallback(
     async (message: AppendMessage) => {
@@ -305,6 +332,7 @@ export function useSolarRuntime(
     onEdit,
     onReload,
     onCancel,
+    queue: messageQueue.adapter,
     adapters: { attachments: attachmentAdapter },
   });
 }

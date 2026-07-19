@@ -120,13 +120,41 @@ test("signs in and streams a mock chat response", async ({ page }) => {
 
   const prompt = "Hello from the browser test";
   await composer.fill(prompt);
-  await page.getByTitle("Send").click();
+  await page.getByTitle("Send or queue message").click();
 
   const response = page.locator(".solar-assistant-output").last();
   await expect(response).toContainText("Mock reply", { timeout: 20_000 });
   await expect(response).toContainText(prompt);
   await response.getByText("4 Sources", { exact: true }).click();
   await expect(response.getByRole("link", { name: "React documentation" })).toBeVisible();
+});
+
+test("queues a follow-up message until the active response completes", async ({ page }) => {
+  await signIn(page);
+
+  let releaseFirstRequest!: () => void;
+  let chatRequests = 0;
+  const firstRequestHeld = new Promise<void>((resolve) => {
+    releaseFirstRequest = resolve;
+  });
+  await page.route("**/api/chat", async (route) => {
+    chatRequests++;
+    if (chatRequests === 1) await firstRequestHeld;
+    await route.continue();
+  });
+
+  const composer = page.getByPlaceholder("Message…");
+  await composer.fill("First queued test message");
+  await page.getByTitle("Send or queue message").click();
+  await expect(page.getByTitle("Interrupt response")).toBeVisible();
+
+  await composer.fill("Second queued test message");
+  await page.getByTitle("Send or queue message").click();
+  expect(chatRequests).toBe(1);
+
+  releaseFirstRequest();
+  await expect.poll(() => chatRequests).toBe(2);
+  await expect(page.locator(".solar-assistant-output").last()).toContainText("Second queued test message", { timeout: 20_000 });
 });
 
 test("configures active context management policies", async ({ page }) => {
