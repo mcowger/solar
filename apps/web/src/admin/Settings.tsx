@@ -67,13 +67,30 @@ interface ContextManagementSettings {
   };
 }
 
+const CONTEXT_TOKEN_STEP = 1_000;
+const MAX_CONTEXT_TOKENS = 2_000_000;
+
 const contextPolicyFields = [
-  ["softTriggerTokens", "Soft trigger"],
-  ["targetTokens", "Target"],
-  ["hardInputTokens", "Hard input"],
-  ["maxPinnedAttachmentTokens", "Pinned attachments"],
-  ["outputReserveTokens", "Output reserve"],
+  { field: "softTriggerTokens", label: "Soft trigger", min: CONTEXT_TOKEN_STEP },
+  { field: "targetTokens", label: "Target", min: CONTEXT_TOKEN_STEP },
+  { field: "hardInputTokens", label: "Hard input", min: CONTEXT_TOKEN_STEP },
+  { field: "maxPinnedAttachmentTokens", label: "Pinned attachments", min: 0 },
+  { field: "outputReserveTokens", label: "Output reserve", min: CONTEXT_TOKEN_STEP },
 ] as const;
+
+function formatTokenCount(tokens: number) {
+  return `${Math.round(tokens / CONTEXT_TOKEN_STEP)}K`;
+}
+
+function ContextPolicySlider({ label, min, value, disabled, onChange }: {
+  label: string;
+  min: number;
+  value: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  return <label className="grid gap-1"><span className="flex items-center justify-between gap-2 text-xs"><span>{label}</span><output className="font-semibold tabular-nums">{formatTokenCount(value)}</output></span><input className="range range-primary range-xs" type="range" min={min} max={MAX_CONTEXT_TOKENS} step={CONTEXT_TOKEN_STEP} value={value} disabled={disabled} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+}
 
 function modelKey(model: Pick<ModelDescriptor, "provider" | "endpointId" | "modelId" | "api">) {
   return `${model.provider}/${model.endpointId}/${model.modelId}/${model.api}`;
@@ -132,6 +149,15 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
       },
     }),
   );
+  const remove = useMutation(
+    trpc.admin.deleteProvider.mutationOptions({
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: trpc.admin.listProviders.queryKey() });
+        qc.invalidateQueries({ queryKey: trpc.model.available.queryKey() });
+        qc.invalidateQueries({ queryKey: trpc.model.taskModel.queryKey() });
+      },
+    }),
+  );
   const queryModels = useMutation(
     trpc.admin.queryProviderModels.mutationOptions({
       onSuccess: (result, variables) => {
@@ -187,30 +213,31 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
           <legend className="fieldset-legend">Imported models</legend>
           {models.map((model, index) => (
             <div key={index} className="rounded-box bg-base-200 p-2">
-              <div className="grid min-w-0 gap-2 lg:grid-cols-[minmax(0,1fr)_11rem_auto_auto_auto] lg:items-center">
+              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_16rem] sm:items-center">
                 <p className="min-w-0 truncate text-sm">{model.name ?? model.id}</p>
                 <select className="select select-sm min-w-0 w-full" value={model.endpointId} onChange={(event) => { const endpoint = endpoints.find((candidate) => candidate.id === event.target.value); if (endpoint) updateModel(index, { endpointId: endpoint.id, api: endpoint.api }); }}>
                   {endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.label || endpoint.api} · {endpoint.api}</option>)}
                 </select>
-                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:contents">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-span-2">
                   <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
-                    <input className="toggle toggle-sm" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
+                    <input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
                     <span className="hidden md:inline">Visible to all users</span>
                     <span className={`badge badge-sm ${model.visibility === "public" ? "badge-success badge-soft" : "badge-warning badge-soft"}`}>{model.visibility}</span>
                   </label>
                   <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
-                    <input className="toggle toggle-sm" type="checkbox" checked={Boolean(model.documents)} onChange={(event) => updateModel(index, { documents: event.target.checked })} />
+                    <input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={Boolean(model.documents)} onChange={(event) => updateModel(index, { documents: event.target.checked })} />
                     <span>Documents</span>
                   </label>
-                  <button className="btn btn-ghost btn-sm btn-square ml-auto lg:ml-0" onClick={() => removeModel(index)} title="Remove model">✕</button>
+                  <button className="btn btn-ghost btn-sm btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
                 </div>
               </div>
             </div>
           ))}
         </fieldset>
         <div className="card-actions items-center justify-end">
-          {(save.isError || queryModels.isError || importModels.isError) && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error?.message ?? queryModels.error?.message ?? importModels.error?.message}</div>}
-          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, endpoints, enabledModels: models })} disabled={save.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
+          {(save.isError || remove.isError || queryModels.isError || importModels.isError) && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error?.message ?? remove.error?.message ?? queryModels.error?.message ?? importModels.error?.message}</div>}
+          <button className="btn btn-error btn-soft" disabled={remove.isPending} onClick={() => { if (window.confirm(`Delete ${initial.provider} and all of its endpoints and models?`)) remove.mutate({ provider: initial.provider }); }}>{remove.isPending ? "Deleting…" : "Delete provider"}</button>
+          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, endpoints, enabledModels: models })} disabled={save.isPending || remove.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
         </div>
       </div>
     </section>
@@ -275,9 +302,9 @@ function ContextManagement() {
   const globalInput = { enabled: form.global.enabled, summaryPromptOverride: form.global.summaryPromptOverride };
   const pending = saveGlobal.isPending || savePolicy.isPending || resetPrompt.isPending;
   return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-4 p-5"><h3 className="card-title">Context management</h3><p className="text-sm opacity-70">Active chat policies resolve as exact model, family, provider, then derived fallback.</p>
-    <fieldset className="fieldset"><legend className="fieldset-legend">Global kill switch</legend><label className="flex items-center gap-3"><input className="toggle" type="checkbox" checked={form.global.enabled} disabled={pending} onChange={(event) => updateGlobal({ enabled: event.target.checked })} /><span className="text-sm">Disable all context compaction without changing individual policies.</span></label></fieldset>
-    <div className="grid gap-3 lg:grid-cols-2">{form.policies.map((policy) => <fieldset key={policy.id} className="fieldset rounded-box bg-base-200 p-4"><legend className="fieldset-legend">{policy.scope === "model_family" ? `${policy.provider} / ${policy.modelFamily}` : policy.scope === "exact_model" ? `${policy.provider} / ${policy.modelId}` : `${policy.provider} provider`}</legend><label className="flex items-center gap-2 text-sm"><input className="toggle toggle-sm" type="checkbox" checked={policy.enabled} disabled={pending} onChange={(event) => updatePolicy(policy.id, "enabled", event.target.checked)} /> Enabled</label><div className="grid gap-2 sm:grid-cols-2">{contextPolicyFields.map(([field, label]) => <label key={field} className="label flex-col items-start gap-1"><span>{label}</span><input className="input input-sm w-full" type="number" min="0" step="1000" value={policy[field]} disabled={pending} onChange={(event) => updatePolicy(policy.id, field, Number(event.target.value))} /></label>)}</div><div className="card-actions justify-end"><button className="btn btn-sm" disabled={pending} onClick={() => savePolicy.mutate({ scope: policy.scope, provider: policy.provider, modelFamily: policy.modelFamily, modelId: policy.modelId, enabled: policy.enabled, softTriggerTokens: policy.softTriggerTokens, targetTokens: policy.targetTokens, hardInputTokens: policy.hardInputTokens, maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens, outputReserveTokens: policy.outputReserveTokens })}>{savePolicy.isPending ? "Saving…" : "Save policy"}</button></div></fieldset>)}</div>
-    <fieldset className="fieldset rounded-box bg-base-200 p-4"><legend className="fieldset-legend">Fallback effective default</legend><p className="text-sm">Soft trigger: {form.fallback.softTrigger}. Target: {form.fallback.target}. Hard input: {form.fallback.hardInput}. Pinned attachments: {form.fallback.maxPinnedAttachmentTokens.toLocaleString()} tokens. Output reserve: {form.fallback.outputReserveTokens.toLocaleString()} tokens.</p></fieldset>
+    <fieldset className="fieldset"><label className="flex items-center gap-3"><input className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={form.global.enabled} disabled={pending} onChange={(event) => updateGlobal({ enabled: event.target.checked })} /><span className="text-sm">Context Management Enabled</span></label></fieldset>
+    <div className="grid gap-3 lg:grid-cols-2">{form.policies.map((policy) => <fieldset key={policy.id} className="rounded-box bg-base-200 p-4"><legend className="mb-3 text-sm font-semibold">{policy.scope === "model_family" ? `${policy.provider} / ${policy.modelFamily}` : policy.scope === "exact_model" ? `${policy.provider} / ${policy.modelId}` : `${policy.provider} provider`}</legend><div className="mb-3 flex items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm"><input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={policy.enabled} disabled={pending} onChange={(event) => updatePolicy(policy.id, "enabled", event.target.checked)} /> Enabled</label><button className="btn btn-primary btn-sm" disabled={pending} onClick={() => savePolicy.mutate({ scope: policy.scope, provider: policy.provider, modelFamily: policy.modelFamily, modelId: policy.modelId, enabled: policy.enabled, softTriggerTokens: policy.softTriggerTokens, targetTokens: policy.targetTokens, hardInputTokens: policy.hardInputTokens, maxPinnedAttachmentTokens: policy.maxPinnedAttachmentTokens, outputReserveTokens: policy.outputReserveTokens })}>{savePolicy.isPending ? "Saving…" : "Save"}</button></div><div className="grid gap-x-4 gap-y-3 sm:grid-cols-2">{contextPolicyFields.map(({ field, label, min }) => <ContextPolicySlider key={field} label={label} min={min} value={policy[field]} disabled={pending} onChange={(value) => updatePolicy(policy.id, field, value)} />)}</div></fieldset>)}</div>
+    <section className="rounded-box border border-base-300 bg-base-200 p-4"><div className="mb-3 flex items-center justify-between gap-3"><h4 className="font-semibold">Effective fallback</h4><span className="badge badge-outline">Derived</span></div><dl className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"><div className="rounded-box bg-base-100 p-3"><dt className="text-xs opacity-60">Soft trigger</dt><dd className="mt-1 text-sm font-semibold">{form.fallback.softTrigger}</dd></div><div className="rounded-box bg-base-100 p-3"><dt className="text-xs opacity-60">Target</dt><dd className="mt-1 text-sm font-semibold">{form.fallback.target}</dd></div><div className="rounded-box bg-base-100 p-3"><dt className="text-xs opacity-60">Hard input</dt><dd className="mt-1 text-sm font-semibold">{form.fallback.hardInput}</dd></div><div className="rounded-box bg-base-100 p-3"><dt className="text-xs opacity-60">Pinned attachments</dt><dd className="mt-1 text-sm font-semibold">{formatTokenCount(form.fallback.maxPinnedAttachmentTokens)}</dd></div><div className="rounded-box bg-base-100 p-3"><dt className="text-xs opacity-60">Output reserve</dt><dd className="mt-1 text-sm font-semibold">{formatTokenCount(form.fallback.outputReserveTokens)}</dd></div></dl></section>
     <fieldset className="fieldset gap-2"><legend className="fieldset-legend">Summary prompt</legend><textarea className="textarea min-h-48 w-full font-mono text-sm" value={form.global.summaryPromptOverride ?? form.global.summaryPrompt} disabled={pending} onChange={(event) => updateGlobal({ summaryPromptOverride: event.target.value })} /><p className="label">{form.global.summaryPromptOverridden || form.global.summaryPromptOverride !== null ? "Custom version 1 override." : "Using the built-in version 1 summary prompt."}</p></fieldset>
     {(saveGlobal.isError || savePolicy.isError || resetPrompt.isError) && <div role="alert" className="alert alert-error alert-soft">{saveGlobal.error?.message ?? savePolicy.error?.message ?? resetPrompt.error?.message}</div>}
     <div className="card-actions items-center justify-end"><button className="btn btn-ghost" disabled={!form.global.summaryPromptOverride || resetPrompt.isPending} onClick={() => resetPrompt.mutate()}>Reset summary prompt</button><button className="btn btn-primary" disabled={pending} onClick={() => saveGlobal.mutate(globalInput)}>{saveGlobal.isPending ? "Saving…" : "Save global settings"}</button></div>

@@ -902,6 +902,12 @@ const adminRouter = router({
         .execute();
     }),
 
+  deleteProvider: adminProcedure
+    .input(z.object({ provider: z.string().trim().min(1).max(100) }))
+    .mutation(async ({ input }) => {
+      await db.deleteFrom("provider_config").where("provider", "=", input.provider).execute();
+    }),
+
   queryProviderModels: adminProcedure
     .input(z.object({ provider: z.string(), endpointId: z.string() }))
     .mutation(async ({ input }) => {
