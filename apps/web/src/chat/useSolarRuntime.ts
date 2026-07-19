@@ -258,6 +258,14 @@ export function useSolarRuntime(
 					}
 					handleChunk(JSON.parse(event.data) as UiChunk, event.lastEventId);
 				};
+				source.onerror = () => {
+					// EventSource retries transient failures on its own; CLOSED means
+					// a terminal HTTP error (e.g. 401/404) and it will never reconnect,
+					// so finish the stream instead of leaving the run hanging forever.
+					if (source?.readyState === EventSource.CLOSED) {
+						resolveCompletion?.();
+					}
+				};
 			};
 			reconnectRef.current = connect;
 			setIsRunning(true);
@@ -454,14 +462,22 @@ export function useSolarRuntime(
 
 	const onCancel = useCallback(async () => {
 		const messageId = assistantIdRef.current;
-		// Explicit Stop: tell the server to abort (decoupled from the fetch), then
-		// detach our reader.
+		// Explicit Stop: tell the server to abort (decoupled from the fetch). The
+		// server persists the partial text before ending subscriber streams, so
+		// wait for the SSE [DONE] rather than tearing down locally — otherwise the
+		// follow-up history reload can race ahead of persistence and drop the
+		// partial output.
 		if (messageId) {
-			await fetch("/api/chat/stop", {
-				method: "POST",
-				headers: jsonHeaders,
-				body: JSON.stringify({ messageId }),
-			});
+			try {
+				const res = await fetch("/api/chat/stop", {
+					method: "POST",
+					headers: jsonHeaders,
+					body: JSON.stringify({ messageId }),
+				});
+				if (res.ok) return;
+			} catch {
+				// Fall through to local teardown.
+			}
 		}
 		abortRef.current?.abort();
 		eventSourceRef.current?.close();
