@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { render, screen } from "@testing-library/react";
-import { ContextStatusIndicator, SummaryEventCard } from "./Thread";
+import {
+	ContextStatusIndicator,
+	EmptyAssistantResponse,
+	SummaryEventCard,
+} from "./Thread";
 
 describe("ContextStatusIndicator", () => {
 	test("stays hidden for an unsummarized idle conversation", () => {
@@ -76,5 +80,23 @@ describe("SummaryEventCard", () => {
 		expect(screen.getByText("Conversation summarized")).toBeInTheDocument();
 		expect(screen.getByText("12.4K → 3.1K tokens")).toBeInTheDocument();
 		expect(screen.getByText("75% smaller")).toBeInTheDocument();
+	});
+});
+
+describe("EmptyAssistantResponse", () => {
+	test("distinguishes a completed empty response from an active generation", () => {
+		const { container, rerender } = render(
+			<EmptyAssistantResponse isRunning={true} />,
+		);
+		expect(container.querySelector(".solar-response-loader")).toBeTruthy();
+		expect(
+			screen.queryByText("The model returned an empty response."),
+		).not.toBeInTheDocument();
+
+		rerender(<EmptyAssistantResponse isRunning={false} />);
+		expect(container.querySelector(".solar-response-loader")).toBeNull();
+		expect(
+			screen.getByText("The model returned an empty response."),
+		).toBeInTheDocument();
 	});
 });

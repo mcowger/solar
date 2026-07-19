@@ -512,6 +512,7 @@ function AssistantMessage() {
 					: true,
 		),
 	);
+	const isRunning = useAuiState((s) => s.thread.isRunning);
 
 	return (
 		<>
@@ -536,7 +537,7 @@ function AssistantMessage() {
 					}}
 				>
 					{isEmpty ? (
-						<LoaderCircle className="solar-response-loader" size={18} />
+						<EmptyAssistantResponse isRunning={isRunning} />
 					) : (
 						<MessagePrimitive.Content
 							components={{ Text: MarkdownText, Reasoning }}
@@ -563,6 +564,19 @@ function AssistantMessage() {
 			</div>
 			<SummaryEventMarker position="after" />
 		</>
+	);
+}
+
+export function EmptyAssistantResponse({ isRunning }: { isRunning: boolean }) {
+	if (isRunning) {
+		return <LoaderCircle className="solar-response-loader" size={18} />;
+	}
+
+	return (
+		<div className="alert alert-soft alert-info text-sm">
+			<span className="status status-info status-sm" />
+			<span>The model returned an empty response.</span>
+		</div>
 	);
 }
 
