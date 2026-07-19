@@ -210,6 +210,7 @@ describe("ContextRepository working state", () => {
 			modelId: "gpt-test",
 			purpose: "chat",
 			inputTokens: 12,
+			cacheReadTokens: 30,
 			outputTokens: 8,
 			contextPolicySource: "exact_model",
 			contextPolicyState: {
@@ -223,6 +224,9 @@ describe("ContextRepository working state", () => {
 			overflowed: true,
 			retryAttempt: 1,
 		});
+		expect(await repository.latestProviderContextTokens("conversation")).toBe(
+			42,
+		);
 
 		expect(
 			(await repository.generationSteps("message")).map((step) =>

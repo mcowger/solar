@@ -198,6 +198,8 @@ export class ContextRuntime {
 				attachmentSummary,
 			),
 		]);
+		const observedTokens =
+			await this.repository.latestProviderContextTokens(conversationId);
 		const firstUser = allRecords.find((record) => record.role === "user");
 		const boundaryIndex = state.retainedMessageBoundaryId
 			? allRecords.findIndex(
@@ -253,10 +255,11 @@ export class ContextRuntime {
 
 		const attachmentOnlyCompaction =
 			compactionPlan.omittedAttachments.length > 0 && !state.summary;
+		const triggerTokens = Math.max(result.tokens, observedTokens ?? 0);
 		if (
 			global.enabled &&
 			policy.enabled &&
-			(result.tokens >= policy.softTriggerTokens || attachmentOnlyCompaction)
+			(triggerTokens >= policy.softTriggerTokens || attachmentOnlyCompaction)
 		) {
 			const work = () =>
 				this.compact(
@@ -267,9 +270,9 @@ export class ContextRuntime {
 					policy,
 					compactionPlan.compactionRecords,
 					compactionPlan.omittedRecordIds,
-					result.tokens,
+					triggerTokens,
 				);
-			if (result.tokens >= policy.hardInputTokens || attachmentOnlyCompaction) {
+			if (triggerTokens >= policy.hardInputTokens || attachmentOnlyCompaction) {
 				await work();
 				const refreshed = await this.repository.ensureState(conversationId);
 				if (refreshed.jobStatus === "failed")

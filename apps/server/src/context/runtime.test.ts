@@ -16,6 +16,7 @@ function runtimeFixture(
 	options: {
 		fail?: boolean;
 		running?: boolean;
+		observedTokens?: number | null;
 		summaryResult?: string | { summary: string; message: any };
 	} = {},
 ) {
@@ -53,6 +54,7 @@ function runtimeFixture(
 			summaryPromptOverride: "ADMIN SUMMARY",
 		}),
 		contextRecords: async () => records,
+		latestProviderContextTokens: async () => options.observedTokens ?? null,
 		resolvePolicy: async () => ({
 			enabled: true,
 			softTriggerTokens: 1,
@@ -279,6 +281,34 @@ describe("runtime context planning", () => {
 				compactionTokensAfter: expect.any(Number),
 			}),
 		]);
+	});
+
+	test("compacts when cached provider context exceeds the hard limit", async () => {
+		const { runtime, providerCalls, state } = runtimeFixture(
+			[
+				{
+					id: "u1",
+					role: "user",
+					content: [{ kind: "text", text: "old material" }],
+				},
+				{
+					id: "a1",
+					role: "assistant",
+					content: [{ kind: "text", text: "old response" }],
+				},
+				{
+					id: "u2",
+					role: "user",
+					content: [{ kind: "text", text: "current material" }],
+				},
+			],
+			{ observedTokens: 250 },
+		);
+
+		await runtime.assemble("conversation", selection);
+
+		expect(providerCalls).toHaveLength(1);
+		expect(state().summary).toBe("summary");
 	});
 
 	test("persists actual completed-message cache and cost telemetry for compaction", async () => {

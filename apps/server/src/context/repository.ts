@@ -483,6 +483,20 @@ export class ContextRepository {
 			.execute();
 	}
 
+	async latestProviderContextTokens(
+		conversationId: string,
+	): Promise<number | null> {
+		const row = await this.db
+			.selectFrom("provider_call_telemetry")
+			.select(["inputTokens", "cacheReadTokens"])
+			.where("conversationId", "=", conversationId)
+			.where("purpose", "in", ["chat", "tool_loop"])
+			.orderBy("createdAt", "desc")
+			.executeTakeFirst();
+		if (!row || row.inputTokens === null) return null;
+		return row.inputTokens + (row.cacheReadTokens ?? 0);
+	}
+
 	private async findPolicy(selector: ContextPolicySelector) {
 		let query = this.db
 			.selectFrom("context_policy")
