@@ -101,6 +101,19 @@ function modelKey(model: Pick<ModelDescriptor, "provider" | "endpointId" | "mode
   return `${model.provider}/${model.endpointId}/${model.modelId}/${model.api}`;
 }
 
+function apiLabel(api: string) {
+  return {
+    "openai-responses": "Responses",
+    "openai-completions": "Chat",
+    "anthropic-messages": "Messages",
+    "google-generative-ai": "Gemini",
+  }[api] ?? api;
+}
+
+function endpointLabel(endpoint: Pick<ProviderEndpoint, "label" | "api">) {
+  return endpoint.label && endpoint.label !== endpoint.api ? endpoint.label : apiLabel(endpoint.api);
+}
+
 function TaskModel() {
   const trpc = useTRPC();
   const qc = useQueryClient();
@@ -139,16 +152,19 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
   const [apiKey, setApiKey] = useState("");
   const [endpoints, setEndpoints] = useState(initial.endpoints);
   const [models, setModels] = useState<AllowlistEntry[]>(initial.enabledModels);
+  const [savedConfiguration, setSavedConfiguration] = useState(() => JSON.stringify({ endpoints: initial.endpoints, models: initial.enabledModels }));
   const [discovery, setDiscovery] = useState<{ endpointId: string; models: { id: string; name: string; preferredApi: string | null }[] } | null>(null);
   const [imports, setImports] = useState<Record<string, { api: string; visibility: "public" | "private" }>>({});
   useEffect(() => {
     setEndpoints(initial.endpoints);
     setModels(initial.enabledModels);
+    setSavedConfiguration(JSON.stringify({ endpoints: initial.endpoints, models: initial.enabledModels }));
   }, [initial.endpoints, initial.enabledModels]);
   const save = useMutation(
     trpc.admin.setProvider.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (_, variables) => {
         setApiKey("");
+        setSavedConfiguration(JSON.stringify({ endpoints: variables.endpoints, models: variables.enabledModels }));
         qc.invalidateQueries({ queryKey: trpc.admin.listProviders.queryKey() });
         qc.invalidateQueries({ queryKey: trpc.model.available.queryKey() });
       },
@@ -189,15 +205,17 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
   }]);
   const updateEndpoint = (id: string, patch: Partial<ProviderEndpoint>) =>
     setEndpoints((current) => current.map((endpoint) => endpoint.id === id ? { ...endpoint, ...patch } : endpoint));
-  const removeEndpoint = (id: string) => {
-    setEndpoints((current) => current.filter((endpoint) => endpoint.id !== id));
-    setModels((current) => current.filter((model) => model.endpointId !== id));
+  const removeEndpoint = (endpoint: ProviderEndpoint) => {
+    if (!window.confirm(`Remove the ${apiLabel(endpoint.api)} endpoint and its imported models?`)) return;
+    setEndpoints((current) => current.filter((candidate) => candidate.id !== endpoint.id));
+    setModels((current) => current.filter((model) => model.endpointId !== endpoint.id));
   };
   const updateModel = (index: number, patch: Partial<AllowlistEntry>) =>
     setModels((models) => models.map((model, modelIndex) => modelIndex === index ? { ...model, ...patch } : model));
   const removeModel = (index: number) => setModels((models) => models.filter((_, modelIndex) => modelIndex !== index));
   const importableApis = endpoints.map((endpoint) => endpoint.api);
   const selectedImports = Object.entries(imports).map(([id, selection]) => ({ id, ...selection }));
+  const hasChanges = apiKey.length > 0 || JSON.stringify({ endpoints, models }) !== savedConfiguration;
 
   return (
     <section className="card card-border bg-base-100 shadow-sm">
@@ -210,7 +228,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
         </fieldset>
         <fieldset className="fieldset gap-2">
           <legend className="fieldset-legend">Endpoints</legend>
-          {endpoints.map((endpoint) => <div key={endpoint.id} className="rounded-box bg-base-200 p-2"><div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_11rem_auto]"><input className="input input-sm min-w-0" value={endpoint.label} onChange={(event) => updateEndpoint(endpoint.id, { label: event.target.value })} placeholder="Label" /><input className="input input-sm min-w-0" value={endpoint.baseUrl} onChange={(event) => updateEndpoint(endpoint.id, { baseUrl: event.target.value })} placeholder="https://plexus.example/v1" /><select className="select select-sm min-w-0" value={endpoint.api} onChange={(event) => updateEndpoint(endpoint.id, { api: event.target.value })}>{initial.apis.map((api) => <option key={api} value={api} disabled={endpoints.some((candidate) => candidate.id !== endpoint.id && candidate.api === api)}>{api}</option>)}</select><div className="flex gap-1"><button className="btn btn-sm" disabled={!endpoint.baseUrl || queryModels.isPending} onClick={() => queryModels.mutate({ provider: initial.provider, endpointId: endpoint.id })}>{queryModels.isPending ? "Querying…" : "Query models"}</button><button className="btn btn-ghost btn-sm btn-square" onClick={() => removeEndpoint(endpoint.id)} title="Remove endpoint">✕</button></div></div></div>)}
+           {endpoints.map((endpoint) => <div key={endpoint.id} className="rounded-box bg-base-200 p-2"><div className="grid items-center gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_11rem_auto]"><input className="input input-sm min-w-0" value={endpoint.label} onChange={(event) => updateEndpoint(endpoint.id, { label: event.target.value })} placeholder="Label" /><input className="input input-sm min-w-0" value={endpoint.baseUrl} onChange={(event) => updateEndpoint(endpoint.id, { baseUrl: event.target.value })} placeholder="https://plexus.example/v1" /><select className="select select-sm min-w-0" value={endpoint.api} onChange={(event) => updateEndpoint(endpoint.id, { api: event.target.value })}>{initial.apis.map((api) => <option key={api} value={api} disabled={endpoints.some((candidate) => candidate.id !== endpoint.id && candidate.api === api)}>{apiLabel(api)}</option>)}</select><div className="flex items-center gap-1"><button className="btn btn-sm" disabled={!endpoint.baseUrl || queryModels.isPending} onClick={() => queryModels.mutate({ provider: initial.provider, endpointId: endpoint.id })}>{queryModels.isPending ? "Querying…" : "Query models"}</button><button className="btn btn-error btn-soft btn-sm btn-square" onClick={() => removeEndpoint(endpoint)} title="Remove endpoint">✕</button></div></div></div>)}
           <button className="btn btn-sm btn-outline w-fit" onClick={addEndpoint} disabled={endpoints.length === initial.apis.length}>Add endpoint</button>
         </fieldset>
         {discovery && <fieldset className="fieldset gap-2"><legend className="fieldset-legend">Available text generation models</legend><div className="overflow-x-auto"><table className="table table-sm"><thead><tr><th>Import</th><th>Model</th><th>Preferred API</th><th>Visibility</th></tr></thead><tbody>{discovery.models.map((model) => { const selected = imports[model.id]; const preferredApi = importableApis.includes(model.preferredApi ?? "") ? model.preferredApi! : importableApis[0] ?? ""; return <tr key={model.id}><td><input className="checkbox checkbox-sm" type="checkbox" checked={Boolean(selected)} onChange={(event) => setImports((current) => { const next = { ...current }; if (event.target.checked) next[model.id] = { api: preferredApi, visibility: "public" }; else delete next[model.id]; return next; })} /></td><td><span className="font-medium">{model.name}</span><span className="block text-xs opacity-60">{model.id}</span></td><td><select className="select select-xs" disabled={!selected} value={selected?.api ?? preferredApi} onChange={(event) => setImports((current) => ({ ...current, [model.id]: { api: event.target.value, visibility: current[model.id]?.visibility ?? "public" } }))}>{importableApis.map((api) => <option key={api} value={api}>{api}</option>)}</select></td><td><select className="select select-xs" disabled={!selected} value={selected?.visibility ?? "public"} onChange={(event) => setImports((current) => ({ ...current, [model.id]: { api: current[model.id]?.api ?? preferredApi, visibility: event.target.value as "public" | "private" } }))}><option value="public">Public</option><option value="private">Private</option></select></td></tr>; })}</tbody></table></div><div className="card-actions justify-end"><button className="btn btn-primary btn-sm" disabled={!selectedImports.length || importModels.isPending} onClick={() => importModels.mutate({ provider: initial.provider, endpointId: discovery.endpointId, models: selectedImports })}>{importModels.isPending ? "Importing…" : `Import ${selectedImports.length} selected`}</button></div></fieldset>}
@@ -221,21 +239,21 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
               <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_16rem] sm:items-center">
                 <p className="min-w-0 truncate text-sm">{model.name ?? model.id}</p>
                 <select className="select select-sm min-w-0 w-full" value={model.endpointId} onChange={(event) => { const endpoint = endpoints.find((candidate) => candidate.id === event.target.value); if (endpoint) updateModel(index, { endpointId: endpoint.id, api: endpoint.api }); }}>
-                  {endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpoint.label || endpoint.api} · {endpoint.api}</option>)}
+                  {endpoints.map((endpoint) => <option key={endpoint.id} value={endpoint.id}>{endpointLabel(endpoint)}</option>)}
                 </select>
                 <div className="flex min-w-0 flex-wrap items-center gap-2 sm:col-span-2">
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
+                  <label className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm">
                     <input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={model.visibility === "public"} onChange={(event) => updateModel(index, { visibility: event.target.checked ? "public" : "private" })} />
                     <span className="hidden md:inline">Visible to all users</span>
                     <span className={`badge badge-sm ${model.visibility === "public" ? "badge-success badge-soft" : "badge-warning badge-soft"}`}>{model.visibility}</span>
                   </label>
-                  <label className="flex items-center gap-1.5 whitespace-nowrap text-sm">
+                  <label className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm">
                     <input className="toggle toggle-primary toggle-sm checked:border-primary checked:bg-primary checked:text-primary-content" type="checkbox" checked={Boolean(model.documents)} onChange={(event) => updateModel(index, { documents: event.target.checked })} />
                     <span>Documents</span>
                   </label>
-                  <label className="flex items-center gap-1.5 text-sm">Thinking<select className="select select-xs" value={model.reasoningEffort ?? ""} disabled={!model.capabilities?.reasoningLevels.length} onChange={(event) => updateModel(index, { reasoningEffort: event.target.value as AllowlistEntry["reasoningEffort"] || undefined })}><option value="">Provider default</option>{model.capabilities?.reasoningLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
-                  <label className="flex items-center gap-1.5 text-sm">Verbosity<select className="select select-xs" value={model.verbosity ?? ""} disabled={!model.capabilities?.supportsVerbosity} onChange={(event) => updateModel(index, { verbosity: event.target.value as AllowlistEntry["verbosity"] || undefined })}><option value="">Provider default</option>{verbosityLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></label>
-                  <button className="btn btn-ghost btn-sm btn-square" onClick={() => removeModel(index)} title="Remove model">✕</button>
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm">Thinking<select className="select select-xs" value={model.reasoningEffort ?? ""} disabled={!model.capabilities?.reasoningLevels.length} onChange={(event) => updateModel(index, { reasoningEffort: event.target.value as AllowlistEntry["reasoningEffort"] || undefined })}><option value="">Provider default</option>{model.capabilities?.reasoningLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></div>
+                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm">Verbosity<select className="select select-xs" value={model.verbosity ?? ""} disabled={!model.capabilities?.supportsVerbosity} onChange={(event) => updateModel(index, { verbosity: event.target.value as AllowlistEntry["verbosity"] || undefined })}><option value="">Provider default</option>{verbosityLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></div>
+                  <button className="btn btn-error btn-soft btn-sm btn-square" onClick={() => { if (window.confirm(`Remove ${model.name ?? model.id}?`)) removeModel(index); }} title="Remove model">✕</button>
                 </div>
               </div>
             </div>
@@ -243,8 +261,9 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
         </fieldset>
         <div className="card-actions items-center justify-end">
           {(save.isError || remove.isError || queryModels.isError || importModels.isError) && <div role="alert" className="alert alert-error alert-soft py-2 text-sm">{save.error?.message ?? remove.error?.message ?? queryModels.error?.message ?? importModels.error?.message}</div>}
+          {!hasChanges && save.isSuccess && <span className="text-sm font-medium text-success">Provider saved</span>}
           <button className="btn btn-error btn-soft" disabled={remove.isPending} onClick={() => { if (window.confirm(`Delete ${initial.provider} and all of its endpoints and models?`)) remove.mutate({ provider: initial.provider }); }}>{remove.isPending ? "Deleting…" : "Delete provider"}</button>
-          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, endpoints, enabledModels: models })} disabled={save.isPending || remove.isPending}>{save.isPending ? "Saving…" : "Save provider"}</button>
+          <button className="btn btn-primary" onClick={() => save.mutate({ provider: initial.provider, apiKey, endpoints, enabledModels: models })} disabled={save.isPending || remove.isPending || !hasChanges}>{save.isPending ? "Saving…" : !hasChanges && save.isSuccess ? "Saved" : "Save provider"}</button>
         </div>
       </div>
     </section>

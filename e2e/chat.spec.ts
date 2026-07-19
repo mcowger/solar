@@ -107,6 +107,12 @@ test("deletes a provider from settings", async ({ page }) => {
 
   const provider = page.getByRole("heading", { name: "temporary-provider" }).locator("..");
   await expect(provider).toBeVisible();
+  await provider.getByPlaceholder("sk-…").fill("temporary-key");
+  await provider.getByRole("button", { name: "Save provider" }).click();
+  await expect(provider.getByText("Provider saved")).toBeVisible();
+  await expect(provider.getByRole("button", { name: "Saved" })).toBeDisabled();
+  await provider.getByPlaceholder("Saved — enter to replace").fill("replacement-key");
+  await expect(provider.getByRole("button", { name: "Save provider" })).toBeEnabled();
   page.once("dialog", (dialog) => dialog.accept());
   await provider.getByRole("button", { name: "Delete provider" }).click();
   await expect(provider).toBeHidden();
