@@ -1,4 +1,5 @@
 import { initTRPC, TRPCError } from "@trpc/server";
+import { sql } from "kysely";
 import { z } from "zod";
 import { config } from "../config";
 import { db, sqlite } from "../db";
@@ -20,6 +21,7 @@ import {
 	parseAllowlist,
 	PROVIDER_APIS,
 	resolveSelection,
+	resolveModel,
 	setAdminDefault,
 	setTaskModel,
 	setTitlePrompt,
@@ -36,6 +38,7 @@ import {
 	getContextGlobalSettings,
 	setContextGlobalSettings,
 } from "../context/settings";
+import { canonicalPolicyProvider } from "../context/policy";
 import {
 	getPasteSettings,
 	PASTE_SETTINGS_VERSION,
@@ -95,6 +98,13 @@ function extractToolCalls(parts: string | null) {
 	} catch {
 		return [];
 	}
+}
+
+function contextModelFamily(provider: string, modelId: string) {
+	const identity = `${provider} ${modelId}`.toLowerCase();
+	if (identity.includes("claude")) return "claude-1m";
+	if (identity.includes("gpt-5.6")) return "gpt-5.6";
+	return undefined;
 }
 
 const conversationRouter = router({
@@ -284,6 +294,63 @@ const conversationRouter = router({
 							retainedMessageBoundaryId: state.retainedMessageBoundaryId,
 						}
 					: null,
+			};
+		}),
+
+	metrics: protectedProcedure
+		.input(z.object({ conversationId: z.string() }))
+		.query(async ({ ctx, input }) => {
+			await assertOwnsConversation(ctx.user.id, input.conversationId);
+			const conversation = await db
+				.selectFrom("conversation")
+				.select(["provider", "endpointId", "modelId", "modelApi"])
+				.where("id", "=", input.conversationId)
+				.executeTakeFirstOrThrow();
+			const selection = await resolveSelection(
+				{
+					provider: conversation.provider ?? undefined,
+					endpointId: conversation.endpointId ?? undefined,
+					modelId: conversation.modelId ?? undefined,
+					api: conversation.modelApi ?? undefined,
+				},
+				ctx.user.id,
+				ctx.user.role === "admin",
+			);
+			const contextWindowTokens =
+				selection.provider === "mock"
+					? 128_000
+					: (await resolveModel(selection)).model.contextWindow;
+			const modelFamily = contextModelFamily(
+				selection.provider,
+				selection.modelId,
+			);
+			const policy = await new ContextRepository(db).resolvePolicy({
+				provider: canonicalPolicyProvider(modelFamily) ?? selection.provider,
+				modelId: selection.modelId,
+				modelFamily,
+				contextWindowTokens,
+			});
+			const [latest, totals] = await Promise.all([
+				db
+					.selectFrom("provider_call_telemetry")
+					.select("inputTokens")
+					.where("conversationId", "=", input.conversationId)
+					.where("purpose", "in", ["chat", "tool_loop"])
+					.orderBy("createdAt", "desc")
+					.executeTakeFirst(),
+				db
+					.selectFrom("provider_call_telemetry")
+					.select(
+						sql<number>`coalesce(sum(estimatedCostMicros), 0)`.as("costMicros"),
+					)
+					.where("conversationId", "=", input.conversationId)
+					.executeTakeFirstOrThrow(),
+			]);
+			return {
+				contextTokens: latest?.inputTokens ?? null,
+				contextWindowTokens,
+				compactionAtTokens: policy.softTriggerTokens,
+				costMicros: totals.costMicros,
 			};
 		}),
 

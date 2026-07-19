@@ -25,6 +25,52 @@ const SIDEBAR_MIN_WIDTH = 220;
 const SIDEBAR_MAX_WIDTH = 480;
 const PINNED_SIDEBAR_MEDIA_QUERY = "(min-width: 650px)";
 
+function formatTokens(tokens: number) {
+	return `${Math.round(tokens / 1_000)}k`;
+}
+
+function formatCost(costMicros: number) {
+	return new Intl.NumberFormat("en-US", {
+		style: "currency",
+		currency: "USD",
+		maximumFractionDigits: 2,
+	}).format(costMicros / 1_000_000);
+}
+
+function ContextIndicator({ conversationId }: { conversationId: string }) {
+	const trpc = useTRPC();
+	const metrics = useQuery({
+		...trpc.conversation.metrics.queryOptions({ conversationId }),
+		refetchInterval: 5_000,
+	});
+	const data = metrics.data;
+	if (!data || data.contextTokens === null) return null;
+
+	const percentUsed = Math.round(
+		(data.contextTokens / data.contextWindowTokens) * 100,
+	);
+	const distanceToCompaction = Math.max(
+		0,
+		data.compactionAtTokens - data.contextTokens,
+	);
+	const details = [
+		`${formatTokens(data.contextTokens)} of ${formatTokens(data.contextWindowTokens)} context (${percentUsed}%)`,
+		`${formatTokens(distanceToCompaction)} to compaction`,
+		`${formatCost(data.costMicros)} conversation cost`,
+	].join(" · ");
+
+	return (
+		<div className="tooltip tooltip-bottom hidden lg:block" data-tip={details}>
+			<span className="inline-flex h-7 items-center rounded-full border border-base-300 px-2 font-mono text-[11px] text-base-content/55">
+				{formatTokens(data.contextTokens)} /{" "}
+				{formatTokens(data.contextWindowTokens)}
+				<span className="mx-1 text-base-content/25">·</span>
+				{percentUsed}%
+			</span>
+		</div>
+	);
+}
+
 function ConversationView({
 	conversationId,
 	onConfigureMcp,
@@ -186,6 +232,7 @@ export function ChatApp() {
 						</button>
 					</div>
 					<div className="navbar-end gap-1 sm:gap-2">
+						{activeId && <ContextIndicator conversationId={activeId} />}
 						{activeId && (
 							<div
 								className="tooltip tooltip-bottom hidden sm:block"
