@@ -1,6 +1,6 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Hash,
 	LogOut,
@@ -19,6 +19,7 @@ import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
 import { McpServers } from "./McpServers";
 import { useSolarRuntime } from "./useSolarRuntime";
+import { useMobileReturnToNewChat } from "./useMobileReturnToNewChat";
 
 const SIDEBAR_DEFAULT_WIDTH = 280;
 const SIDEBAR_MIN_WIDTH = 220;
@@ -165,8 +166,12 @@ export function ChatApp() {
 	const presetList = presets.data ?? [];
 
 	// Start a new conversation, optionally snapshotting a chosen preset.
-	const newChat = (presetId?: string) =>
-		create.mutate(presetId ? { presetId } : {});
+	const newChat = useCallback(
+		(presetId?: string) => create.mutate(presetId ? { presetId } : {}),
+		[create],
+	);
+
+	useMobileReturnToNewChat(newChat);
 
 	// Ensure a conversation exists and one is always selected.
 	useEffect(() => {
