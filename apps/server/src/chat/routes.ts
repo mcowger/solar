@@ -17,6 +17,8 @@ import {
 } from "./attachments";
 import {
   getTitlePrompt,
+  getGenerationDefaults,
+  getModelCapabilities,
   documentInputCapabilities,
   resolveSelection,
   resolveTaskModelOrFallback,
@@ -185,8 +187,10 @@ async function streamNewAssistantTurn(
       "modelApi",
       "systemPrompt",
       "reasoningEffort",
+      "presetReasoningEffort",
       "reasoningSummary",
       "verbosity",
+      "presetVerbosity",
       "autoExecuteTools",
     ])
     .where("id", "=", conversationId)
@@ -201,7 +205,11 @@ async function streamNewAssistantTurn(
     userId,
     isAdmin,
   );
-  const documentInput = await documentInputCapabilities(selection);
+  const [documentInput, capabilities, defaults] = await Promise.all([
+    documentInputCapabilities(selection),
+    getModelCapabilities(selection),
+    getGenerationDefaults(),
+  ]);
   const assembled = await contextRuntime.assemble(conversationId, selection, convo?.systemPrompt, loadAttachmentSummary);
   const { context, documents } = await buildContext(
     conversationId,
@@ -221,9 +229,15 @@ async function streamNewAssistantTurn(
   }
   const params: GenerationParams = {
     systemPrompt: convo?.systemPrompt ?? undefined,
-    reasoningEffort: convo?.reasoningEffort ?? undefined,
+    reasoningEffort: convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? (
+      defaults.reasoningEffort && capabilities.reasoningLevels.includes(defaults.reasoningEffort)
+        ? defaults.reasoningEffort
+        : undefined
+    ),
     reasoningSummary: Boolean(convo?.reasoningSummary),
-    verbosity: convo?.verbosity ?? undefined,
+    verbosity: convo?.verbosity ?? convo?.presetVerbosity ?? (
+      defaults.verbosity && capabilities.supportsVerbosity ? defaults.verbosity : undefined
+    ),
     documents,
   };
   const titleTask = titleGeneration

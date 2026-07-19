@@ -5,6 +5,7 @@ import { deleteAttachmentFilesForMessages, deleteAttachmentFilesForUser } from "
 import { generationManager } from "../chat/generationManager";
 import {
   getAdminDefault,
+  getGenerationDefaults,
   getModelCapabilities,
   documentInputMimeTypes,
   getTaskModel,
@@ -17,6 +18,7 @@ import {
   PROVIDER_APIS,
   resolveSelection,
   setAdminDefault,
+  setGenerationDefaults,
   setTaskModel,
   setTitlePrompt,
   setUserDefault,
@@ -316,10 +318,10 @@ const conversationRouter = router({
         .updateTable("conversation")
         .set({
           ...(input.reasoningEffort !== undefined
-            ? { reasoningEffort: input.reasoningEffort ?? conversation.presetReasoningEffort }
+            ? { reasoningEffort: input.reasoningEffort }
             : {}),
           ...(input.verbosity !== undefined
-            ? { verbosity: input.verbosity ?? conversation.presetVerbosity }
+            ? { verbosity: input.verbosity }
             : {}),
         })
         .where("id", "=", input.id)
@@ -553,6 +555,15 @@ function hasDuplicateIds(rows: { id: string }[]) {
 
 const adminRouter = router({
   logLevel: adminProcedure.query(() => ({ level: getLogLevel() })),
+
+  generationDefaults: adminProcedure.query(() => getGenerationDefaults()),
+
+  setGenerationDefaults: adminProcedure
+    .input(z.object({
+      reasoningEffort: z.enum(["minimal", "low", "medium", "high", "xhigh", "max"]).nullable(),
+      verbosity: z.enum(["low", "medium", "high"]).nullable(),
+    }))
+    .mutation(({ input }) => setGenerationDefaults(input)),
 
   contextManagementSettings: adminProcedure.query(async () => {
     const repository = new ContextRepository(db);
@@ -1100,8 +1111,19 @@ const modelRouter = router({
           m.modelId === selection.modelId &&
           m.api === selection.api,
       );
-      const capabilities = await getModelCapabilities(selection);
+      const [capabilities, defaults] = await Promise.all([
+        getModelCapabilities(selection),
+        getGenerationDefaults(),
+      ]);
       const documentMimeTypes = await documentInputMimeTypes(selection);
+      const effectiveReasoningEffort = convo?.reasoningEffort ?? convo?.presetReasoningEffort ?? (
+        defaults.reasoningEffort && capabilities.reasoningLevels.includes(defaults.reasoningEffort)
+          ? defaults.reasoningEffort
+          : null
+      );
+      const effectiveVerbosity = convo?.verbosity ?? convo?.presetVerbosity ?? (
+        defaults.verbosity && capabilities.supportsVerbosity ? defaults.verbosity : null
+      );
       return {
         ...(descriptor ?? { ...selection, name: selection.modelId, reasoning: false, vision: false, documents: false }),
         ...capabilities,
@@ -1110,6 +1132,8 @@ const modelRouter = router({
         presetReasoningEffort: convo?.presetReasoningEffort ?? null,
         verbosity: convo?.verbosity ?? null,
         presetVerbosity: convo?.presetVerbosity ?? null,
+        effectiveReasoningEffort,
+        effectiveVerbosity,
       };
     }),
 

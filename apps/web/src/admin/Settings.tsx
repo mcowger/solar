@@ -284,6 +284,30 @@ function Logging() {
   </div></section>;
 }
 
+const thinkingLevels = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+const verbosityLevels = ["low", "medium", "high"] as const;
+
+function GenerationDefaults() {
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const defaults = useQuery(trpc.admin.generationDefaults.queryOptions());
+  const [reasoningEffort, setReasoningEffort] = useState<(typeof thinkingLevels)[number] | null>(null);
+  const [verbosity, setVerbosity] = useState<(typeof verbosityLevels)[number] | null>(null);
+  useEffect(() => {
+    if (defaults.data) {
+      setReasoningEffort(defaults.data.reasoningEffort);
+      setVerbosity(defaults.data.verbosity);
+    }
+  }, [defaults.data]);
+  const save = useMutation(trpc.admin.setGenerationDefaults.mutationOptions({
+    onSuccess: () => qc.invalidateQueries({ queryKey: trpc.admin.generationDefaults.queryKey() }),
+  }));
+
+  if (defaults.isError) return <div role="alert" className="alert alert-error alert-soft">{defaults.error.message}</div>;
+  if (!defaults.data) return null;
+  return <section className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-4 p-5"><h3 className="card-title">Generation defaults</h3><p className="text-sm opacity-70">Used when a conversation and its preset do not specify a value. Unsupported defaults are ignored for that model.</p><div className="grid gap-3 sm:grid-cols-2"><fieldset className="fieldset"><legend className="fieldset-legend">Thinking effort</legend><select className="select w-full" value={reasoningEffort ?? ""} disabled={save.isPending} onChange={(event) => setReasoningEffort(event.target.value ? event.target.value as (typeof thinkingLevels)[number] : null)}><option value="">Provider default</option>{thinkingLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></fieldset><fieldset className="fieldset"><legend className="fieldset-legend">Answer verbosity</legend><select className="select w-full" value={verbosity ?? ""} disabled={save.isPending} onChange={(event) => setVerbosity(event.target.value ? event.target.value as (typeof verbosityLevels)[number] : null)}><option value="">Provider default</option>{verbosityLevels.map((level) => <option key={level} value={level}>{level}</option>)}</select></fieldset></div>{save.isError && <div role="alert" className="alert alert-error alert-soft">{save.error.message}</div>}<div className="card-actions justify-end"><button className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate({ reasoningEffort, verbosity })}>{save.isPending ? "Saving…" : "Save generation defaults"}</button></div></div></section>;
+}
+
 function ContextManagement() {
   const trpc = useTRPC();
   const qc = useQueryClient();
@@ -311,7 +335,7 @@ function ContextManagement() {
   </div></section>;
 }
 
-const sections = ["users", "providers", "task model", "context management", "usage", "logging"] as const;
+const sections = ["users", "providers", "task model", "generation defaults", "context management", "usage", "logging"] as const;
 type Section = typeof sections[number];
 
 export function Settings({ onClose }: { onClose: () => void }) {
@@ -334,6 +358,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
     {section === "users" && <Users />}
     {section === "usage" && <Usage />}
     {section === "logging" && <Logging />}
+    {section === "generation defaults" && <GenerationDefaults />}
     {section === "task model" && <TaskModel />}
     {section === "context management" && <ContextManagement />}
     {section === "providers" && providers.isError && <div role="alert" className="alert alert-error alert-soft">{providers.error.message}</div>}

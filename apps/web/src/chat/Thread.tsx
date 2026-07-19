@@ -252,6 +252,8 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
   const data = settings.data;
   const showReasoning = Boolean(data?.reasoningLevels.length);
   const showVerbosity = Boolean(data?.supportsVerbosity);
+  const reasoningEffort = data?.effectiveReasoningEffort;
+  const verbosity = data?.effectiveVerbosity;
 
   useEffect(() => {
     if (!open) return;
@@ -273,11 +275,11 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
           <button
             type="button"
             onClick={() => setOpen(open === "reasoning" ? null : "reasoning")}
-            style={{ ...iconButton, color: data?.reasoningEffort ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
-            title={`Reasoning effort: ${data?.reasoningEffort ?? "default"}`}
+            style={{ ...iconButton, color: reasoningEffort ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
+            title={`Reasoning effort: ${reasoningEffort ?? "default"}${data?.reasoningEffort ? "" : " (default)"}`}
           >
             <Brain size={18} />
-            <SignalMeter level={data?.reasoningEffort} levels={data?.reasoningLevels ?? REASONING_LEVELS} />
+            <SignalMeter level={reasoningEffort} levels={data?.reasoningLevels ?? REASONING_LEVELS} />
           </button>
           {open === "reasoning" && (
             <div style={{ position: "absolute", bottom: 30, left: 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>
@@ -294,11 +296,11 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
           <button
             type="button"
             onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
-            style={{ ...iconButton, color: data?.verbosity ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
-            title={`Answer verbosity: ${data?.verbosity ?? "default"}`}
+            style={{ ...iconButton, color: verbosity ? "#1a56db" : "#666", display: "flex", alignItems: "center", gap: 3 }}
+            title={`Answer verbosity: ${verbosity ?? "default"}${data?.verbosity ? "" : " (default)"}`}
           >
             <Podcast size={18} />
-            <SignalMeter level={data?.verbosity} levels={VERBOSITY_LEVELS} />
+            <SignalMeter level={verbosity} levels={VERBOSITY_LEVELS} />
           </button>
           {open === "verbosity" && (
             <div style={{ position: "absolute", bottom: 30, left: 0, background: "white", border: "1px solid #ccc", borderRadius: 8, padding: 4, zIndex: 1 }}>

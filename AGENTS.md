@@ -97,6 +97,7 @@ you need model calls.
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
 | `bun run chat-history -- --help` | Admin CLI for chat inspection and history import/export |
 | `bun run sync-staging-history -- --help` | Export staging history and restore it locally |
+| `bun run dev:load-history -- --help` | Start the local dev server and import a saved history bundle |
 | `bun run typecheck` | `tsc` for server, web, shared, and Playwright tests |
 | `bun run test` | Run server and frontend Bun unit tests |
 | `bun run test:server` / `test:web` | Run one Bun unit-test suite |
@@ -135,6 +136,17 @@ bun run chat-history -- --help
 
 Imports merge without overwriting and reject ID or tag-name conflicts. History
 bundles include attachment metadata but not the underlying attachment files.
+
+To start the local server and restore a saved bundle in one command, run:
+
+```bash
+bun run dev:load-history
+bun run dev:load-history -- --input history.json
+```
+
+It defaults to `.staging-history.json` and imports into `admin@solar.local`.
+Use `--user`, `--url`, and the standard `SOLAR_*` authentication variables to
+override the destination.
 
 ### Staging history sync
 

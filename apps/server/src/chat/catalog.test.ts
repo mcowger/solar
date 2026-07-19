@@ -45,6 +45,29 @@ const db = {
       },
     };
   },
+  insertInto(table: string) {
+    return {
+      values(value: { key: string; value: string }) {
+        return {
+          onConflict(callback: (oc: { column: (_column: string) => { doUpdateSet: (_values: { value: string }) => { execute: () => Promise<void> } } }) => { execute: () => Promise<void> }) {
+            return callback({
+              column() {
+                return {
+                  doUpdateSet() {
+                    return {
+                      execute: async () => {
+                        if (table === "app_meta") state.appMeta.set(value.key, value.value);
+                      },
+                    };
+                  },
+                };
+              },
+            });
+          },
+        };
+      },
+    };
+  },
 };
 
 mock.module("../db", () => ({ db }));
@@ -200,6 +223,14 @@ describe("catalog model policy", () => {
 
     state.providerConfigs = [];
     await expect(catalog.resolveSelection({})).rejects.toThrow("No models are configured");
+  });
+
+  test("persists valid global generation defaults and ignores malformed values", async () => {
+    await catalog.setGenerationDefaults({ reasoningEffort: "high", verbosity: "low" });
+    await expect(catalog.getGenerationDefaults()).resolves.toEqual({ reasoningEffort: "high", verbosity: "low" });
+
+    state.appMeta.set("generation_defaults", JSON.stringify({ reasoningEffort: "unsupported", verbosity: "maximum" }));
+    await expect(catalog.getGenerationDefaults()).resolves.toEqual({ reasoningEffort: null, verbosity: null });
   });
 
   test("uses only public task models and falls back when the configured task model is unavailable", async () => {

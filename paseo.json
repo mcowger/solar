@@ -12,6 +12,9 @@
       "command": "bun run dev:foreground",
       "port": 3000
     },
+    "dev:load-history": {
+      "command": "bun run dev:load-history"
+    },
     "typecheck": {
       "command": "bun run typecheck"
     },
