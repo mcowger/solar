@@ -25,6 +25,21 @@ export const auth = betterAuth({
 					google: {
 						clientId: config.googleClientId,
 						clientSecret: config.googleClientSecret,
+						// Enforce the optional email-domain allowlist server-side. The
+						// profile email comes from Google's signed ID token, so the
+						// domain claim can be trusted.
+						mapProfileToUser: (profile) => {
+							const allowed = config.googleAllowedDomains;
+							if (allowed.length > 0) {
+								const domain = profile.email.split("@").at(-1)?.toLowerCase();
+								if (!domain || !allowed.includes(domain)) {
+									throw new APIError("FORBIDDEN", {
+										message: "Email domain is not allowed",
+									});
+								}
+							}
+							return {};
+						},
 					},
 				},
 			}

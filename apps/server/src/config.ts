@@ -12,5 +12,11 @@ export const config = {
 	authBaseURL,
 	googleClientId: process.env.GOOGLE_CLIENT_ID,
 	googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+	// Optional comma-separated list of email domains allowed for Google sign-in.
+	// Empty means any domain is allowed.
+	googleAllowedDomains: (process.env.GOOGLE_ALLOWED_DOMAINS ?? "")
+		.split(",")
+		.map((domain) => domain.trim().toLowerCase())
+		.filter(Boolean),
 	attachmentsDataDir: process.env.SOLAR_ATTACHMENTS_DIR ?? "data/attachments",
 } as const;
