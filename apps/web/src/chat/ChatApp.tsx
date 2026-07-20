@@ -22,6 +22,7 @@ import { Thread } from "./Thread";
 import { McpServers } from "./McpServers";
 import { useSolarRuntime } from "./useSolarRuntime";
 import { useMobileReturnToNewChat } from "./useMobileReturnToNewChat";
+import { useNewChatHotkey } from "./useNewChatHotkey";
 
 const SIDEBAR_DEFAULT_WIDTH = 280;
 const SIDEBAR_MIN_WIDTH = 220;
@@ -342,6 +343,7 @@ export function ChatApp() {
 	}, []);
 
 	useMobileReturnToNewChat(newChat);
+	useNewChatHotkey(newChat);
 
 	// Ensure a conversation exists and one is always selected. The active draft
 	// is valid even though it isn't in the message-filtered list yet.
@@ -469,7 +471,10 @@ export function ChatApp() {
 						</button>
 					)}
 					{activeId && <ModelMenu conversationId={activeId} />}
-					<div className="tooltip tooltip-bottom" data-tip="New chat">
+					<div
+						className="tooltip tooltip-bottom"
+						data-tip="New chat (⌘/Ctrl+N)"
+					>
 						<button
 							type="button"
 							className="btn btn-ghost btn-sm btn-circle"
