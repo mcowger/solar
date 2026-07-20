@@ -68,6 +68,26 @@ export function isDocumentMimeType(mimeType: string | undefined): boolean {
 	return Boolean(mimeType && DOCUMENT_MIME_TYPES.has(mimeType));
 }
 
+export function buildAttachmentAccept(
+	allowImages: boolean,
+	documentMimeTypes: readonly string[],
+	allowDocuments = false,
+): string {
+	const supportedDocumentMimeTypes =
+		documentMimeTypes.length || !allowDocuments
+			? documentMimeTypes
+			: DEFAULT_DOCUMENT_MIME_TYPES;
+	const documentAccept = supportedDocumentMimeTypes.flatMap((mime) => {
+		const extension = DOCUMENT_EXTENSIONS[mime];
+		return extension ? [mime, extension] : [mime];
+	});
+	return [
+		...(allowImages ? IMAGE_ACCEPT : []),
+		...TEXT_ACCEPT,
+		...documentAccept,
+	].join(",");
+}
+
 export class SolarAttachmentAdapter implements AttachmentAdapter {
 	public readonly accept: string;
 
@@ -76,19 +96,11 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
 		documentMimeTypes: readonly string[],
 		allowDocuments = false,
 	) {
-		const supportedDocumentMimeTypes =
-			documentMimeTypes.length || !allowDocuments
-				? documentMimeTypes
-				: DEFAULT_DOCUMENT_MIME_TYPES;
-		const documentAccept = supportedDocumentMimeTypes.flatMap((mime) => {
-			const extension = DOCUMENT_EXTENSIONS[mime];
-			return extension ? [extension] : [mime];
-		});
-		this.accept = [
-			...(allowImages ? IMAGE_ACCEPT : []),
-			...TEXT_ACCEPT,
-			...documentAccept,
-		].join(",");
+		this.accept = buildAttachmentAccept(
+			allowImages,
+			documentMimeTypes,
+			allowDocuments,
+		);
 	}
 
 	public async add({ file }: { file: File }): Promise<PendingAttachment> {

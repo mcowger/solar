@@ -7,11 +7,16 @@ mock.module("mammoth", () => ({
 	},
 }));
 mock.module("unpdf", () => ({
-	getDocumentProxy: async () => ({}),
+	getDocumentProxy: async (bytes: Uint8Array) => {
+		structuredClone(bytes.buffer, { transfer: [bytes.buffer] });
+		return { numPages: 2 };
+	},
 	extractText: async () => ({ text: "PDF text" }),
 }));
 
-const { extractDocumentText } = await import("./documentTextExtraction");
+const { extractDocumentText, pdfMetadata } = await import(
+	"./documentTextExtraction"
+);
 
 describe("document text extraction", () => {
 	test("converts every spreadsheet sheet to named CSV text", async () => {
@@ -51,5 +56,15 @@ describe("document text extraction", () => {
 		await expect(
 			extractDocumentText(new Uint8Array(), "application/pdf"),
 		).resolves.toBe("PDF text");
+	});
+
+	test("preserves caller-owned PDF bytes when PDF.js transfers its input", async () => {
+		const bytes = new Uint8Array([1, 2, 3]);
+
+		await expect(pdfMetadata(bytes)).resolves.toEqual({
+			pageCount: 2,
+			extractedTextChars: 8,
+		});
+		expect(bytes).toEqual(new Uint8Array([1, 2, 3]));
 	});
 });

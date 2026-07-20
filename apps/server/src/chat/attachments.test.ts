@@ -220,6 +220,20 @@ describe("attachments", () => {
 		expect(rows).toHaveLength(0);
 	});
 
+	test("rejects empty documents before writing a file or row", async () => {
+		await expect(
+			attachments.saveAttachment({
+				userId: "user-1",
+				filename: "empty.pdf",
+				mimeType: "application/pdf",
+				bytes: new Uint8Array(),
+			}),
+		).rejects.toThrow("Document is empty");
+
+		expect(files).toHaveLength(0);
+		expect(rows).toHaveLength(0);
+	});
+
 	test("rejects files larger than 20 MB before writing a file or row", async () => {
 		await expect(
 			attachments.saveAttachment({
@@ -387,6 +401,27 @@ describe("attachments", () => {
 				},
 			],
 		});
+	});
+
+	test("rejects legacy empty documents before provider dispatch", async () => {
+		rows.set(
+			"document",
+			row({
+				id: "document",
+				filename: "empty.pdf",
+				mimeType: "application/pdf",
+				kind: "document",
+				storageKey: "user-1/document",
+			}),
+		);
+		files.set("/user-1/document", new Uint8Array());
+
+		await expect(
+			attachments.loadAttachmentContentParts("message-1", {
+				nativeMimeTypes: ["application/pdf"],
+				extractedTextMimeTypes: [],
+			}),
+		).rejects.toThrow("Attachment empty.pdf is empty; upload it again");
 	});
 
 	test("extracts spreadsheet text only for a configured fallback capability", async () => {

@@ -84,6 +84,9 @@ export async function saveAttachment(params: {
 	if (!kind) {
 		throw new AttachmentError(`Unsupported file type: ${params.mimeType}`);
 	}
+	if (kind === "document" && params.bytes.byteLength === 0) {
+		throw new AttachmentError("Document is empty");
+	}
 	if (params.bytes.byteLength > MAX_BYTES) {
 		throw new AttachmentError("File exceeds the 20 MB limit");
 	}
@@ -295,6 +298,11 @@ export async function loadAttachmentContentParts(
 	for (const r of rows) {
 		if (allowedAttachmentIds && !allowedAttachmentIds.has(r.id)) continue;
 		const bytes = await disk.readFile(path(r.storageKey));
+		if (r.kind === "document" && bytes.byteLength === 0) {
+			throw new AttachmentError(
+				`Attachment ${r.filename} is empty; upload it again`,
+			);
+		}
 		if (r.kind === "image") {
 			parts.push({
 				type: "image",

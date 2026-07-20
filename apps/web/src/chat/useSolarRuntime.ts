@@ -558,15 +558,20 @@ export function useSolarRuntime(
 		finishStreamRef.current?.();
 	}, []);
 
-	const attachmentAdapter = useMemo(
-		() =>
-			new SolarAttachmentAdapter(
-				allowImages,
-				documentMimeTypes,
-				allowDocuments,
-			),
-		[allowImages, documentMimeTypes, allowDocuments],
-	);
+	const attachmentAdapter = useMemo(() => {
+		const adapter = new SolarAttachmentAdapter(
+			allowImages,
+			documentMimeTypes,
+			allowDocuments,
+		);
+		console.info("[attachments] picker configuration", {
+			allowImages,
+			allowDocuments,
+			documentMimeTypes,
+			accept: adapter.accept,
+		});
+		return adapter;
+	}, [allowImages, documentMimeTypes, allowDocuments]);
 
 	return useExternalStoreRuntime({
 		messages,

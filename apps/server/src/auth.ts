@@ -160,3 +160,27 @@ export function createSolarUser(input: {
 }) {
 	return auth.api.signUpEmail({ body: input });
 }
+
+export async function setSolarUserPassword(
+	userId: string,
+	newPassword: string,
+): Promise<boolean> {
+	const context = await auth.$context;
+	if (!(await context.internalAdapter.findUserById(userId))) return false;
+
+	const hashedPassword = await context.password.hash(newPassword);
+	const credentialAccount = (
+		await context.internalAdapter.findAccounts(userId)
+	).find((account) => account.providerId === "credential");
+	if (credentialAccount) {
+		await context.internalAdapter.updatePassword(userId, hashedPassword);
+	} else {
+		await context.internalAdapter.createAccount({
+			userId,
+			providerId: "credential",
+			accountId: userId,
+			password: hashedPassword,
+		});
+	}
+	return true;
+}

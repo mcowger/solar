@@ -1065,6 +1065,16 @@ function Users() {
 	const qc = useQueryClient();
 	const { data: session } = useSession();
 	const [newUser, setNewUser] = useState({ name: "", email: "", password: "" });
+	const [passwordUser, setPasswordUser] = useState<{
+		id: string;
+		name: string;
+		email: string;
+	} | null>(null);
+	const [newPassword, setNewPassword] = useState("");
+	const [confirmPassword, setConfirmPassword] = useState("");
+	const [passwordChangedFor, setPasswordChangedFor] = useState<string | null>(
+		null,
+	);
 	const users = useQuery(trpc.admin.listUsers.queryOptions());
 	const invalidate = () =>
 		qc.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
@@ -1085,11 +1095,33 @@ function Users() {
 			},
 		}),
 	);
+	const setPassword = useMutation(
+		trpc.admin.setUserPassword.mutationOptions({
+			onSuccess: () => {
+				setPasswordChangedFor(passwordUser?.email ?? null);
+				setPasswordUser(null);
+				setNewPassword("");
+				setConfirmPassword("");
+			},
+		}),
+	);
+	const closePasswordModal = () => {
+		if (setPassword.isPending) return;
+		setPasswordUser(null);
+		setNewPassword("");
+		setConfirmPassword("");
+		setPassword.reset();
+	};
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
 			<div className="card-body p-5">
 				<h3 className="card-title">Users</h3>
+				{passwordChangedFor && (
+					<p className="text-sm font-medium text-success">
+						Password changed for {passwordChangedFor}.
+					</p>
+				)}
 				<form
 					className="grid gap-2 sm:grid-cols-4"
 					onSubmit={(event) => {
@@ -1185,6 +1217,16 @@ function Users() {
 										{user.isDisabled ? "Enable" : "Disable"}
 									</button>
 									<button
+										className="btn btn-sm"
+										onClick={() => {
+											setPasswordChangedFor(null);
+											setPassword.reset();
+											setPasswordUser(user);
+										}}
+									>
+										Change password
+									</button>
+									<button
 										className="btn btn-error btn-soft btn-sm"
 										disabled={isCurrentUser || remove.isPending}
 										onClick={() => {
@@ -1204,6 +1246,87 @@ function Users() {
 					})}
 				</div>
 			</div>
+			{passwordUser && (
+				<div className="modal modal-open">
+					<div className="modal-box max-w-md">
+						<button
+							className="btn btn-circle btn-ghost btn-sm absolute top-3 right-3"
+							onClick={closePasswordModal}
+							type="button"
+						>
+							<X size={18} />
+						</button>
+						<h3 className="text-lg font-bold">Change password</h3>
+						<p className="mt-1 text-sm opacity-60">
+							Set a new password for {passwordUser.name} ({passwordUser.email}).
+						</p>
+						<form
+							className="mt-5 space-y-3"
+							onSubmit={(event) => {
+								event.preventDefault();
+								if (newPassword !== confirmPassword) return;
+								setPassword.mutate({
+									userId: passwordUser.id,
+									password: newPassword,
+								});
+							}}
+						>
+							<input
+								className="input w-full"
+								type="password"
+								placeholder="New password (min 8)"
+								value={newPassword}
+								onChange={(event) => setNewPassword(event.target.value)}
+								minLength={8}
+								maxLength={128}
+								required
+							/>
+							<input
+								className="input w-full"
+								type="password"
+								placeholder="Confirm new password"
+								value={confirmPassword}
+								onChange={(event) => setConfirmPassword(event.target.value)}
+								minLength={8}
+								maxLength={128}
+								required
+							/>
+							{confirmPassword && newPassword !== confirmPassword && (
+								<p className="text-sm text-error">Passwords do not match.</p>
+							)}
+							{setPassword.isError && (
+								<div
+									role="alert"
+									className="alert alert-error alert-soft text-sm"
+								>
+									{setPassword.error.message}
+								</div>
+							)}
+							<div className="modal-action">
+								<button
+									className="btn"
+									type="button"
+									onClick={closePasswordModal}
+									disabled={setPassword.isPending}
+								>
+									Cancel
+								</button>
+								<button
+									className="btn btn-primary"
+									type="submit"
+									disabled={
+										setPassword.isPending ||
+										newPassword.length < 8 ||
+										newPassword !== confirmPassword
+									}
+								>
+									{setPassword.isPending ? "Changing…" : "Change password"}
+								</button>
+							</div>
+						</form>
+					</div>
+				</div>
+			)}
 		</section>
 	);
 }

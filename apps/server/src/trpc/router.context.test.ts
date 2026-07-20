@@ -49,6 +49,7 @@ mock.module("../db", () => ({
 mock.module("../auth", () => ({
 	createSolarApiKey: async () => ({ id: "key", key: "sk_solar_test" }),
 	createSolarUser: async () => {},
+	setSolarUserPassword: async () => true,
 }));
 mock.module("../chat/attachments", () => ({
 	deleteAttachmentFilesForMessages: async () => {},

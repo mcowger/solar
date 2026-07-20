@@ -15,7 +15,7 @@ async function extractDocx(bytes: Uint8Array): Promise<string> {
 }
 
 async function extractPdf(bytes: Uint8Array): Promise<string> {
-	const pdf = await getDocumentProxy(bytes);
+	const pdf = await getDocumentProxy(bytes.slice());
 	const { text } = await extractText(pdf, { mergePages: true });
 	return text;
 }
@@ -24,7 +24,7 @@ export async function pdfMetadata(bytes: Uint8Array): Promise<{
 	pageCount: number;
 	extractedTextChars: number;
 }> {
-	const pdf = await getDocumentProxy(bytes);
+	const pdf = await getDocumentProxy(bytes.slice());
 	const { text } = await extractText(pdf, { mergePages: true });
 	return { pageCount: pdf.numPages, extractedTextChars: text.length };
 }

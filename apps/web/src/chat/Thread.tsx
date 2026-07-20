@@ -40,6 +40,7 @@ import {
 	type RefObject,
 } from "react";
 import { useTRPC } from "../trpc";
+import { buildAttachmentAccept } from "./attachmentAdapter";
 import { MarkdownText, PlainMarkdown } from "./MarkdownText";
 import type {
 	SolarConnectionStatus,
@@ -79,27 +80,81 @@ function formatMessageTimestamp(iso?: string): string {
 	})} at ${time}`;
 }
 
-function MobileAttachmentPicker() {
-	const composer = useComposerRuntime();
-	const attachmentAccept = useAuiState(
-		(state) => state.composer.attachmentAccept,
+function addFiles(
+	composer: NonNullable<ReturnType<typeof useComposerRuntime>>,
+	input: HTMLInputElement,
+) {
+	const files = Array.from(input.files ?? []);
+	input.value = "";
+	void Promise.all(files.map((file) => composer.addAttachment(file))).catch(
+		() => undefined,
 	);
+}
+
+function openAttachmentInput(
+	input: HTMLInputElement | null,
+	kind: "desktop" | "mobile-file" | "capture" | "library",
+) {
+	if (!input) return;
+	console.info("[attachments] opening picker", {
+		kind,
+		accept: input.accept,
+	});
+	input.click();
+}
+
+function DesktopAttachmentPicker({
+	attachmentAccept,
+	disabled,
+}: {
+	attachmentAccept: string;
+	disabled: boolean;
+}) {
+	const composer = useComposerRuntime();
+	const inputRef = useRef<HTMLInputElement>(null);
+
+	return (
+		<>
+			<button
+				type="button"
+				className="btn btn-ghost btn-sm btn-circle hidden sm:inline-flex"
+				aria-label="Add attachment"
+				disabled={disabled}
+				onClick={() => openAttachmentInput(inputRef.current, "desktop")}
+			>
+				<Plus size={20} />
+			</button>
+			<input
+				ref={inputRef}
+				className="hidden"
+				type="file"
+				accept={attachmentAccept}
+				multiple
+				onChange={(event) => addFiles(composer, event.currentTarget)}
+			/>
+		</>
+	);
+}
+
+function MobileAttachmentPicker({
+	attachmentAccept,
+	disabled,
+}: {
+	attachmentAccept: string;
+	disabled: boolean;
+}) {
+	const composer = useComposerRuntime();
 	const captureInputRef = useRef<HTMLInputElement>(null);
 	const libraryInputRef = useRef<HTMLInputElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const dialogRef = useRef<HTMLDialogElement>(null);
 
-	const addFiles = (input: HTMLInputElement) => {
-		const files = Array.from(input.files ?? []);
-		input.value = "";
-		void Promise.all(files.map((file) => composer.addAttachment(file))).catch(
-			() => undefined,
-		);
-	};
-
-	const openInput = (inputRef: RefObject<HTMLInputElement | null>) => {
+	const openInput = (
+		inputRef: RefObject<HTMLInputElement | null>,
+		kind: "mobile-file" | "capture" | "library",
+	) => {
 		dialogRef.current?.close();
-		inputRef.current?.click();
+		openAttachmentInput(inputRef.current, kind);
 	};
 
 	return (
@@ -108,6 +163,7 @@ function MobileAttachmentPicker() {
 				type="button"
 				className="btn btn-ghost btn-sm btn-circle sm:hidden"
 				aria-label="Add attachment"
+				disabled={disabled}
 				onClick={() => dialogRef.current?.showModal()}
 			>
 				<Plus size={20} />
@@ -118,7 +174,7 @@ function MobileAttachmentPicker() {
 				type="file"
 				accept="image/*"
 				capture="environment"
-				onChange={(event) => addFiles(event.currentTarget)}
+				onChange={(event) => addFiles(composer, event.currentTarget)}
 			/>
 			<input
 				ref={libraryInputRef}
@@ -126,15 +182,15 @@ function MobileAttachmentPicker() {
 				type="file"
 				accept="image/*"
 				multiple
-				onChange={(event) => addFiles(event.currentTarget)}
+				onChange={(event) => addFiles(composer, event.currentTarget)}
 			/>
 			<input
 				ref={fileInputRef}
 				className="hidden"
 				type="file"
-				accept={attachmentAccept === "*" ? undefined : attachmentAccept}
+				accept={attachmentAccept}
 				multiple
-				onChange={(event) => addFiles(event.currentTarget)}
+				onChange={(event) => addFiles(composer, event.currentTarget)}
 			/>
 			<dialog ref={dialogRef} className="modal modal-bottom sm:hidden">
 				<div className="modal-box rounded-t-3xl p-3">
@@ -144,7 +200,7 @@ function MobileAttachmentPicker() {
 							<button
 								type="button"
 								className="min-h-12 text-base"
-								onClick={() => openInput(captureInputRef)}
+								onClick={() => openInput(captureInputRef, "capture")}
 							>
 								<Camera size={20} />
 								Capture
@@ -154,7 +210,7 @@ function MobileAttachmentPicker() {
 							<button
 								type="button"
 								className="min-h-12 text-base"
-								onClick={() => openInput(libraryInputRef)}
+								onClick={() => openInput(libraryInputRef, "library")}
 							>
 								<Image size={20} />
 								Library
@@ -164,7 +220,7 @@ function MobileAttachmentPicker() {
 							<button
 								type="button"
 								className="min-h-12 text-base"
-								onClick={() => openInput(fileInputRef)}
+								onClick={() => openInput(fileInputRef, "mobile-file")}
 							>
 								<FileUp size={20} />
 								File
@@ -937,6 +993,11 @@ export function Thread({
 		trpc.model.forConversation.queryOptions({ conversationId }),
 	);
 	const modelName = model.data?.name ?? model.data?.modelId;
+	const attachmentAccept = buildAttachmentAccept(
+		model.data?.vision ?? false,
+		model.data?.documentMimeTypes ?? [],
+		model.data?.documents ?? false,
+	);
 	const pasteSettings = useQuery(trpc.pasteSettings.queryOptions());
 	const pasteThresholds = pasteSettings.data ?? DEFAULT_PASTE_SETTINGS;
 	const [pasteError, setPasteError] = useState<string | null>(null);
@@ -1037,13 +1098,14 @@ export function Thread({
 						/>
 						<div className="flex items-center justify-between gap-2">
 							<div className="flex items-center gap-1">
-								<ComposerPrimitive.AddAttachment
-									className="btn btn-ghost btn-sm btn-circle hidden sm:inline-flex"
-									aria-label="Add attachment"
-								>
-									<Plus size={20} />
-								</ComposerPrimitive.AddAttachment>
-								<MobileAttachmentPicker />
+								<DesktopAttachmentPicker
+									attachmentAccept={attachmentAccept}
+									disabled={!model.data}
+								/>
+								<MobileAttachmentPicker
+									attachmentAccept={attachmentAccept}
+									disabled={!model.data}
+								/>
 								<div className="solar-composer-divider" />
 								<GenerationControls conversationId={conversationId} />
 								<McpControls

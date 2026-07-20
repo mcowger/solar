@@ -1,7 +1,11 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { sql } from "kysely";
 import { z } from "zod";
-import { createSolarApiKey, createSolarUser } from "../auth";
+import {
+	createSolarApiKey,
+	createSolarUser,
+	setSolarUserPassword,
+} from "../auth";
 import { config } from "../config";
 import { db, sqlite } from "../db";
 import {
@@ -1328,6 +1332,19 @@ const adminRouter = router({
 			}
 		}),
 
+	setUserPassword: adminProcedure
+		.input(
+			z.object({
+				userId: z.string(),
+				password: z.string().min(8).max(128),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			if (!(await setSolarUserPassword(input.userId, input.password))) {
+				throw new TRPCError({ code: "NOT_FOUND" });
+			}
+		}),
+
 	setUserRole: adminProcedure
 		.input(z.object({ userId: z.string(), role: z.enum(["admin", "user"]) }))
 		.mutation(async ({ ctx, input }) => {
@@ -1576,6 +1593,12 @@ const modelRouter = router({
 			);
 			const capabilities = await getModelCapabilities(selection);
 			const documentMimeTypes = await documentInputMimeTypes(selection);
+			console.info("[attachments] model capability", {
+				conversationId: input.conversationId,
+				selection,
+				documents: descriptor?.documents ?? false,
+				documentMimeTypes,
+			});
 			const effectiveReasoningEffort =
 				convo?.reasoningEffort ??
 				convo?.presetReasoningEffort ??

@@ -29,7 +29,7 @@ describe("SolarAttachmentAdapter", () => {
 		expect(adapter.accept).toContain(".xls");
 		expect(adapter.accept).toContain(".xlsx");
 		expect(adapter.accept).toContain(".docx");
-		expect(adapter.accept).not.toContain("application/pdf");
+		expect(adapter.accept).toContain("application/pdf");
 		expect(adapter.accept).toContain("text/*");
 	});
 
