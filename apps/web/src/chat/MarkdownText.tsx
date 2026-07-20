@@ -140,8 +140,16 @@ function SourceFavicon({ citation }: { citation: Citation }) {
  * Markdown `a` override: external http(s) links render as a compact source
  * pill (favicon + link text); everything else renders as a plain link.
  */
-function InlineSource({ href, children, ...props }: ComponentProps<"a">) {
-	const citation = typeof href === "string" ? citationFromLink("", href) : null;
+function InlineSource({
+	href,
+	children,
+	renderAsCitation,
+	...props
+}: ComponentProps<"a"> & { renderAsCitation: boolean }) {
+	const citation =
+		renderAsCitation && typeof href === "string"
+			? citationFromLink("", href)
+			: null;
 	if (!citation) {
 		return (
 			<a href={href} target="_blank" rel="noreferrer" {...props}>
@@ -308,7 +316,10 @@ export function PlainMarkdown({ text }: { text: string }) {
 export function MarkdownText() {
 	const dark = useDarkTheme();
 	const text = useAuiState((s) => (s.part.type === "text" ? s.part.text : ""));
-	const citations = citationsFrom(text);
+	const isStreaming = useAuiState((s) => s.part.status.type === "running");
+	// Citation parsing changes the rendered body (footer removal and source pills).
+	// Wait for the text part to settle so streamed chunks do not repeatedly shift it.
+	const citations = isStreaming ? [] : citationsFrom(text);
 	const trpc = useTRPC();
 	const citationUrls = citations
 		.map((citation) => citation.url)
@@ -329,7 +340,9 @@ export function MarkdownText() {
 				// Convert `\[…\]` / `\(…\)` to `$$…$$` / `$…$` before markdown parsing,
 				// so KaTeX sees the math (markdown would otherwise escape the brackets).
 				preprocess={(value) =>
-					rewriteLatexBracketDelimiters(removeCitationBlocks(value))
+					rewriteLatexBracketDelimiters(
+						isStreaming ? value : removeCitationBlocks(value),
+					)
 				}
 				remarkPlugins={[remarkGfm, remarkMath]}
 				rehypePlugins={[rehypeKatex]}
@@ -337,7 +350,9 @@ export function MarkdownText() {
 					SyntaxHighlighter: (props) => (
 						<CodeHighlighter {...props} dark={dark} />
 					),
-					a: InlineSource,
+					a: (props) => (
+						<InlineSource {...props} renderAsCitation={!isStreaming} />
+					),
 				}}
 			/>
 			<CitationSources citations={citations} categories={categories} />
