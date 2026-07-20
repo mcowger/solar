@@ -12,7 +12,8 @@ import type {
  */
 const TEXT_ACCEPT =
 	"text/*,application/json,application/ld+json,application/rtf,application/sql,application/toml,application/xml,application/yaml";
-const IMAGE_ACCEPT = "image/*";
+const IMAGE_ACCEPT =
+	"image/jpeg,image/png,image/gif,image/webp,image/avif,image/*";
 const DOCUMENT_ACCEPT =
 	"application/pdf,application/msword,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const DOCUMENT_MIME_TYPES = new Set(DOCUMENT_ACCEPT.split(","));
