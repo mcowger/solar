@@ -6,8 +6,10 @@
 
 node_modules/
 dist/
-.agents/skills/
+.agents/skills/*
 .claude/skills/
+!.agents/skills/solar-cli/
+!.agents/skills/solar-cli/SKILL.md
 
 
 

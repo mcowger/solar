@@ -18,7 +18,7 @@
       "command": "bun run build"
     },
     "staging:deploy": {
-      "command": "bun run solar staging deploy"
+      "command": "bun run deploy:staging"
     },
     "migrate": {
       "command": "bun run migrate"

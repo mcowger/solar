@@ -61,8 +61,11 @@ handle this; for a foreground run pass it explicitly:
 bun --env-file=.env run --cwd apps/server dev
 ```
 
-In development with an empty database, the server seeds a convenience admin
-login: `admin@solar.local` / `password` (details in `apps/server/AGENTS.md`).
+On a first run against an empty development database, the server prints the
+seeded admin login (`admin@solar.local` / `password`) and generated Development
+API key. Use that key to investigate the local instance with `bun run solar
+history …`. Retrieve it from the `dev start` output or `.dev-server.log`. The
+seed does not run after users exist or in production.
 
 **Single process for everything.** The server serves the API *and*
 bundles/serves the React app with HMR. There is **no separate web dev server
@@ -76,7 +79,8 @@ and no Vite** — don't add one.
 | `bun run build` | Production bundle of the web app → `apps/server/dist/web` |
 | `bun run migrate` / `migrate:auth` | App (Kysely) / Better Auth migrations against `solar.db` |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
-| `bun run solar history …` / `bun run solar staging deploy` | Server operations — see `docs/chat-history.md` |
+| `bun run solar history …` | Investigate an existing local or remote server — see `docs/chat-history.md` |
+| `bun run deploy:staging` | Dedicated staging deployment; separate from `solar` and only run when deployment is intended |
 | `bun run typecheck` | `tsc` for server, web, shared, and Playwright tests |
 | `bun run test` | Run server and frontend Bun unit tests (`test:server` / `test:web` for one) |
 | `bun run test:e2e` | Playwright E2E in Chromium (`test:e2e:all` for all three browsers) |

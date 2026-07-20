@@ -1,8 +1,9 @@
-# Solar operations CLI
+# Solar server-management CLI
 
-All server operations run through `bun run solar`. History and deployment
-commands require `SOLAR_API_KEY` (or `--api-key`) and send it as the
-`X-API-Key` header. Set `SOLAR_URL` (or pass `--url`) to target another server.
+`bun run solar` manages or investigates existing servers. History commands
+require `SOLAR_API_KEY` (or `--api-key`) and send it as the `X-API-Key` header.
+Set `SOLAR_URL` (or pass `--url`) to target another server. Deployment is a
+separate `bun run deploy:staging` command.
 
 ## Local server
 
@@ -36,8 +37,12 @@ bundles include attachment metadata but not the underlying attachment files.
 
 ## Staging deployment
 
-`bun run solar staging deploy` rebuilds and recreates the configured container,
-checks its health, and exports all chat history. It uses the same `SOLAR_URL`
-and `SOLAR_API_KEY` as history commands. Deployment-only configuration uses
-`SOLAR_DEPLOY_*`; history output uses
-`SOLAR_HISTORY_OUTPUT`.
+`bun run deploy:staging` rebuilds and recreates the configured container,
+checks its health, and exports all chat history. Its configuration uses
+`SOLAR_STAGING_*`, including `SOLAR_STAGING_URL`,
+`SOLAR_STAGING_API_KEY`, `SOLAR_STAGING_HISTORY_OUTPUT`,
+`SOLAR_STAGING_DOCKER_CONTEXT`, `SOLAR_STAGING_SSH_HOST`,
+`SOLAR_STAGING_CONTAINER_NAME`, `SOLAR_STAGING_IMAGE_NAME`,
+`SOLAR_STAGING_IMAGE_RETAIN`, `SOLAR_STAGING_HEALTH_TIMEOUT`, and
+`SOLAR_STAGING_TARGET_PLATFORM`. It is a state-changing operation; do not run
+it to investigate a server.

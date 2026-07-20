@@ -28,10 +28,12 @@ seeds a convenience account (`src/db/seed-dev.ts`):
 | --- | --- |
 | Email | `admin@solar.local` |
 | Password | `password` |
+| API key | Generated once and printed as `seeded dev API key: <key>` |
 
 Because it is the first account created, it becomes the **admin** (first user
-is admin). The seed never runs in production and never runs if any user already
-exists. Delete `apps/server/solar.db*` to reset.
+is admin). The API key persists in the development database. The seed never
+runs in production and never runs if any user already exists. Delete
+`apps/server/solar.db*` only when an intentional reset is required.
 
 ## Database & migrations
 

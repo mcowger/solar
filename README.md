@@ -119,7 +119,9 @@ bun run solar dev start
 
 The managed server chooses a stable worktree-specific port in the `3000–3999`
 range. Set `PASEO_PORT` to override it. Use `SOLAR_MOCK_LLM=1` to exercise the
-full UI with a zero-cost local generator.
+full UI with a zero-cost local generator. On an empty development database, it
+prints the seeded admin login and generated Development API key, which persists
+with the database.
 
 ### Bun package (after publishing)
 

@@ -7,7 +7,6 @@ const LOCAL_URL = "http://localhost:3000";
 const usage = `Usage:
   bun run solar dev <start|stop|restart|status|logs> [options]
   bun run solar history <list|inspect|export|export-all|import> [options]
-  bun run solar staging deploy [--url <url>] [--output <path>]
 
 History commands use --url (or SOLAR_URL) and --api-key (or SOLAR_API_KEY).`;
 
@@ -92,34 +91,6 @@ if (group === "dev") {
 		["scripts/dev-server.sh", command, ...args],
 		{ stdio: "inherit" },
 	);
-	process.exit(result.status ?? 1);
-}
-
-if (group === "staging" && command === "deploy") {
-	const { values, positionals } = parseArgs({
-		args,
-		options: {
-			url: { type: "string" },
-			output: { type: "string" },
-			"api-key": { type: "string" },
-			help: { type: "boolean", short: "h" },
-		},
-		allowPositionals: false,
-		strict: true,
-	});
-	if (values.help || positionals.length) {
-		console.log(usage);
-		process.exit(values.help ? 0 : 1);
-	}
-	const result = spawnSync("bun", ["scripts/deploy-staging.ts"], {
-		env: {
-			...process.env,
-			SOLAR_URL: values.url ?? process.env.SOLAR_URL,
-			SOLAR_HISTORY_OUTPUT: values.output ?? process.env.SOLAR_HISTORY_OUTPUT,
-			SOLAR_API_KEY: values["api-key"] ?? process.env.SOLAR_API_KEY,
-		},
-		stdio: "inherit",
-	});
 	process.exit(result.status ?? 1);
 }
 
