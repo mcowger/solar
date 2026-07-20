@@ -188,14 +188,14 @@ export function Sidebar({
 				</button>
 				<span
 					className={`shrink-0 text-xs tabular-nums text-base-content/45 ${
-						active ? "hidden" : "group-hover:hidden"
+						active ? "hidden" : "group-hover:hidden pointer-coarse:hidden"
 					}`}
 				>
 					{relativeAge(c.updatedAt)}
 				</span>
 				<div
 					className={`dropdown dropdown-end shrink-0 ${
-						active ? "" : "hidden group-hover:block"
+						active ? "" : "hidden group-hover:block pointer-coarse:block"
 					}`}
 				>
 					<div

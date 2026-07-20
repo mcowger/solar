@@ -222,9 +222,13 @@ function AttachmentChip({ removable }: { removable?: boolean }) {
 					| { type: "image"; image: string }
 					| undefined)
 			: undefined;
+	const downloadHref =
+		!removable && attachment.id
+			? `/api/attachments/${attachment.id}`
+			: undefined;
 
-	return (
-		<AttachmentPrimitive.Root className="solar-attachment-chip">
+	const body = (
+		<>
 			{imagePart ? (
 				<img
 					src={imagePart.image}
@@ -246,6 +250,23 @@ function AttachmentChip({ removable }: { removable?: boolean }) {
 				>
 					<X size={12} />
 				</AttachmentPrimitive.Remove>
+			)}
+		</>
+	);
+
+	return (
+		<AttachmentPrimitive.Root className="solar-attachment-chip">
+			{downloadHref ? (
+				<a
+					className="solar-attachment-download"
+					href={downloadHref}
+					download={attachment.name}
+					title={`Download ${attachment.name}`}
+				>
+					{body}
+				</a>
+			) : (
+				body
 			)}
 		</AttachmentPrimitive.Root>
 	);

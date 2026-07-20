@@ -384,10 +384,19 @@
 }
 
 .solar-attachment-thumb {
-  width: 24px;
-  height: 24px;
+  width: 64px;
+  height: 64px;
   object-fit: cover;
   border-radius: 4px;
+}
+
+.solar-attachment-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .solar-attachment-icon {
