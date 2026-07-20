@@ -129,6 +129,27 @@ function PresetEditor({
 						}
 						rows={4}
 					/>
+					<div className="rounded-box border border-base-300 bg-base-200 px-3 py-2 text-sm">
+						<p className="font-medium">Live context</p>
+						<p className="mt-1 opacity-70">
+							Use these values in your prompt. They are refreshed for every
+							response.
+						</p>
+						<ul className="mt-2 space-y-1 font-mono text-xs">
+							<li>
+								{"{{get_current_datetime}}"} → Monday, January 1, 2024 at
+								12:00:00 PM EST
+							</li>
+							<li>
+								{"{{get_timezone_info}}"} → America/New_York (EST, GMT-05:00)
+							</li>
+							<li>{"{{get_user_location}}"} → New York, United States</li>
+						</ul>
+						<p className="mt-2 opacity-70">
+							Location renders as <span className="font-mono">unknown</span>{" "}
+							when it cannot be found.
+						</p>
+					</div>
 				</fieldset>
 
 				{showReasoningEffort && (
@@ -278,7 +299,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
 						Close
 					</button>
 				</header>
-				<div className="overflow-y-auto p-5 sm:p-6">
+				<div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
 					{form ? (
 						<PresetEditor
 							form={form}

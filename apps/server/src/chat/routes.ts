@@ -32,7 +32,10 @@ import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
 import { toolProvider } from "./tools";
 import { contextRuntime } from "../context/runtime";
 import { ContextRepository } from "../context/repository";
-import type { UserLocation } from "./builtins";
+import {
+	renderBuiltinPromptInterpolations,
+	type UserLocation,
+} from "./builtins";
 import { reverseGeocode } from "./location";
 
 export const chatRoutes = new Hono();
@@ -276,15 +279,19 @@ async function streamNewAssistantTurn(
 		documentInputCapabilities(selection),
 		getModelCapabilities(selection),
 	]);
+	const systemPrompt = renderBuiltinPromptInterpolations(
+		convo?.systemPrompt,
+		userLocation,
+	);
 	const assembled = await contextRuntime.assemble(
 		conversationId,
 		selection,
-		convo?.systemPrompt,
+		systemPrompt,
 		loadAttachmentSummary,
 	);
 	const { context, documents } = await buildContext(
 		conversationId,
-		convo?.systemPrompt,
+		systemPrompt,
 		documentInput,
 		assembled.messageIds,
 		assembled.summary,
@@ -301,7 +308,7 @@ async function streamNewAssistantTurn(
 		logger.withMetadata({ conversationId, userId }).trace(prompt.content);
 	}
 	const params: GenerationParams = {
-		systemPrompt: convo?.systemPrompt ?? undefined,
+		systemPrompt: systemPrompt ?? undefined,
 		reasoningEffort:
 			convo?.reasoningEffort ??
 			convo?.presetReasoningEffort ??

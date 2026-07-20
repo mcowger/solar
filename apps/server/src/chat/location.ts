@@ -2,7 +2,7 @@ import type { UserLocation } from "./builtins";
 
 const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
 const NOMINATIM_USER_AGENT = "Solar/0.1.0 (https://solar.home.cowger.us)";
-const REQUEST_TIMEOUT_MS = 5_000;
+const REQUEST_TIMEOUT_MS = 1_000;
 const CITY_FIELDS = ["city", "town", "village", "municipality", "hamlet"];
 
 interface NominatimResponse {

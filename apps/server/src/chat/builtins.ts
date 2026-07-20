@@ -18,6 +18,59 @@ export interface UserLocation {
 const asText = (value: unknown) =>
 	typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
+function formatDateTime(timeZone: string): string | undefined {
+	try {
+		return new Intl.DateTimeFormat("en-US", {
+			timeZone,
+			dateStyle: "full",
+			timeStyle: "long",
+		}).format(new Date());
+	} catch {
+		return undefined;
+	}
+}
+
+function formatTimezoneInfo(timeZone: string): string | undefined {
+	const now = new Date();
+	try {
+		const utcOffset =
+			new Intl.DateTimeFormat("en-US", {
+				timeZone,
+				timeZoneName: "longOffset",
+			})
+				.formatToParts(now)
+				.find((part) => part.type === "timeZoneName")?.value ?? "unknown";
+		const abbreviation =
+			new Intl.DateTimeFormat("en-US", {
+				timeZone,
+				timeZoneName: "short",
+			})
+				.formatToParts(now)
+				.find((part) => part.type === "timeZoneName")?.value ?? "unknown";
+		return `${timeZone} (${abbreviation}, ${utcOffset})`;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Render the built-in context values supported in preset system prompts. */
+export function renderBuiltinPromptInterpolations(
+	systemPrompt: string | null | undefined,
+	userLocation?: UserLocation,
+): string | null | undefined {
+	if (!systemPrompt) return systemPrompt;
+	const timeZone = userLocation?.timeZone ?? "UTC";
+	const values = {
+		get_current_datetime: formatDateTime(timeZone) ?? "unknown",
+		get_user_location: userLocation?.displayName ?? "unknown",
+		get_timezone_info: formatTimezoneInfo(timeZone) ?? "unknown",
+	};
+	return systemPrompt.replace(
+		/{{(get_current_datetime|get_user_location|get_timezone_info)}}/g,
+		(_, name: keyof typeof values) => values[name],
+	);
+}
+
 function getCurrentDatetime(
 	args: { timeZone?: string },
 	userLocation?: UserLocation,
@@ -30,7 +83,7 @@ function getCurrentDatetime(
 		const timeZone = args.timeZone ?? userLocation?.timeZone;
 		const localTimeZone = timeZone ?? "UTC";
 		const local = new Intl.DateTimeFormat("en-US", {
-			timeZone,
+			timeZone: localTimeZone,
 			dateStyle: "full",
 			timeStyle: "long",
 		}).format(now);

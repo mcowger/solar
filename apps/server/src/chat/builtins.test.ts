@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { resolveBuiltinTools } from "./builtins";
+import {
+	renderBuiltinPromptInterpolations,
+	resolveBuiltinTools,
+} from "./builtins";
 
 function builtin(name: string, timeZone?: string) {
 	const tool = resolveBuiltinTools(timeZone ? { timeZone } : undefined).find(
@@ -10,6 +13,31 @@ function builtin(name: string, timeZone?: string) {
 }
 
 describe("location built-ins", () => {
+	test("renders prompt interpolations from the current user context", () => {
+		const prompt = renderBuiltinPromptInterpolations(
+			"Date: {{get_current_datetime}}\nZone: {{get_timezone_info}}\nPlace: {{get_user_location}}",
+			{
+				timeZone: "America/New_York",
+				displayName: "New York, United States",
+			},
+		);
+
+		expect(prompt).toContain("Place: New York, United States");
+		expect(prompt).toContain("Zone: America/New_York");
+		expect(prompt).toMatch(/Date: \w+, \w+ \d+, \d{4}/);
+		expect(prompt).not.toContain("{{get_");
+	});
+
+	test("uses UTC and unknown when location cannot be found", () => {
+		const prompt = renderBuiltinPromptInterpolations(
+			"Date: {{get_current_datetime}}\nZone: {{get_timezone_info}}\nPlace: {{get_user_location}}\nKeep: {{custom_value}}",
+		);
+
+		expect(prompt).toContain("Zone: UTC");
+		expect(prompt).toContain("Place: unknown");
+		expect(prompt).toContain("Keep: {{custom_value}}");
+	});
+
 	test("returns browser-provided location information", async () => {
 		const result = await resolveBuiltinTools({
 			timeZone: "America/New_York",
