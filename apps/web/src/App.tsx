@@ -4,7 +4,7 @@ import { ChatApp } from "./chat/ChatApp";
 import { useEffect, useState } from "react";
 
 const serviceWorkerUpdatedKey = "solar:service-worker-updated";
-const updateNotificationDuration = 5_000;
+const updateNotificationDuration = 2_000;
 
 export function App() {
 	const { data: session, isPending } = useSession();
@@ -32,10 +32,8 @@ export function App() {
 				<AuthForm />
 			)}
 			{showUpdateNotification && (
-				<div className="toast toast-top toast-end">
-					<div className="alert alert-success">
-						Updated to the latest version.
-					</div>
+				<div className="toast toast-bottom toast-start solar-update-toast">
+					<div className="solar-update-notice">Updated</div>
 				</div>
 			)}
 		</>

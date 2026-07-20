@@ -143,6 +143,18 @@
 .solar-reasoning-body, .solar-attachment-chip { background: var(--color-base-300) !important; color: var(--color-base-content) !important; }
 .solar-auth { background: radial-gradient(circle at top, color-mix(in oklch, var(--color-accent) 30%, transparent), transparent 30rem); }
 .solar-panel { border-color: var(--color-base-300) !important; background: color-mix(in oklch, var(--color-base-100) 88%, transparent); }
+.solar-update-toast { pointer-events: none; padding: 1rem; }
+.solar-update-notice {
+  border: 1px solid color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-base-100) 88%, transparent);
+  box-shadow: 0 0.25rem 1rem color-mix(in oklch, var(--color-base-content) 10%, transparent);
+  color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 0.35rem 0.7rem;
+}
 
 @media (width >= 650px) {
   .solar-app { grid-template-columns: var(--solar-sidebar-width) minmax(0, 1fr); }
