@@ -21,3 +21,4 @@ ENV SOLAR_ATTACHMENTS_DIR=/data/attachments
 EXPOSE 3000
 
 CMD ["bun", "run", "dist/index.js"]
+ 
