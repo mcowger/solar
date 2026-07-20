@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Star } from "lucide-react";
+import { Check, ChevronDown, Star } from "lucide-react";
 import { useTRPC } from "../trpc";
 
 interface Selection {
@@ -13,12 +13,17 @@ function key(s: Selection) {
 	return `${s.provider}/${s.endpointId}/${s.modelId}/${s.api}`;
 }
 
+function closeDropdown() {
+	(document.activeElement as HTMLElement | null)?.blur();
+}
+
 /**
- * Per-conversation model selector. Switching persists the choice on the
- * conversation immediately (switchable at any time). "Make default" stores the
- * choice as the user's personal default for new conversations.
+ * Per-conversation model selector rendered as the page-title dropdown. Switching
+ * persists the choice on the conversation immediately (switchable at any time).
+ * "Make default" stores the choice as the user's personal default for new
+ * conversations.
  */
-export function ModelPicker({ conversationId }: { conversationId: string }) {
+export function ModelMenu({ conversationId }: { conversationId: string }) {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
 
@@ -50,65 +55,88 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
 	const cur = current.data;
 	const isCurrentDefault =
 		cur && userDefault.data && key(cur) === key(userDefault.data);
+	const label = cur?.name ?? cur?.modelId ?? "Select model";
+	const curUnavailable = cur && !models.some((m) => key(m) === key(cur));
 
 	if (models.length === 0) {
 		return (
-			<div className="border-b border-base-300 px-4 py-2 text-sm text-base-content/60">
+			<span className="px-2 text-sm text-base-content/60">
 				No models configured.
-			</div>
+			</span>
 		);
 	}
 
 	return (
-		<div className="flex items-center gap-2 border-b border-base-300 px-4 py-1.5 text-sm">
-			<select
-				className="select select-sm"
-				value={cur ? key(cur) : ""}
-				onChange={(e) => {
-					const m = models.find((x) => key(x) === e.target.value);
-					if (m)
-						setModel.mutate({
-							id: conversationId,
-							provider: m.provider,
-							endpointId: m.endpointId,
-							modelId: m.modelId,
-							api: m.api,
-						});
-				}}
+		<div className="dropdown">
+			<div
+				tabIndex={0}
+				role="button"
+				className="btn btn-ghost btn-sm min-w-0 gap-1 px-2 text-base font-semibold"
+				title="Change model"
 			>
-				{cur && !models.some((m) => key(m) === key(cur)) && (
-					<option value={key(cur)}>
-						{cur.name ?? cur.modelId} (unavailable)
-					</option>
+				<span className="truncate">{label}</span>
+				<ChevronDown size={16} className="shrink-0 opacity-60" />
+			</div>
+			<ul className="menu dropdown-content z-20 mt-1 max-h-[70vh] w-64 flex-nowrap overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+				{curUnavailable && cur && (
+					<li className="menu-disabled">
+						<span className="justify-between">
+							{cur.name ?? cur.modelId}
+							<span className="text-xs opacity-60">unavailable</span>
+						</span>
+					</li>
 				)}
-				{models.map((m) => (
-					<option key={key(m)} value={key(m)}>
-						{m.name}
-					</option>
-				))}
-			</select>
-			{cur && !isCurrentDefault && (
-				<div
-					className="tooltip tooltip-bottom"
-					data-tip="Use this model as your default for new conversations"
-				>
-					<button
-						type="button"
-						className="btn btn-ghost btn-xs btn-circle"
-						onClick={() =>
-							setDefault.mutate({
-								provider: cur.provider,
-								endpointId: cur.endpointId,
-								modelId: cur.modelId,
-								api: cur.api,
-							})
-						}
-						disabled={setDefault.isPending}
-					>
-						{setDefault.isSuccess ? <Check size={15} /> : <Star size={15} />}
-					</button>
-				</div>
-			)}
+				{models.map((m) => {
+					const selected = cur && key(m) === key(cur);
+					return (
+						<li key={key(m)}>
+							<button
+								type="button"
+								className="justify-between"
+								onClick={() => {
+									if (!selected)
+										setModel.mutate({
+											id: conversationId,
+											provider: m.provider,
+											endpointId: m.endpointId,
+											modelId: m.modelId,
+											api: m.api,
+										});
+									closeDropdown();
+								}}
+							>
+								<span className="truncate">{m.name}</span>
+								{selected && <Check size={15} className="shrink-0" />}
+							</button>
+						</li>
+					);
+				})}
+				{cur && !isCurrentDefault && (
+					<>
+						<li className="menu-title px-2 pt-2 pb-0 text-xs">
+							New conversations
+						</li>
+						<li>
+							<button
+								type="button"
+								onClick={() => {
+									setDefault.mutate({
+										provider: cur.provider,
+										endpointId: cur.endpointId,
+										modelId: cur.modelId,
+										api: cur.api,
+									});
+									closeDropdown();
+								}}
+								disabled={setDefault.isPending}
+							>
+								<Star size={15} className="shrink-0" />
+								Make this my default
+							</button>
+						</li>
+					</>
+				)}
+			</ul>
 		</div>
 	);
 }

@@ -11,7 +11,7 @@
     <link rel="icon" href="./public/icons/solar-v2-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="./public/icons/solar-v2-apple-touch-180.png" />
     <link rel="stylesheet" href="./src/app.css" />
-    <script>const p=localStorage.getItem("solar-theme")||"system";document.documentElement.dataset.theme=p==="system"?(matchMedia("(prefers-color-scheme: dark)").matches?"solar-dark":"solar-light"):`solar-${p}`;</script>
+    <script>document.documentElement.dataset.theme=localStorage.getItem("solar-daisy-theme")||"wireframe";</script>
   </head>
   <body>
     <div id="root"></div>

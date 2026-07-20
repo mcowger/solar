@@ -11,13 +11,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	Brain,
 	Ban,
+	Bot,
 	Camera,
+	ChevronDown,
 	Copy,
 	Cog,
+	FileText,
 	FileUp,
 	Image,
 	LoaderCircle,
-	Paperclip,
+	Plus,
 	Podcast,
 	Repeat2,
 	Scissors,
@@ -27,9 +30,16 @@ import {
 	SquarePen,
 	X,
 } from "lucide-react";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import {
+	createContext,
+	useContext,
+	useEffect,
+	useRef,
+	useState,
+	type RefObject,
+} from "react";
 import { useTRPC } from "../trpc";
-import { MarkdownText } from "./MarkdownText";
+import { MarkdownText, PlainMarkdown } from "./MarkdownText";
 import type {
 	SolarConnectionStatus,
 	SolarSummaryEvent,
@@ -43,6 +53,30 @@ const DEFAULT_PASTE_SETTINGS = {
 	lineThreshold: 20,
 	byteThreshold: 5 * 1024,
 };
+
+/** Display name of the conversation's model, for the assistant identity row. */
+const ModelNameContext = createContext<string | undefined>(undefined);
+
+/** Format a message timestamp like "Today at 9:34 AM" / "Yesterday at …". */
+function formatMessageTimestamp(iso?: string): string {
+	if (!iso) return "";
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return "";
+	const time = date.toLocaleTimeString(undefined, {
+		hour: "numeric",
+		minute: "2-digit",
+	});
+	const now = new Date();
+	const startOfDay = (d: Date) =>
+		new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+	const dayDiff = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000);
+	if (dayDiff === 0) return `Today at ${time}`;
+	if (dayDiff === 1) return `Yesterday at ${time}`;
+	return `${date.toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+	})} at ${time}`;
+}
 
 function MobileAttachmentPicker() {
 	const composer = useComposerRuntime();
@@ -71,11 +105,11 @@ function MobileAttachmentPicker() {
 		<>
 			<button
 				type="button"
-				className="btn btn-ghost btn-sm btn-square sm:hidden"
+				className="btn btn-ghost btn-sm btn-circle sm:hidden"
 				aria-label="Add attachment"
 				onClick={() => dialogRef.current?.showModal()}
 			>
-				<Paperclip size={18} />
+				<Plus size={20} />
 			</button>
 			<input
 				ref={captureInputRef}
@@ -197,7 +231,9 @@ function AttachmentChip({ removable }: { removable?: boolean }) {
 					className="solar-attachment-thumb"
 				/>
 			) : (
-				<span className="solar-attachment-icon">📄</span>
+				<span className="solar-attachment-icon">
+					<FileText size={14} />
+				</span>
 			)}
 			<span className="solar-attachment-name">
 				<AttachmentPrimitive.Name />
@@ -238,11 +274,15 @@ function Reasoning() {
 				className="solar-reasoning-toggle"
 				onClick={() => setOpen((o) => !o)}
 			>
-				{isRunning ? "Thinking…" : "Thinking"} {open ? "▾" : "▸"}
+				{isRunning ? "Thinking…" : "Thought"}
+				<ChevronDown
+					size={13}
+					className={`solar-reasoning-caret${open ? " solar-reasoning-caret-open" : ""}`}
+				/>
 			</button>
 			{open && (
 				<div className="solar-reasoning-body" ref={bodyRef}>
-					{text}
+					<PlainMarkdown text={text} />
 				</div>
 			)}
 		</div>
@@ -334,7 +374,7 @@ export function SummaryEventCard({ event }: { event: SolarSummaryEvent }) {
 					</span>
 					<div className="min-w-0 flex-1">
 						<div className="text-xs font-medium">Conversation summarized</div>
-						<div className="mt-0.5 font-mono text-[11px] opacity-65">
+						<div className="mt-0.5 text-[11px] tabular-nums opacity-65">
 							{tokenStats}
 						</div>
 					</div>
@@ -407,28 +447,11 @@ function UserMessage() {
 	return (
 		<>
 			<SummaryEventMarker position="before" />
-			<div
-				className="solar-message"
-				style={{
-					alignSelf: "flex-end",
-					maxWidth: "80%",
-					display: "flex",
-					flexDirection: "column",
-					alignItems: "flex-end",
-					gap: 2,
-				}}
-			>
+			<div className="solar-message solar-message-user">
 				<MessagePrimitive.Attachments>
 					{() => <AttachmentChip />}
 				</MessagePrimitive.Attachments>
-				<div
-					className="solar-user-output"
-					style={{
-						background: "#e6f0ff",
-						padding: "8px 12px",
-						borderRadius: 12,
-					}}
-				>
+				<div className="solar-user-output">
 					<MessagePrimitive.Content />
 				</div>
 				<ActionBarPrimitive.Root
@@ -511,29 +534,29 @@ function AssistantMessage() {
 					| undefined
 			)?.forceStop,
 	);
+	const createdAt = useAuiState(
+		(s) =>
+			(s.message.metadata?.custom as { createdAt?: string } | undefined)
+				?.createdAt,
+	);
+	const modelName = useContext(ModelNameContext) ?? "Assistant";
+	const timestamp = formatMessageTimestamp(createdAt);
 
 	return (
 		<>
 			<SummaryEventMarker position="before" />
-			<div
-				className="solar-message"
-				style={{
-					alignSelf: "flex-start",
-					maxWidth: "80%",
-					display: "flex",
-					flexDirection: "column",
-					gap: 2,
-				}}
-			>
+			<div className="solar-message solar-message-assistant">
+				<div className="solar-assistant-identity">
+					<span className="solar-assistant-avatar">
+						<Bot size={18} />
+					</span>
+					<span className="solar-assistant-name">{modelName}</span>
+					{timestamp && (
+						<span className="solar-assistant-timestamp">{timestamp}</span>
+					)}
+				</div>
 				<ToolCalls />
-				<div
-					className="solar-assistant-output"
-					style={{
-						background: "#f2f2f2",
-						padding: "8px 12px",
-						borderRadius: 12,
-					}}
-				>
+				<div className="solar-assistant-output">
 					{isEmpty ? (
 						<EmptyAssistantResponse
 							isRunning={isRunning}
@@ -551,18 +574,18 @@ function AssistantMessage() {
 					className="solar-actions"
 					style={{ display: "flex", gap: 4 }}
 				>
-					<ActionBarPrimitive.Reload
-						className="solar-action-btn"
-						aria-label="Regenerate response"
-					>
-						<Repeat2 size={16} />
-					</ActionBarPrimitive.Reload>
 					<ActionBarPrimitive.Copy
 						className="solar-action-btn"
 						aria-label="Copy response"
 					>
 						<Copy size={16} />
 					</ActionBarPrimitive.Copy>
+					<ActionBarPrimitive.Reload
+						className="solar-action-btn"
+						aria-label="Regenerate response"
+					>
+						<Repeat2 size={16} />
+					</ActionBarPrimitive.Reload>
 				</ActionBarPrimitive.Root>
 			</div>
 			<SummaryEventMarker position="after" />
@@ -665,11 +688,9 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 					<button
 						type="button"
 						onClick={() => setOpen(open === "reasoning" ? null : "reasoning")}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 3,
-						}}
+						className={`solar-tool-toggle${
+							data?.reasoningEffort ? " solar-tool-toggle-active" : ""
+						}`}
 						title={`Reasoning effort: ${reasoningEffort ?? "default"}${data?.reasoningEffort ? "" : " (default)"}`}
 					>
 						<Brain size={18} />
@@ -713,11 +734,9 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 					<button
 						type="button"
 						onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
-						style={{
-							display: "flex",
-							alignItems: "center",
-							gap: 3,
-						}}
+						className={`solar-tool-toggle${
+							data?.verbosity ? " solar-tool-toggle-active" : ""
+						}`}
 						title={`Answer verbosity: ${verbosity ?? "default"}${data?.verbosity ? "" : " (default)"}`}
 					>
 						<Podcast size={18} />
@@ -791,11 +810,14 @@ function McpControls({
 	}, [open]);
 
 	if (!settings.data) return null;
+	const mcpActive = settings.data.servers.some((server) => server.enabled);
 	return (
 		<div ref={controlsRef} className="relative">
 			<button
 				type="button"
-				className="btn btn-ghost btn-sm btn-square"
+				className={`solar-tool-toggle${
+					mcpActive ? " solar-tool-toggle-active" : ""
+				}`}
 				title="MCP tools"
 				onClick={() => setOpen((value) => !value)}
 			>
@@ -879,9 +901,28 @@ export function Thread({
 }) {
 	const composer = useComposerRuntime();
 	const trpc = useTRPC();
+	const model = useQuery(
+		trpc.model.forConversation.queryOptions({ conversationId }),
+	);
+	const modelName = model.data?.name ?? model.data?.modelId;
 	const pasteSettings = useQuery(trpc.pasteSettings.queryOptions());
 	const pasteThresholds = pasteSettings.data ?? DEFAULT_PASTE_SETTINGS;
 	const [pasteError, setPasteError] = useState<string | null>(null);
+	const composerRef = useRef<HTMLDivElement>(null);
+	const [composerHeight, setComposerHeight] = useState(88);
+
+	// Keep the message list's bottom padding in sync with the floating composer
+	// so the last line of a reply is never hidden behind it.
+	useEffect(() => {
+		const node = composerRef.current;
+		if (!node) return;
+		const observer = new ResizeObserver(() => {
+			setComposerHeight(node.offsetHeight);
+		});
+		observer.observe(node);
+		setComposerHeight(node.offsetHeight);
+		return () => observer.disconnect();
+	}, []);
 
 	const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
 		setPasteError(null);
@@ -908,98 +949,99 @@ export function Thread({
 	};
 
 	return (
-		<ThreadPrimitive.Root
-			style={{ display: "flex", flexDirection: "column", height: "100%" }}
-		>
-			<ThreadPrimitive.Viewport
-				style={{
-					flex: 1,
-					overflowY: "auto",
-					overscrollBehaviorY: "contain",
-					padding: "1rem",
-					display: "flex",
-					flexDirection: "column",
-					gap: 12,
-				}}
+		<ModelNameContext.Provider value={modelName}>
+			<ThreadPrimitive.Root
+				style={{ position: "relative", height: "100%", minHeight: 0 }}
 			>
-				<ThreadPrimitive.Messages
-					components={{
-						UserMessage,
-						UserEditComposer,
-						AssistantMessage,
+				<ThreadPrimitive.Viewport
+					style={{
+						height: "100%",
+						overflowY: "auto",
+						overscrollBehaviorY: "contain",
+						paddingTop: "1rem",
+						paddingLeft: "1rem",
+						paddingRight: "1rem",
+						paddingBottom: composerHeight + 16,
+						display: "flex",
+						flexDirection: "column",
+						gap: 12,
 					}}
-				/>
-			</ThreadPrimitive.Viewport>
-
-			<ComposerPrimitive.Root
-				className="bg-base-200/70 rounded-t-2xl px-3 pt-3 pb-4 shadow-[0_-12px_30px_-24px_rgba(0,0,0,0.7)] sm:px-4"
-				style={{
-					boxSizing: "border-box",
-					display: "flex",
-					flexDirection: "column",
-					gap: 6,
-					minWidth: 0,
-					width: "100%",
-				}}
-			>
-				<ComposerPrimitive.Attachments>
-					{() => <AttachmentChip removable />}
-				</ComposerPrimitive.Attachments>
-				<ComposerPrimitive.Queue>
-					{({ queueItem }) => (
-						<span className="badge badge-info badge-sm self-start">
-							Queued: {queueItem.prompt}
-						</span>
-					)}
-				</ComposerPrimitive.Queue>
-				<ContextStatusIndicator status={contextStatus} />
-				{pasteError && (
-					<div role="alert" className="alert alert-error alert-soft text-sm">
-						{pasteError}
-					</div>
-				)}
-				<div className="flex flex-col gap-1 rounded-2xl bg-base-100/70 p-1.5 shadow-sm ring-1 ring-base-300/50">
-					<ComposerPrimitive.Input
-						placeholder="Message…"
-						className="textarea textarea-ghost max-h-48 min-h-10 w-full overflow-y-auto px-2 py-2"
-						unstable_insertNewlineOnTouchEnter
-						onPaste={handlePaste}
+				>
+					<ThreadPrimitive.Messages
+						components={{
+							UserMessage,
+							UserEditComposer,
+							AssistantMessage,
+						}}
 					/>
-					<div className="flex items-center justify-between gap-2">
-						<div className="flex items-center gap-1">
-							<ComposerPrimitive.AddAttachment
-								className="btn btn-ghost btn-sm btn-square hidden sm:inline-flex"
-								aria-label="Add attachment"
+				</ThreadPrimitive.Viewport>
+
+				<div ref={composerRef} className="solar-composer-dock">
+					<ComposerPrimitive.Root className="solar-composer">
+						<ComposerPrimitive.Attachments>
+							{() => <AttachmentChip removable />}
+						</ComposerPrimitive.Attachments>
+						<ComposerPrimitive.Queue>
+							{({ queueItem }) => (
+								<span className="badge badge-info badge-sm self-start">
+									Queued: {queueItem.prompt}
+								</span>
+							)}
+						</ComposerPrimitive.Queue>
+						<ContextStatusIndicator status={contextStatus} />
+						{pasteError && (
+							<div
+								role="alert"
+								className="alert alert-error alert-soft text-sm"
 							>
-								<Paperclip size={18} />
-							</ComposerPrimitive.AddAttachment>
-							<MobileAttachmentPicker />
-							<GenerationControls conversationId={conversationId} />
-							<McpControls
-								conversationId={conversationId}
-								onConfigure={onConfigureMcp}
-							/>
-						</div>
-						<div className="flex items-center gap-1">
-							<ComposerPrimitive.Send
-								className="btn btn-ghost btn-sm btn-square rounded-xl"
-								title="Send or queue message"
-							>
-								<Send size={18} />
-							</ComposerPrimitive.Send>
-							<ThreadPrimitive.If running>
-								<ComposerPrimitive.Cancel
-									className="btn btn-ghost btn-sm btn-square rounded-xl"
-									title="Interrupt response"
+								{pasteError}
+							</div>
+						)}
+						<ComposerPrimitive.Input
+							placeholder="Send a Message"
+							className="textarea textarea-ghost max-h-48 min-h-11 w-full resize-none bg-transparent px-2 py-1.5 focus:outline-none"
+							unstable_insertNewlineOnTouchEnter
+							onPaste={handlePaste}
+						/>
+						<div className="flex items-center justify-between gap-2">
+							<div className="flex items-center gap-1">
+								<ComposerPrimitive.AddAttachment
+									className="btn btn-ghost btn-sm btn-circle hidden sm:inline-flex"
+									aria-label="Add attachment"
 								>
-									<Square size={16} />
-								</ComposerPrimitive.Cancel>
-							</ThreadPrimitive.If>
+									<Plus size={20} />
+								</ComposerPrimitive.AddAttachment>
+								<MobileAttachmentPicker />
+								<div className="solar-composer-divider" />
+								<GenerationControls conversationId={conversationId} />
+								<McpControls
+									conversationId={conversationId}
+									onConfigure={onConfigureMcp}
+								/>
+							</div>
+							<div className="flex items-center gap-1">
+								<ThreadPrimitive.If running>
+									<ComposerPrimitive.Cancel
+										className="btn btn-error btn-sm btn-circle"
+										title="Interrupt response"
+									>
+										<Square size={16} />
+									</ComposerPrimitive.Cancel>
+								</ThreadPrimitive.If>
+								<ThreadPrimitive.If running={false}>
+									<ComposerPrimitive.Send
+										className="btn btn-primary btn-sm btn-circle"
+										title="Send or queue message"
+									>
+										<Send size={18} />
+									</ComposerPrimitive.Send>
+								</ThreadPrimitive.If>
+							</div>
 						</div>
-					</div>
+					</ComposerPrimitive.Root>
 				</div>
-			</ComposerPrimitive.Root>
-		</ThreadPrimitive.Root>
+			</ThreadPrimitive.Root>
+		</ModelNameContext.Provider>
 	);
 }
 

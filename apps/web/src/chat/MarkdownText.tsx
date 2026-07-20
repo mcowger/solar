@@ -4,6 +4,8 @@ import {
 	type SyntaxHighlighterProps,
 } from "@assistant-ui/react-markdown";
 import { useAuiState } from "@assistant-ui/react";
+import { ChevronRight } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import {
 	oneDark,
@@ -127,6 +129,7 @@ function CitationSources({
 				<span>
 					{citations.length} {citations.length === 1 ? "Source" : "Sources"}
 				</span>
+				<ChevronRight size={16} className="solar-citation-caret" />
 			</summary>
 			<ol className="solar-citation-list">
 				{citations.map((citation, index) => (
@@ -194,6 +197,21 @@ function CodeHighlighter({
 		>
 			{code}
 		</SyntaxHighlighter>
+	);
+}
+
+/**
+ * Lightweight Markdown renderer for plain strings (e.g. reasoning/"Thought"
+ * content) so bold/lists/etc. render instead of leaking literal `**` markers.
+ */
+export function PlainMarkdown({ text }: { text: string }) {
+	return (
+		<ReactMarkdown
+			remarkPlugins={[remarkGfm, remarkMath]}
+			rehypePlugins={[rehypeKatex]}
+		>
+			{rewriteLatexBracketDelimiters(text)}
+		</ReactMarkdown>
 	);
 }
 

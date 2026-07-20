@@ -45,11 +45,11 @@ const THEMES = [
 export function ThemeToggle() {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const [query, setQuery] = useState("");
-	const [currentTheme, setCurrentTheme] = useState("solar-light");
+	const [currentTheme, setCurrentTheme] = useState("wireframe");
 
 	useEffect(() => {
 		themeChange(false);
-		setCurrentTheme(document.documentElement.dataset.theme ?? "solar-light");
+		setCurrentTheme(document.documentElement.dataset.theme ?? "wireframe");
 	}, []);
 
 	const visibleThemes = useMemo(

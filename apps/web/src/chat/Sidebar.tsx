@@ -1,41 +1,97 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, FolderPlus, Menu } from "lucide-react";
+import {
+	ChevronDown,
+	FolderInput,
+	MoreHorizontal,
+	PanelLeftClose,
+	Pencil,
+	Search,
+	SquarePen,
+	Sun,
+	Tag,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 import { trpcClient } from "../trpcClient";
 
-const rowButton: React.CSSProperties = {
-	border: "none",
-	background: "transparent",
-	cursor: "pointer",
-	fontSize: 12,
-	color: "#888",
-	padding: "0 4px",
-};
-
 interface SidebarProps {
 	activeId: string | undefined;
 	onSelect: (id: string) => void;
-	onClose: () => void;
+	onToggleCollapse: () => void;
+	onNewChat: () => void;
 	presets: { id: string; name: string }[];
 	onNewWithPreset: (presetId: string) => void;
+}
+
+interface ConversationItem {
+	id: string;
+	title: string;
+	folderId: string | null;
+	updatedAt: string;
+	tags: { id: string; name: string }[];
+}
+
+const startOfDay = (d: Date) =>
+	new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+/** Compact relative age for a conversation row, e.g. "now", "3h", "2d". */
+function relativeAge(iso: string): string {
+	const diffMs = Date.now() - new Date(iso).getTime();
+	const minutes = Math.floor(diffMs / 60_000);
+	if (minutes < 1) return "now";
+	if (minutes < 60) return `${minutes}m`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h`;
+	const days = Math.floor(hours / 24);
+	if (days < 7) return `${days}d`;
+	if (days < 30) return `${Math.floor(days / 7)}w`;
+	const months = Math.floor(days / 30);
+	if (months < 12) return `${months}mo`;
+	return `${Math.floor(months / 12)}y`;
+}
+
+const RECENCY_GROUPS = [
+	{ key: "today", label: "Today" },
+	{ key: "yesterday", label: "Yesterday" },
+	{ key: "week", label: "Previous 7 Days" },
+	{ key: "month", label: "Previous 30 Days" },
+	{ key: "older", label: "Older" },
+] as const;
+
+type RecencyKey = (typeof RECENCY_GROUPS)[number]["key"];
+
+function recencyKey(iso: string): RecencyKey {
+	const days = Math.floor(
+		(startOfDay(new Date()) - startOfDay(new Date(iso))) / 86_400_000,
+	);
+	if (days <= 0) return "today";
+	if (days === 1) return "yesterday";
+	if (days <= 7) return "week";
+	if (days <= 30) return "month";
+	return "older";
+}
+
+function closeMenu() {
+	(document.activeElement as HTMLElement | null)?.blur();
 }
 
 export function Sidebar({
 	activeId,
 	onSelect,
-	onClose,
+	onToggleCollapse,
+	onNewChat,
 	presets,
 	onNewWithPreset,
 }: SidebarProps) {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
 	const [search, setSearch] = useState("");
-	const [tagFilter, setTagFilter] = useState<string | null>(null);
+	const [searchOpen, setSearchOpen] = useState(false);
 
 	const conversations = useQuery(trpc.conversation.list.queryOptions());
 	const folders = useQuery(trpc.folder.list.queryOptions());
-	const tags = useQuery(trpc.tag.list.queryOptions());
 	const searchResults = useQuery(
 		trpc.conversation.search.queryOptions(
 			{ query: search.trim() },
@@ -61,23 +117,9 @@ export function Sidebar({
 	const createFolder = useMutation(
 		trpc.folder.create.mutationOptions({ onSuccess: invalidateAll }),
 	);
-	const renameFolder = useMutation(
-		trpc.folder.rename.mutationOptions({ onSuccess: invalidateAll }),
-	);
-	const removeFolder = useMutation(
-		trpc.folder.remove.mutationOptions({ onSuccess: invalidateAll }),
-	);
 
-	const list = conversations.data ?? [];
+	const list = (conversations.data ?? []) as ConversationItem[];
 	const folderList = folders.data ?? [];
-	const tagList = tags.data ?? [];
-
-	const filtered = tagFilter
-		? list.filter((c) => c.tags.some((t) => t.id === tagFilter))
-		: list;
-
-	const byFolder = (folderId: string | null) =>
-		filtered.filter((c) => c.folderId === folderId);
 
 	async function editTags(
 		conversationId: string,
@@ -117,307 +159,280 @@ export function Sidebar({
 		if (window.confirm("Delete this conversation?")) remove.mutate({ id });
 	}
 
-	const ConversationRow = (c: (typeof list)[number]) => (
-		<div
-			key={c.id}
-			className={`solar-conversation-row group relative hover:bg-base-200${c.id === activeId ? " bg-secondary/15" : ""}`}
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				gap: 2,
-				padding: "6px 8px",
-				borderRadius: 8,
-			}}
-		>
-			<div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+	async function moveToNewFolder(conversationId: string) {
+		const name = window.prompt("New folder name:");
+		if (!name?.trim()) return;
+		const folder = await trpcClient.folder.create.mutate({ name: name.trim() });
+		move.mutate({ id: conversationId, folderId: folder.id });
+	}
+
+	const ConversationRow = (c: ConversationItem) => {
+		const active = c.id === activeId;
+		return (
+			<div
+				key={c.id}
+				className={`group relative flex items-center gap-1 rounded-lg px-2 py-1.5 ${
+					active ? "bg-base-300" : "hover:bg-base-200"
+				}`}
+			>
 				<button
+					type="button"
 					onClick={() => onSelect(c.id)}
 					title={c.title}
-					style={{
-						flex: 1,
-						textAlign: "left",
-						border: "none",
-						background: "transparent",
-						cursor: "pointer",
-						fontSize: 14,
-						overflow: "hidden",
-						textOverflow: "ellipsis",
-						whiteSpace: "nowrap",
-					}}
+					className="min-w-0 flex-1 truncate text-left text-sm"
 				>
 					{c.title}
 				</button>
-				<div className="invisible absolute top-1.5 right-2 flex items-center gap-1 rounded bg-base-200 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100">
-					<button
-						style={rowButton}
-						title="Rename"
-						onClick={() => renameConversation(c.id, c.title)}
-					>
-						✎
-					</button>
-					<button
-						style={rowButton}
-						title="Tags"
-						onClick={() => editTags(c.id, c.tags)}
-					>
-						#
-					</button>
+				<span
+					className={`shrink-0 text-xs tabular-nums text-base-content/45 ${
+						active ? "hidden" : "group-hover:hidden"
+					}`}
+				>
+					{relativeAge(c.updatedAt)}
+				</span>
+				<div
+					className={`dropdown dropdown-end shrink-0 ${
+						active ? "" : "hidden group-hover:block"
+					}`}
+				>
 					<div
-						style={{ position: "relative", width: 20, height: 20 }}
-						title="Move to folder"
+						tabIndex={0}
+						role="button"
+						className="btn btn-ghost btn-xs btn-circle"
+						aria-label="Conversation options"
 					>
-						<FolderInput
-							size={16}
-							color="#888"
-							style={{ position: "absolute", inset: 2, pointerEvents: "none" }}
-						/>
-						<select
-							value={c.folderId ?? ""}
-							onChange={(e) =>
-								move.mutate({ id: c.id, folderId: e.target.value || null })
-							}
-							style={{
-								position: "absolute",
-								inset: 0,
-								width: "100%",
-								height: "100%",
-								opacity: 0,
-								cursor: "pointer",
-							}}
-						>
-							<option value="">No folder</option>
-							{folderList.map((f) => (
-								<option key={f.id} value={f.id}>
-									{f.name}
-								</option>
-							))}
-						</select>
+						<MoreHorizontal size={15} />
 					</div>
-					<button
-						style={rowButton}
-						title="Delete"
-						onClick={() => deleteConversation(c.id)}
-					>
-						🗑
-					</button>
+					<ul className="menu dropdown-content z-30 mt-1 w-48 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+						<li>
+							<button
+								type="button"
+								onClick={() => {
+									renameConversation(c.id, c.title);
+									closeMenu();
+								}}
+							>
+								<Pencil size={15} />
+								Rename
+							</button>
+						</li>
+						<li>
+							<button
+								type="button"
+								onClick={() => {
+									void editTags(c.id, c.tags);
+									closeMenu();
+								}}
+							>
+								<Tag size={15} />
+								Edit tags
+							</button>
+						</li>
+						<li className="menu-title flex-row items-center gap-2 px-3 py-1 text-xs">
+							<FolderInput size={13} />
+							Move to folder
+						</li>
+						{c.folderId && (
+							<li>
+								<button
+									type="button"
+									onClick={() => {
+										move.mutate({ id: c.id, folderId: null });
+										closeMenu();
+									}}
+								>
+									No folder
+								</button>
+							</li>
+						)}
+						{folderList.map((f) => (
+							<li key={f.id}>
+								<button
+									type="button"
+									className={c.folderId === f.id ? "menu-active" : undefined}
+									onClick={() => {
+										move.mutate({ id: c.id, folderId: f.id });
+										closeMenu();
+									}}
+								>
+									{f.name}
+								</button>
+							</li>
+						))}
+						<li>
+							<button
+								type="button"
+								onClick={() => {
+									void moveToNewFolder(c.id);
+									closeMenu();
+								}}
+							>
+								New folder…
+							</button>
+						</li>
+						<li className="menu-title px-0 pt-1">
+							<div className="mx-1 border-t border-base-300" />
+						</li>
+						<li>
+							<button
+								type="button"
+								className="text-error"
+								onClick={() => {
+									deleteConversation(c.id);
+									closeMenu();
+								}}
+							>
+								<Trash2 size={15} />
+								Delete
+							</button>
+						</li>
+					</ul>
 				</div>
 			</div>
-			{c.tags.length > 0 && (
-				<div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-					{c.tags.map((t) => (
-						<span
-							key={t.id}
-							style={{
-								fontSize: 10,
-								background: "#dde7fb",
-								color: "#1a56db",
-								padding: "1px 6px",
-								borderRadius: 8,
-							}}
-						>
-							{t.name}
-						</span>
-					))}
-				</div>
-			)}
-		</div>
-	);
+		);
+	};
+
+	const grouped = new Map<RecencyKey, ConversationItem[]>();
+	for (const c of list) {
+		const key = recencyKey(c.updatedAt);
+		const bucket = grouped.get(key) ?? [];
+		bucket.push(c);
+		grouped.set(key, bucket);
+	}
 
 	return (
-		<aside
-			style={{
-				width: 280,
-				borderRight: "1px solid #ddd",
-				display: "flex",
-				flexDirection: "column",
-				minHeight: 0,
-			}}
-		>
-			<div style={{ padding: 8, display: "flex", gap: 6 }}>
+		<aside className="flex h-full min-h-0 flex-col bg-base-200">
+			<div className="flex h-14 items-center gap-2 px-3">
+				<span className="solar-brand">
+					<span className="solar-brand-logo">
+						<Sun size={16} />
+					</span>
+					<span className="solar-brand-name">Solar</span>
+				</span>
 				<button
 					type="button"
-					className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"
-					onClick={onClose}
-					title="Close menu"
+					className="ml-auto btn btn-ghost btn-sm btn-circle"
+					onClick={onToggleCollapse}
+					title="Collapse sidebar"
+					aria-label="Collapse sidebar"
 				>
-					<Menu size={19} />
+					<PanelLeftClose size={18} />
 				</button>
-				<div className="tooltip tooltip-bottom" data-tip="New folder">
+			</div>
+
+			<nav className="px-2 pb-1">
+				<div className="flex items-center">
 					<button
 						type="button"
-						className="btn btn-ghost btn-sm btn-circle"
-						onClick={() => {
-							const name = window.prompt("Folder name:");
-							if (name?.trim()) createFolder.mutate({ name: name.trim() });
-						}}
+						onClick={onNewChat}
+						className="flex flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-sm font-medium hover:bg-base-300"
 					>
-						<FolderPlus size={18} />
+						<SquarePen size={17} />
+						New Chat
 					</button>
+					{presets.length > 0 && (
+						<div className="dropdown dropdown-end">
+							<div
+								tabIndex={0}
+								role="button"
+								className="btn btn-ghost btn-sm btn-circle"
+								aria-label="New chat from preset"
+								title="New chat from preset"
+							>
+								<ChevronDown size={16} />
+							</div>
+							<ul className="menu dropdown-content z-30 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+								<li className="menu-title text-xs">New chat from preset</li>
+								{presets.map((p) => (
+									<li key={p.id}>
+										<button
+											type="button"
+											onClick={() => {
+												onNewWithPreset(p.id);
+												closeMenu();
+											}}
+										>
+											{p.name}
+										</button>
+									</li>
+								))}
+							</ul>
+						</div>
+					)}
 				</div>
-			</div>
-			{presets.length > 0 && (
-				<div style={{ padding: "0 8px 8px" }}>
-					<select
-						className="select select-sm w-full"
-						value=""
-						onChange={(e) => {
-							if (e.target.value) onNewWithPreset(e.target.value);
-							e.target.value = "";
-						}}
-						title="Start a new chat from a preset"
-					>
-						<option value="">+ New chat from preset…</option>
-						{presets.map((p) => (
-							<option key={p.id} value={p.id}>
-								{p.name}
-							</option>
-						))}
-					</select>
-				</div>
-			)}
 
-			<div style={{ padding: "0 8px 8px" }}>
-				<input
-					className="input input-sm w-full"
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					placeholder="Search…"
-				/>
-			</div>
-
-			{tagList.length > 0 && (
-				<div
-					style={{
-						padding: "0 8px 8px",
-						display: "flex",
-						flexWrap: "wrap",
-						gap: 4,
-					}}
-				>
-					{tagList.map((t) => (
+				{searchOpen ? (
+					<div className="flex items-center gap-2 px-2 py-1.5">
+						<Search size={17} className="shrink-0 opacity-50" />
+						<input
+							autoFocus
+							value={search}
+							onChange={(e) => setSearch(e.target.value)}
+							placeholder="Search chats…"
+							className="solar-search-input w-full min-w-0 text-sm outline-none"
+						/>
 						<button
-							key={t.id}
-							onClick={() => setTagFilter(tagFilter === t.id ? null : t.id)}
-							style={{
-								fontSize: 10,
-								padding: "2px 8px",
-								borderRadius: 10,
-								border: "1px solid #cbd8f0",
-								cursor: "pointer",
-								background: tagFilter === t.id ? "#1a56db" : "#fff",
-								color: tagFilter === t.id ? "#fff" : "#1a56db",
+							type="button"
+							className="shrink-0 text-base-content/50 hover:text-base-content"
+							aria-label="Close search"
+							onClick={() => {
+								setSearch("");
+								setSearchOpen(false);
 							}}
 						>
-							{t.name}
+							<X size={16} />
 						</button>
-					))}
-				</div>
-			)}
+					</div>
+				) : (
+					<button
+						type="button"
+						onClick={() => setSearchOpen(true)}
+						className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-sm font-medium hover:bg-base-300"
+					>
+						<Search size={17} />
+						Search
+					</button>
+				)}
+			</nav>
 
-			<div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+			<div className="solar-scroll-overlay min-h-0 flex-1 overflow-y-auto px-2 pb-3">
 				{search.trim() ? (
-					<div>
-						<div style={{ fontSize: 11, color: "#999", padding: "4px 8px" }}>
+					<div className="pt-1">
+						<div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-base-content/45">
 							Results
 						</div>
 						{(searchResults.data ?? []).map((r) => (
 							<button
 								key={r.id}
+								type="button"
 								onClick={() => onSelect(r.id)}
-								className={r.id === activeId ? "bg-secondary/15" : undefined}
-								style={{
-									display: "block",
-									width: "100%",
-									textAlign: "left",
-									border: "none",
-									cursor: "pointer",
-									fontSize: 14,
-									padding: "6px 8px",
-									borderRadius: 8,
-									overflow: "hidden",
-									textOverflow: "ellipsis",
-									whiteSpace: "nowrap",
-								}}
+								title={r.title}
+								className={`block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm ${
+									r.id === activeId ? "bg-base-300" : "hover:bg-base-200"
+								}`}
 							>
 								{r.title}
 							</button>
 						))}
 						{searchResults.data?.length === 0 && (
-							<div style={{ fontSize: 12, color: "#999", padding: 8 }}>
+							<div className="px-2 py-2 text-sm text-base-content/50">
 								No matches.
 							</div>
 						)}
 					</div>
 				) : (
-					<>
-						{folderList.map((f) => (
-							<div key={f.id} style={{ marginBottom: 8 }}>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 4,
-										padding: "4px 8px",
-									}}
-								>
-									<span
-										style={{
-											flex: 1,
-											fontSize: 11,
-											fontWeight: 600,
-											color: "#666",
-											textTransform: "uppercase",
-										}}
-									>
-										{f.name}
-									</span>
-									<button
-										style={rowButton}
-										title="Rename folder"
-										onClick={() => {
-											const name = window.prompt("Rename folder:", f.name);
-											if (name?.trim())
-												renameFolder.mutate({ id: f.id, name: name.trim() });
-										}}
-									>
-										✎
-									</button>
-									<button
-										style={rowButton}
-										title="Delete folder"
-										onClick={() => {
-											if (
-												window.confirm(
-													`Delete folder "${f.name}"? Conversations are kept.`,
-												)
-											)
-												removeFolder.mutate({ id: f.id });
-										}}
-									>
-										🗑
-									</button>
+					RECENCY_GROUPS.map(({ key, label }) => {
+						const items = grouped.get(key);
+						if (!items || items.length === 0) return null;
+						return (
+							<div key={key} className="mt-2 first:mt-1">
+								<div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-base-content/45">
+									{label}
 								</div>
-								{byFolder(f.id).map(ConversationRow)}
+								{items.map(ConversationRow)}
 							</div>
-						))}
-
-						<div style={{ marginBottom: 8 }}>
-							{folderList.length > 0 && (
-								<div
-									style={{
-										fontSize: 11,
-										fontWeight: 600,
-										color: "#666",
-										textTransform: "uppercase",
-										padding: "4px 8px",
-									}}
-								>
-									Unfiled
-								</div>
-							)}
-							{byFolder(null).map(ConversationRow)}
-						</div>
-					</>
+						);
+					})
 				)}
 			</div>
 		</aside>

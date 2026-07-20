@@ -1,3 +1,143 @@
+/* Messages sit in a centered reading column (~48rem) on the page background. */
+.solar-message {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+}
+
+.solar-message-user {
+  align-items: flex-end;
+}
+
+/* User turns stay as right-aligned rounded bubbles. */
+.solar-user-output {
+  max-width: 80%;
+  padding: 8px 14px;
+  border-radius: 1rem;
+}
+
+/* Assistant identity row: avatar, model name, muted timestamp. */
+.solar-assistant-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.solar-assistant-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-base-200);
+  color: color-mix(in oklch, var(--color-base-content) 78%, transparent);
+}
+
+.solar-assistant-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-base-content);
+}
+
+.solar-assistant-timestamp {
+  font-size: 12px;
+  color: color-mix(in oklch, var(--color-base-content) 52%, transparent);
+}
+
+/* Assistant replies render flat on the page background (no card/container). */
+.solar-assistant-output {
+  background: transparent;
+  padding: 0;
+}
+
+.solar-assistant-output .prose {
+  line-height: 1.65;
+  color: var(--color-base-content);
+}
+
+.solar-assistant-output .prose :where(li) {
+  margin-block: 0.5em;
+}
+
+.solar-assistant-output .prose :where(ul, ol) {
+  margin-block: 0.75em;
+}
+
+/* Floating composer: docked at the bottom, centered, with margin from the
+   viewport edges. The dock lets clicks fall through its empty margins to the
+   messages while the card itself stays interactive. */
+.solar-composer-dock {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 1.5rem 1rem 1rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    var(--color-base-100) 55%,
+    color-mix(in oklch, var(--color-base-100) 70%, transparent) 78%,
+    transparent
+  );
+}
+
+.solar-composer {
+  pointer-events: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 48rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-base-300);
+  border-radius: 1.5rem;
+  background: var(--color-base-100);
+  box-shadow: 0 10px 30px -12px color-mix(in oklch, var(--color-base-content) 22%, transparent);
+}
+
+.solar-composer-divider {
+  width: 1px;
+  height: 1.25rem;
+  margin-inline: 0.25rem;
+  background: var(--color-base-300);
+}
+
+/* Composer tool toggles: subtle by default, filled/tinted chip when active. */
+.solar-tool-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 2rem;
+  min-width: 2rem;
+  padding: 0 0.5rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-base-content);
+  cursor: pointer;
+}
+
+.solar-tool-toggle:hover {
+  background: color-mix(in oklch, var(--color-base-content) 9%, transparent);
+}
+
+.solar-tool-toggle-active {
+  background: color-mix(in oklch, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+
+.solar-tool-toggle-active:hover {
+  background: color-mix(in oklch, var(--color-primary) 26%, transparent);
+}
+
 /* Message action bars stay hidden until the message is hovered or an action
    inside gains focus (keyboard access). */
 .solar-message .solar-actions {
@@ -95,7 +235,6 @@
 
 .solar-tool-name {
   color: var(--color-base-content);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -149,24 +288,51 @@
 }
 
 .solar-reasoning-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   border: none;
   background: transparent;
   cursor: pointer;
   padding: 2px 0;
   color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
   font-size: 12px;
-  font-style: italic;
+}
+
+.solar-reasoning-caret {
+  transition: transform 0.15s ease;
+}
+
+.solar-reasoning-caret-open {
+  transform: rotate(180deg);
 }
 
 .solar-reasoning-body {
-  max-height: 160px;
+  max-height: 240px;
   overflow-y: auto;
-  white-space: pre-wrap;
   background: var(--color-base-300);
   border-radius: 8px;
   padding: 8px 10px;
   margin-top: 4px;
   color: var(--color-base-content);
+}
+
+.solar-reasoning-body > :first-child {
+  margin-top: 0;
+}
+
+.solar-reasoning-body > :last-child {
+  margin-bottom: 0;
+}
+
+.solar-reasoning-body p {
+  margin: 0.4em 0;
+}
+
+.solar-reasoning-body ul,
+.solar-reasoning-body ol {
+  margin: 0.4em 0;
+  padding-left: 1.25em;
 }
 
 .solar-signal-meter {
@@ -225,7 +391,8 @@
 }
 
 .solar-attachment-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .solar-attachment-name {
@@ -276,16 +443,12 @@
   display: none;
 }
 
-.solar-citation-sources summary::after {
-  content: "›";
+.solar-citation-caret {
   color: color-mix(in oklch, var(--color-base-content) 56%, transparent);
-  font-size: 17px;
-  font-weight: 400;
-  line-height: 1;
   transition: transform 150ms ease;
 }
 
-.solar-citation-sources[open] summary::after {
+.solar-citation-sources[open] summary .solar-citation-caret {
   transform: rotate(90deg);
 }
 

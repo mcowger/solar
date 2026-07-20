@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Settings2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSession } from "../auth";
 import { useTRPC } from "../trpc";
@@ -271,7 +272,7 @@ function ModelSettingsModal({
 						onClick={onClose}
 						title="Close settings"
 					>
-						✕
+						<X size={16} />
 					</button>
 				</div>
 				<div className="mt-6 grid gap-4">
@@ -803,7 +804,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 										onClick={() => removeEndpoint(endpoint)}
 										title="Remove endpoint"
 									>
-										✕
+										<X size={16} />
 									</button>
 								</div>
 							</div>
@@ -976,7 +977,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 									onClick={() => setSettingsIndex(index)}
 									title={`Configure ${model.name ?? model.id}`}
 								>
-									<span aria-hidden="true">⚙</span>
+									<Settings2 size={16} />
 								</button>
 								<button
 									className="btn btn-ghost btn-sm btn-square text-error"
@@ -986,7 +987,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 									}}
 									title="Remove model"
 								>
-									✕
+									<X size={16} />
 								</button>
 							</li>
 						))}

@@ -34,6 +34,7 @@ interface SolarMessage {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
+	createdAt?: string;
 	connectionStatus?: SolarConnectionStatus;
 	isStale?: boolean;
 	forceStop?: () => Promise<void>;
@@ -90,6 +91,7 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
 		attachments: m.attachments?.map(toCompleteAttachment),
 		metadata: {
 			custom: {
+				createdAt: m.createdAt,
 				connectionStatus: m.connectionStatus,
 				isStale: m.isStale,
 				forceStop: m.forceStop,
@@ -198,6 +200,7 @@ export function useSolarRuntime(
 						id,
 						role: "assistant",
 						content: text,
+						createdAt: new Date().toISOString(),
 						connectionStatus,
 						reasoning,
 						toolCalls,
@@ -357,6 +360,7 @@ export function useSolarRuntime(
 				id: r.id,
 				role: r.role,
 				content: r.text,
+				createdAt: r.createdAt,
 				reasoning: r.reasoning ?? undefined,
 				toolCalls: toolCallsByMessageRef.current.get(r.id) ?? r.toolCalls,
 				summaryEvent:
@@ -476,6 +480,7 @@ export function useSolarRuntime(
 					id: crypto.randomUUID(),
 					role: "user",
 					content: text,
+					createdAt: new Date().toISOString(),
 					attachments: message.attachments?.map((a) => ({
 						id: a.id,
 						filename: a.name,

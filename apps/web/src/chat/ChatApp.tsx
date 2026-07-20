@@ -2,18 +2,21 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-	Hash,
+	Check,
+	Copy,
 	LogOut,
 	Menu,
+	MoreHorizontal,
+	PanelLeft,
+	Plus,
 	Settings2,
 	SlidersHorizontal,
-	SquarePen,
 } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
 import { ThemeToggle } from "../ThemeToggle";
 import { Settings } from "../admin/Settings";
-import { ModelPicker } from "./ModelPicker";
+import { ModelMenu } from "./ModelPicker";
 import { Presets } from "./Presets";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
@@ -41,14 +44,20 @@ function formatCost(costMicros: number) {
 	}).format(costMicros / 1_000_000);
 }
 
-function ContextIndicator({ conversationId }: { conversationId: string }) {
+function ContextMetrics({ conversationId }: { conversationId: string }) {
 	const trpc = useTRPC();
 	const metrics = useQuery({
 		...trpc.conversation.metrics.queryOptions({ conversationId }),
 		refetchInterval: 5_000,
 	});
 	const data = metrics.data;
-	if (!data || data.contextTokens === null) return null;
+	if (!data || data.contextTokens === null) {
+		return (
+			<p className="px-2 py-1 text-xs text-base-content/60">
+				No usage yet for this chat.
+			</p>
+		);
+	}
 
 	const contextPercent = Math.min(
 		100,
@@ -60,40 +69,156 @@ function ContextIndicator({ conversationId }: { conversationId: string }) {
 	);
 
 	return (
-		<div className="order-3 flex w-full basis-full shrink-0 items-center gap-2 min-[1101px]:order-2 min-[1101px]:w-auto min-[1101px]:basis-auto min-[1101px]:shrink min-[1101px]:flex-1 min-[1101px]:justify-end">
-			<div className="min-w-0 flex-1 space-y-0.5 min-[1101px]:flex-none">
-				<div className="flex items-center gap-1">
-					<progress
-						className="progress progress-primary h-1.5 w-full min-[1101px]:w-16"
-						value={contextPercent}
-						max="100"
-						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.contextWindowTokens)} context`}
-					/>
-					<span className="font-mono text-[10px] text-base-content/70">
-						{contextPercent}%
+		<div className="space-y-2 px-2 py-1.5">
+			<div className="space-y-1">
+				<div className="flex items-center justify-between text-xs">
+					<span className="font-semibold uppercase text-base-content/60">
+						Context
 					</span>
-					<span className="text-[10px] font-semibold uppercase text-base-content/50">
-						CTX
+					<span className="tabular-nums text-base-content/70">
+						{contextPercent}% ·{" "}
+						{`${formatTokens(data.contextTokens)}/${formatTokens(data.contextWindowTokens)}`}
 					</span>
 				</div>
-				<div className="flex items-center gap-1">
-					<progress
-						className="progress progress-warning h-1.5 w-full min-[1101px]:w-16"
-						value={compactionPercent}
-						max="100"
-						title={`${formatTokens(data.contextTokens)} of ${formatTokens(data.compactionAtTokens)} compaction threshold`}
-					/>
-					<span className="font-mono text-[10px] text-base-content/70">
-						{compactionPercent}%
-					</span>
-					<span className="text-[10px] font-semibold uppercase text-base-content/50">
+				<progress
+					className="progress progress-primary h-1.5 w-full"
+					value={contextPercent}
+					max="100"
+				/>
+			</div>
+			<div className="space-y-1">
+				<div className="flex items-center justify-between text-xs">
+					<span className="font-semibold uppercase text-base-content/60">
 						Compact
+					</span>
+					<span className="tabular-nums text-base-content/70">
+						{compactionPercent}% ·{" "}
+						{`${formatTokens(data.contextTokens)}/${formatTokens(data.compactionAtTokens)}`}
+					</span>
+				</div>
+				<progress
+					className="progress progress-warning h-1.5 w-full"
+					value={compactionPercent}
+					max="100"
+				/>
+			</div>
+			<div className="flex items-center justify-between text-xs">
+				<span className="font-semibold uppercase text-base-content/60">
+					Cost
+				</span>
+				<span className="tabular-nums text-base-content/70">
+					{formatCost(data.costMicros)}
+				</span>
+			</div>
+		</div>
+	);
+}
+
+function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
+	const [copied, setCopied] = useState(false);
+
+	async function copyChatId() {
+		await navigator.clipboard.writeText(conversationId);
+		setCopied(true);
+	}
+
+	return (
+		<div className="dropdown dropdown-end">
+			<div
+				tabIndex={0}
+				role="button"
+				className="btn btn-ghost btn-sm btn-circle"
+				title="Chat info"
+			>
+				<MoreHorizontal size={18} />
+			</div>
+			<div className="dropdown-content z-20 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+				<ContextMetrics conversationId={conversationId} />
+				<button
+					type="button"
+					className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
+					onClick={() => void copyChatId()}
+				>
+					{copied ? <Check size={15} /> : <Copy size={15} />}
+					<span>Copy chat ID</span>
+					<span className="ml-auto tabular-nums text-xs opacity-60">
+						{conversationId.slice(0, 8)}
+					</span>
+				</button>
+			</div>
+		</div>
+	);
+}
+
+function initialsFrom(name?: string | null, email?: string | null) {
+	const source = name?.trim() || email?.trim() || "?";
+	const parts = source.split(/\s+/).filter(Boolean);
+	const letters =
+		parts.length > 1
+			? `${parts[0]?.[0] ?? ""}${parts[parts.length - 1]?.[0] ?? ""}`
+			: source.slice(0, 2);
+	return letters.toUpperCase();
+}
+
+function UserMenu({
+	name,
+	email,
+	isAdmin,
+	onSettings,
+}: {
+	name?: string | null;
+	email?: string | null;
+	isAdmin: boolean;
+	onSettings: () => void;
+}) {
+	return (
+		<div className="dropdown dropdown-end">
+			<div
+				tabIndex={0}
+				role="button"
+				className="btn btn-ghost btn-sm btn-circle avatar avatar-placeholder"
+				title={email ?? "Account"}
+			>
+				<div className="w-8 rounded-full bg-neutral text-neutral-content">
+					<span className="text-xs font-semibold">
+						{initialsFrom(name, email)}
 					</span>
 				</div>
 			</div>
-			<span className="shrink-0 whitespace-nowrap font-mono text-[10px] text-base-content/70 min-[1101px]:text-[11px]">
-				Cost: {formatCost(data.costMicros)}
-			</span>
+			<div className="dropdown-content z-20 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+				<div className="truncate px-2 py-1 text-sm font-medium">
+					{name || email}
+				</div>
+				{name && email && (
+					<div className="truncate px-2 pb-1 text-xs opacity-60">{email}</div>
+				)}
+				<div className="my-1 border-t border-base-300" />
+				<div className="flex items-center justify-between px-2 py-1 text-sm">
+					<span>Theme</span>
+					<ThemeToggle />
+				</div>
+				{isAdmin && (
+					<button
+						type="button"
+						className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
+						onClick={() => {
+							onSettings();
+							(document.activeElement as HTMLElement | null)?.blur();
+						}}
+					>
+						<Settings2 size={16} />
+						Admin settings
+					</button>
+				)}
+				<button
+					type="button"
+					className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
+					onClick={() => signOut()}
+				>
+					<LogOut size={16} />
+					Sign out
+				</button>
+			</div>
 		</div>
 	);
 }
@@ -122,7 +247,6 @@ function ConversationView({
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
 			<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-				<ModelPicker conversationId={conversationId} />
 				<div className="min-h-0 flex-1">
 					<Thread
 						conversationId={conversationId}
@@ -145,8 +269,8 @@ export function ChatApp() {
 	const [showPresets, setShowPresets] = useState(false);
 	const [showMcpServers, setShowMcpServers] = useState(false);
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-	const [copiedChatId, setCopiedChatId] = useState<string>();
 	const sidebarRef = useRef<HTMLDivElement>(null);
 	const swipeStart = useRef<{ x: number; y: number } | undefined>(undefined);
 	// Guards against React StrictMode double-invoking the auto-create effect.
@@ -203,6 +327,15 @@ export function ChatApp() {
 		(presetId?: string) => create.mutate(presetId ? { presetId } : {}),
 		[create],
 	);
+
+	// Collapse the pinned sidebar on desktop; on mobile just close the drawer.
+	const toggleSidebar = useCallback(() => {
+		if (window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches) {
+			setSidebarCollapsed((value) => !value);
+		} else {
+			setDrawerOpen(false);
+		}
+	}, []);
 
 	useMobileReturnToNewChat(newChat);
 
@@ -286,15 +419,11 @@ export function ChatApp() {
 		}
 	}
 
-	async function copyChatId() {
-		if (!activeId) return;
-		await navigator.clipboard.writeText(activeId);
-		setCopiedChatId(activeId);
-	}
-
 	return (
 		<div
-			className="drawer min-[650px]:drawer-open solar-app"
+			className={`drawer min-[650px]:drawer-open solar-app${
+				sidebarCollapsed ? " solar-collapsed" : ""
+			}`}
 			style={
 				{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties
 			}
@@ -314,40 +443,37 @@ export function ChatApp() {
 					swipeStart.current = undefined;
 				}}
 			>
-				<header className="navbar min-h-16 flex-wrap gap-y-1 border-b border-base-300 bg-base-100 px-3 py-2 min-[1101px]:flex-nowrap min-[1101px]:px-5">
-					<div className="navbar-start order-1 w-auto flex-1 gap-2">
-						<label
-							htmlFor="solar-drawer"
-							className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"
-						>
-							<Menu size={19} />
-						</label>
-						<strong className="solar-wordmark text-3xl">Solar</strong>
+				<header className="flex h-14 min-h-14 shrink-0 items-center gap-1 border-b border-base-300 bg-base-100 px-2 sm:px-4">
+					<label
+						htmlFor="solar-drawer"
+						className="solar-menu-toggle btn btn-ghost btn-sm btn-circle"
+					>
+						<Menu size={19} />
+					</label>
+					{sidebarCollapsed && (
 						<button
 							type="button"
-							className="btn btn-ghost btn-md gap-2"
-							onClick={() => newChat()}
+							className="hidden btn btn-ghost btn-sm btn-circle min-[650px]:inline-flex"
+							onClick={() => setSidebarCollapsed(false)}
+							title="Show sidebar"
+							aria-label="Show sidebar"
 						>
-							<SquarePen size={19} />
-							<span className="hidden min-[500px]:inline">New chat</span>
+							<PanelLeft size={19} />
+						</button>
+					)}
+					{activeId && <ModelMenu conversationId={activeId} />}
+					<div className="tooltip tooltip-bottom" data-tip="New chat">
+						<button
+							type="button"
+							className="btn btn-ghost btn-sm btn-circle"
+							onClick={() => newChat()}
+							aria-label="New chat"
+						>
+							<Plus size={19} />
 						</button>
 					</div>
-					{activeId && <ContextIndicator conversationId={activeId} />}
-					<div className="navbar-end order-2 w-auto gap-1 sm:order-3 sm:gap-2">
-						{activeId && (
-							<div
-								className="tooltip tooltip-bottom hidden sm:block"
-								data-tip="Copy chat ID"
-							>
-								<button
-									className="btn btn-ghost btn-xs h-7 min-h-0 gap-1 px-2 font-mono text-[11px] font-normal opacity-45 hover:opacity-100"
-									onClick={() => void copyChatId()}
-								>
-									<Hash size={13} />
-									{copiedChatId === activeId ? "Copied" : activeId.slice(0, 8)}
-								</button>
-							</div>
-						)}
+					<div className="ml-auto flex items-center gap-1">
+						{activeId && <ConversationInfoMenu conversationId={activeId} />}
 						<div className="tooltip tooltip-bottom" data-tip="Presets">
 							<button
 								className="btn btn-ghost btn-sm btn-circle"
@@ -360,29 +486,16 @@ export function ChatApp() {
 								<SlidersHorizontal size={18} />
 							</button>
 						</div>
-						{isAdmin && (
-							<div className="tooltip tooltip-bottom" data-tip="Settings">
-								<button
-									className="btn btn-ghost btn-sm btn-circle"
-									onClick={() => {
-										setShowSettings(true);
-										setShowPresets(false);
-										setShowMcpServers(false);
-									}}
-								>
-									<Settings2 size={18} />
-								</button>
-							</div>
-						)}
-						<ThemeToggle />
-						<div className="tooltip tooltip-bottom" data-tip="Sign out">
-							<button
-								className="btn btn-ghost btn-sm btn-circle"
-								onClick={() => signOut()}
-							>
-								<LogOut size={18} />
-							</button>
-						</div>
+						<UserMenu
+							name={session?.user?.name}
+							email={session?.user?.email}
+							isAdmin={isAdmin}
+							onSettings={() => {
+								setShowSettings(true);
+								setShowPresets(false);
+								setShowMcpServers(false);
+							}}
+						/>
 					</div>
 				</header>
 				<div className="flex min-h-0 flex-1">
@@ -416,9 +529,13 @@ export function ChatApp() {
 				/>
 				<Sidebar
 					activeId={activeId}
-					onClose={() => setDrawerOpen(false)}
 					onSelect={(id) => {
 						setActiveId(id);
+						setDrawerOpen(false);
+					}}
+					onToggleCollapse={toggleSidebar}
+					onNewChat={() => {
+						newChat();
 						setDrawerOpen(false);
 					}}
 					presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
