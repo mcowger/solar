@@ -31,3 +31,4 @@ data/
 .e2e-attachments/
 playwright-report/
 test-results/
+mise.local.toml

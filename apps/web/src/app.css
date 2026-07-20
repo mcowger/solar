@@ -121,7 +121,15 @@
 }
 
 .solar-wordmark { font-family: "Literata", serif; font-variation-settings: "opsz" 42; letter-spacing: -0.06em; }
-.solar-app { min-height: 100dvh; }
+.solar-app {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--solar-viewport-height, 100dvh);
+  min-height: 0;
+  transform: translateY(var(--solar-viewport-offset-top, 0));
+}
 .solar-sidebar { width: min(20rem, 86vw); }
 .solar-sidebar aside { width: 100% !important; height: 100%; border-color: var(--color-base-300) !important; background: var(--color-base-200); transition: background-color 190ms ease; }
 .solar-sidebar-resizer { display: none; }

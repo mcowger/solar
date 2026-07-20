@@ -363,16 +363,6 @@ function SummaryEventMarker({ position }: { position: "before" | "after" }) {
 	) : null;
 }
 
-const iconButton: React.CSSProperties = {
-	border: "none",
-	background: "transparent",
-	cursor: "pointer",
-	fontSize: 12,
-	color: "#666",
-	padding: "2px 6px",
-	borderRadius: 6,
-};
-
 const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
 
@@ -389,6 +379,7 @@ function SignalMeter({
 
 	return (
 		<span
+			className="solar-signal-meter"
 			title={level ? `${level} strength` : "Provider default"}
 			style={{
 				position: "relative",
@@ -396,7 +387,6 @@ function SignalMeter({
 				height: 14,
 				overflow: "hidden",
 				borderRadius: 2,
-				background: "#cbd5e1",
 			}}
 		>
 			<span
@@ -676,8 +666,6 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 						type="button"
 						onClick={() => setOpen(open === "reasoning" ? null : "reasoning")}
 						style={{
-							...iconButton,
-							color: reasoningEffort ? "#1a56db" : "#666",
 							display: "flex",
 							alignItems: "center",
 							gap: 3,
@@ -691,24 +679,13 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 						/>
 					</button>
 					{open === "reasoning" && (
-						<div
-							style={{
-								position: "absolute",
-								bottom: 30,
-								left: 0,
-								background: "white",
-								border: "1px solid #ccc",
-								borderRadius: 8,
-								padding: 4,
-								zIndex: 1,
-							}}
-						>
+						<div className="solar-generation-menu">
 							<button
 								type="button"
 								onClick={() =>
 									update.mutate({ id: conversationId, reasoningEffort: null })
 								}
-								style={iconButton}
+								className="solar-generation-menu-item"
 							>
 								Default
 							</button>
@@ -722,7 +699,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 											reasoningEffort: level,
 										})
 									}
-									style={iconButton}
+									className="solar-generation-menu-item"
 								>
 									{level}
 								</button>
@@ -737,8 +714,6 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 						type="button"
 						onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
 						style={{
-							...iconButton,
-							color: verbosity ? "#1a56db" : "#666",
 							display: "flex",
 							alignItems: "center",
 							gap: 3,
@@ -749,24 +724,13 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 						<SignalMeter level={verbosity} levels={VERBOSITY_LEVELS} />
 					</button>
 					{open === "verbosity" && (
-						<div
-							style={{
-								position: "absolute",
-								bottom: 30,
-								left: 0,
-								background: "white",
-								border: "1px solid #ccc",
-								borderRadius: 8,
-								padding: 4,
-								zIndex: 1,
-							}}
-						>
+						<div className="solar-generation-menu">
 							<button
 								type="button"
 								onClick={() =>
 									update.mutate({ id: conversationId, verbosity: null })
 								}
-								style={iconButton}
+								className="solar-generation-menu-item"
 							>
 								Default
 							</button>
@@ -777,7 +741,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 									onClick={() =>
 										update.mutate({ id: conversationId, verbosity: level })
 									}
-									style={iconButton}
+									className="solar-generation-menu-item"
 								>
 									{level}
 								</button>

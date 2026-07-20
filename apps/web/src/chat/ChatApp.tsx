@@ -152,6 +152,35 @@ export function ChatApp() {
 	// Guards against React StrictMode double-invoking the auto-create effect.
 	const autoCreated = useRef(false);
 
+	useEffect(() => {
+		const visualViewport = window.visualViewport;
+		const updateViewportHeight = () => {
+			const height = visualViewport?.height ?? window.innerHeight;
+			document.documentElement.style.setProperty(
+				"--solar-viewport-height",
+				`${Math.round(height)}px`,
+			);
+			document.documentElement.style.setProperty(
+				"--solar-viewport-offset-top",
+				`${Math.round(visualViewport?.offsetTop ?? 0)}px`,
+			);
+		};
+
+		updateViewportHeight();
+		window.addEventListener("resize", updateViewportHeight);
+		visualViewport?.addEventListener("resize", updateViewportHeight);
+		visualViewport?.addEventListener("scroll", updateViewportHeight);
+		return () => {
+			window.removeEventListener("resize", updateViewportHeight);
+			visualViewport?.removeEventListener("resize", updateViewportHeight);
+			visualViewport?.removeEventListener("scroll", updateViewportHeight);
+			document.documentElement.style.removeProperty("--solar-viewport-height");
+			document.documentElement.style.removeProperty(
+				"--solar-viewport-offset-top",
+			);
+		};
+	}, []);
+
 	const conversations = useQuery(trpc.conversation.list.queryOptions());
 	const presets = useQuery(trpc.preset.list.queryOptions());
 	const create = useMutation(
@@ -265,7 +294,7 @@ export function ChatApp() {
 
 	return (
 		<div
-			className="drawer min-[650px]:drawer-open solar-app h-dvh"
+			className="drawer min-[650px]:drawer-open solar-app"
 			style={
 				{ "--solar-sidebar-width": `${sidebarWidth}px` } as React.CSSProperties
 			}
