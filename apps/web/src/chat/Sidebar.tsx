@@ -6,6 +6,7 @@ import {
 	PanelLeftClose,
 	Pencil,
 	Search,
+	SlidersHorizontal,
 	SquarePen,
 	Sun,
 	Tag,
@@ -23,6 +24,7 @@ interface SidebarProps {
 	onNewChat: () => void;
 	presets: { id: string; name: string }[];
 	onNewWithPreset: (presetId: string) => void;
+	onManagePresets: () => void;
 }
 
 interface ConversationItem {
@@ -84,6 +86,7 @@ export function Sidebar({
 	onNewChat,
 	presets,
 	onNewWithPreset,
+	onManagePresets,
 }: SidebarProps) {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
@@ -330,35 +333,52 @@ export function Sidebar({
 						<SquarePen size={17} />
 						New Chat
 					</button>
-					{presets.length > 0 && (
-						<div className="dropdown dropdown-end">
-							<div
-								tabIndex={0}
-								role="button"
-								className="btn btn-ghost btn-sm btn-circle"
-								aria-label="New chat from preset"
-								title="New chat from preset"
-							>
-								<ChevronDown size={16} />
-							</div>
-							<ul className="menu dropdown-content z-30 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
-								<li className="menu-title text-xs">New chat from preset</li>
-								{presets.map((p) => (
-									<li key={p.id}>
-										<button
-											type="button"
-											onClick={() => {
-												onNewWithPreset(p.id);
-												closeMenu();
-											}}
-										>
-											{p.name}
-										</button>
-									</li>
-								))}
-							</ul>
+					<div className="dropdown dropdown-end">
+						<div
+							tabIndex={0}
+							role="button"
+							className="btn btn-ghost btn-sm btn-circle"
+							aria-label="Presets"
+							title="Presets"
+						>
+							<ChevronDown size={16} />
 						</div>
-					)}
+						<ul className="menu dropdown-content z-30 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1 shadow-lg">
+							{presets.length > 0 && (
+								<>
+									<li className="menu-title text-xs">New chat from preset</li>
+									{presets.map((p) => (
+										<li key={p.id}>
+											<button
+												type="button"
+												onClick={() => {
+													onNewWithPreset(p.id);
+													closeMenu();
+												}}
+											>
+												{p.name}
+											</button>
+										</li>
+									))}
+									<li className="menu-title px-0 pt-1">
+										<div className="mx-1 border-t border-base-300" />
+									</li>
+								</>
+							)}
+							<li>
+								<button
+									type="button"
+									onClick={() => {
+										onManagePresets();
+										closeMenu();
+									}}
+								>
+									<SlidersHorizontal size={15} />
+									Manage presets
+								</button>
+							</li>
+						</ul>
+					</div>
 				</div>
 
 				{searchOpen ? (

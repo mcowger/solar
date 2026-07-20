@@ -10,13 +10,54 @@ import type {
  * only builds the local preview content. The server links the already-stored
  * attachment to the message when the chat turn is sent (see useSolarRuntime).
  */
-const TEXT_ACCEPT =
-	"text/*,application/json,application/ld+json,application/rtf,application/sql,application/toml,application/xml,application/yaml";
-const IMAGE_ACCEPT =
-	"image/jpeg,image/png,image/gif,image/webp,image/avif,image/*";
-const DOCUMENT_ACCEPT =
-	"application/pdf,application/msword,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const DOCUMENT_MIME_TYPES = new Set(DOCUMENT_ACCEPT.split(","));
+// The native file picker (esp. macOS) resolves MIME types unreliably and greys
+// out valid files when the accept list contains types it can't map to a UTI
+// (e.g. application/toml, application/yaml). We therefore advertise both MIME
+// types AND explicit extensions for every accepted kind.
+const IMAGE_ACCEPT = [
+	".jpg",
+	".jpeg",
+	".png",
+	".gif",
+	".webp",
+	".avif",
+	"image/*",
+];
+const TEXT_ACCEPT = [
+	".txt",
+	".text",
+	".md",
+	".markdown",
+	".csv",
+	".tsv",
+	".log",
+	".json",
+	".jsonld",
+	".rtf",
+	".sql",
+	".toml",
+	".xml",
+	".yaml",
+	".yml",
+	"text/*",
+	"application/json",
+	"application/ld+json",
+	"application/rtf",
+	"application/sql",
+	"application/toml",
+	"application/xml",
+	"application/yaml",
+];
+/** Known document MIME types → the extensions the native picker recognizes. */
+const DOCUMENT_EXTENSIONS: Record<string, string> = {
+	"application/pdf": ".pdf",
+	"application/msword": ".doc",
+	"application/vnd.ms-excel": ".xls",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		".docx",
+};
+const DOCUMENT_MIME_TYPES = new Set(Object.keys(DOCUMENT_EXTENSIONS));
 
 export function isDocumentFile(file: File): boolean {
 	return isDocumentMimeType(file.type);
@@ -30,13 +71,15 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
 	public readonly accept: string;
 
 	constructor(allowImages: boolean, documentMimeTypes: readonly string[]) {
+		const documentAccept = documentMimeTypes.flatMap((mime) => {
+			const extension = DOCUMENT_EXTENSIONS[mime];
+			return extension ? [extension, mime] : [mime];
+		});
 		this.accept = [
-			allowImages ? IMAGE_ACCEPT : "",
-			TEXT_ACCEPT,
-			documentMimeTypes.length ? documentMimeTypes.join(",") : "",
-		]
-			.filter(Boolean)
-			.join(",");
+			...(allowImages ? IMAGE_ACCEPT : []),
+			...TEXT_ACCEPT,
+			...documentAccept,
+		].join(",");
 	}
 
 	public async add({ file }: { file: File }): Promise<PendingAttachment> {

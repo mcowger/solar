@@ -2,13 +2,24 @@ import { describe, expect, test } from "bun:test";
 import { SolarAttachmentAdapter } from "./attachmentAdapter";
 
 describe("SolarAttachmentAdapter", () => {
-	test("explicitly accepts common image formats when images are enabled", () => {
+	test("accepts common image formats by extension and MIME when enabled", () => {
 		const adapter = new SolarAttachmentAdapter(true, []);
 
-		expect(adapter.accept).toContain("image/jpeg");
-		expect(adapter.accept).toContain("image/png");
-		expect(adapter.accept).toContain("image/gif");
-		expect(adapter.accept).toContain("image/webp");
-		expect(adapter.accept).toContain("image/avif");
+		expect(adapter.accept).toContain(".png");
+		expect(adapter.accept).toContain(".webp");
+		expect(adapter.accept).toContain(".jpg");
+		expect(adapter.accept).toContain(".gif");
+		expect(adapter.accept).toContain(".avif");
+		expect(adapter.accept).toContain("image/*");
+	});
+
+	test("omits images when disabled but keeps text and document types", () => {
+		const adapter = new SolarAttachmentAdapter(false, ["application/pdf"]);
+
+		expect(adapter.accept).not.toContain("image/");
+		expect(adapter.accept).not.toContain(".png");
+		expect(adapter.accept).toContain(".pdf");
+		expect(adapter.accept).toContain("application/pdf");
+		expect(adapter.accept).toContain("text/*");
 	});
 });

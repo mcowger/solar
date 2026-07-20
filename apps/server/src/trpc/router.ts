@@ -127,6 +127,15 @@ const conversationRouter = router({
 				"updatedAt",
 			])
 			.where("userId", "=", ctx.user.id)
+			// Hide abandoned drafts: only surface conversations that have a turn.
+			.where((eb) =>
+				eb.exists(
+					eb
+						.selectFrom("message")
+						.select("message.id")
+						.whereRef("message.conversationId", "=", "conversation.id"),
+				),
+			)
 			.orderBy("updatedAt", "desc")
 			.execute();
 
@@ -167,6 +176,22 @@ const conversationRouter = router({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
+			// Discard the user's abandoned drafts (conversations with no turns) so
+			// they never accumulate; cascades clean up any related rows.
+			await db
+				.deleteFrom("conversation")
+				.where("userId", "=", ctx.user.id)
+				.where((eb) =>
+					eb.not(
+						eb.exists(
+							eb
+								.selectFrom("message")
+								.select("message.id")
+								.whereRef("message.conversationId", "=", "conversation.id"),
+						),
+					),
+				)
+				.execute();
 			const id = crypto.randomUUID();
 			const presetId =
 				input.presetId ?? (await getUserDefaultPreset(ctx.user.id));

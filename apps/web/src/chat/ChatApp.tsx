@@ -10,7 +10,6 @@ import {
 	PanelLeft,
 	Plus,
 	Settings2,
-	SlidersHorizontal,
 } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
@@ -265,6 +264,9 @@ export function ChatApp() {
 	const { data: session } = useSession();
 	const isAdmin = (session?.user as { role?: string })?.role === "admin";
 	const [activeId, setActiveId] = useState<string | undefined>();
+	// A freshly created conversation is a "draft" until its first turn: it isn't
+	// in the (message-filtered) list yet, but must stay selected.
+	const [draftId, setDraftId] = useState<string | undefined>();
 	const [showSettings, setShowSettings] = useState(false);
 	const [showPresets, setShowPresets] = useState(false);
 	const [showMcpServers, setShowMcpServers] = useState(false);
@@ -310,11 +312,12 @@ export function ChatApp() {
 	const create = useMutation(
 		trpc.conversation.create.mutationOptions({
 			onSuccess: async ({ id }) => {
-				// Wait for the list to contain the new conversation before selecting it.
+				setDraftId(id);
+				setActiveId(id);
+				autoCreated.current = false;
 				await qc.invalidateQueries({
 					queryKey: trpc.conversation.list.queryKey(),
 				});
-				setActiveId(id);
 			},
 		}),
 	);
@@ -339,20 +342,23 @@ export function ChatApp() {
 
 	useMobileReturnToNewChat(newChat);
 
-	// Ensure a conversation exists and one is always selected.
+	// Ensure a conversation exists and one is always selected. The active draft
+	// is valid even though it isn't in the message-filtered list yet.
 	useEffect(() => {
 		if (!conversations.isSuccess) return;
-		if (list.length === 0) {
-			if (!autoCreated.current && !create.isPending) {
-				autoCreated.current = true;
-				create.mutate({});
-			}
+		const activeIsValid =
+			!!activeId &&
+			(activeId === draftId || list.some((c) => c.id === activeId));
+		if (activeIsValid) return;
+		if (list.length > 0) {
+			setActiveId(list[0]?.id);
 			return;
 		}
-		if (!activeId || !list.some((c) => c.id === activeId)) {
-			setActiveId(list[0]?.id);
+		if (!autoCreated.current && !create.isPending) {
+			autoCreated.current = true;
+			create.mutate({});
 		}
-	}, [conversations.isSuccess, list, activeId, create.isPending]);
+	}, [conversations.isSuccess, list, activeId, draftId, create.isPending]);
 
 	useEffect(() => {
 		if (!drawerOpen || window.matchMedia(PINNED_SIDEBAR_MEDIA_QUERY).matches)
@@ -474,18 +480,6 @@ export function ChatApp() {
 					</div>
 					<div className="ml-auto flex items-center gap-1">
 						{activeId && <ConversationInfoMenu conversationId={activeId} />}
-						<div className="tooltip tooltip-bottom" data-tip="Presets">
-							<button
-								className="btn btn-ghost btn-sm btn-circle"
-								onClick={() => {
-									setShowPresets(true);
-									setShowSettings(false);
-									setShowMcpServers(false);
-								}}
-							>
-								<SlidersHorizontal size={18} />
-							</button>
-						</div>
 						<UserMenu
 							name={session?.user?.name}
 							email={session?.user?.email}
@@ -541,6 +535,12 @@ export function ChatApp() {
 					presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
 					onNewWithPreset={(presetId) => {
 						newChat(presetId);
+						setDrawerOpen(false);
+					}}
+					onManagePresets={() => {
+						setShowPresets(true);
+						setShowSettings(false);
+						setShowMcpServers(false);
 						setDrawerOpen(false);
 					}}
 				/>
