@@ -1,5 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { citationsFrom, removeCitationBlocks } from "./MarkdownText";
+import { render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import {
+	citationsFrom,
+	PlainMarkdown,
+	removeCitationBlocks,
+} from "./MarkdownText";
+
+describe("PlainMarkdown", () => {
+	test("renders currency amounts literally", () => {
+		render(
+			createElement(PlainMarkdown, {
+				text: "**$4 per gallon**; Brent crude rose above **$90 per barrel**",
+			}),
+		);
+
+		expect(screen.getByText("$4 per gallon")).toBeTruthy();
+		expect(screen.getByText("$90 per barrel")).toBeTruthy();
+	});
+});
 
 describe("citationsFrom", () => {
 	test("captures a singular Source block", () => {

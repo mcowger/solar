@@ -1,6 +1,5 @@
 import {
 	MarkdownTextPrimitive,
-	rewriteLatexBracketDelimiters,
 	type SyntaxHighlighterProps,
 } from "@assistant-ui/react-markdown";
 import { useAuiState } from "@assistant-ui/react";
@@ -12,12 +11,9 @@ import {
 	oneLight,
 } from "react-syntax-highlighter/dist/esm/styles/prism";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeKatex from "rehype-katex";
 import { type ComponentProps, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "../trpc";
-import "katex/dist/katex.min.css";
 
 type Citation = {
 	title: string;
@@ -299,19 +295,12 @@ function CodeHighlighter({
  * content) so bold/lists/etc. render instead of leaking literal `**` markers.
  */
 export function PlainMarkdown({ text }: { text: string }) {
-	return (
-		<ReactMarkdown
-			remarkPlugins={[remarkGfm, remarkMath]}
-			rehypePlugins={[rehypeKatex]}
-		>
-			{rewriteLatexBracketDelimiters(text)}
-		</ReactMarkdown>
-	);
+	return <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>;
 }
 
 /**
- * Assistant message body rendered as Markdown: GFM tables/lists, fenced code
- * with Prism highlighting, and LaTeX math via KaTeX (`$…$` / `$$…$$`).
+ * Assistant message body rendered as Markdown: GFM tables/lists and fenced
+ * code with Prism highlighting.
  */
 export function MarkdownText() {
 	const dark = useDarkTheme();
@@ -337,15 +326,10 @@ export function MarkdownText() {
 			<MarkdownTextPrimitive
 				key={dark ? "dark" : "light"}
 				className="prose prose-sm max-w-none"
-				// Convert `\[…\]` / `\(…\)` to `$$…$$` / `$…$` before markdown parsing,
-				// so KaTeX sees the math (markdown would otherwise escape the brackets).
 				preprocess={(value) =>
-					rewriteLatexBracketDelimiters(
-						isStreaming ? value : removeCitationBlocks(value),
-					)
+					isStreaming ? value : removeCitationBlocks(value)
 				}
-				remarkPlugins={[remarkGfm, remarkMath]}
-				rehypePlugins={[rehypeKatex]}
+				remarkPlugins={[remarkGfm]}
 				components={{
 					SyntaxHighlighter: (props) => (
 						<CodeHighlighter {...props} dark={dark} />
