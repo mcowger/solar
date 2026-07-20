@@ -91,6 +91,10 @@ function addFiles(
 	);
 }
 
+export function isFileDrag(dataTransfer: DataTransfer | null): boolean {
+	return Array.from(dataTransfer?.types ?? []).includes("Files");
+}
+
 function openAttachmentInput(
 	input: HTMLInputElement | null,
 	kind: "desktop" | "mobile-file" | "capture" | "library",
@@ -1000,8 +1004,10 @@ export function Thread({
 	);
 	const pasteSettings = useQuery(trpc.pasteSettings.queryOptions());
 	const pasteThresholds = pasteSettings.data ?? DEFAULT_PASTE_SETTINGS;
-	const [pasteError, setPasteError] = useState<string | null>(null);
+	const [attachmentError, setAttachmentError] = useState<string | null>(null);
+	const [isFileDragActive, setIsFileDragActive] = useState(false);
 	const composerRef = useRef<HTMLDivElement>(null);
+	const dragDepth = useRef(0);
 	const [composerHeight, setComposerHeight] = useState(88);
 
 	// Keep the message list's bottom padding in sync with the floating composer
@@ -1017,8 +1023,59 @@ export function Thread({
 		return () => observer.disconnect();
 	}, []);
 
+	const addDroppedFiles = (files: File[]) => {
+		setAttachmentError(null);
+		void Promise.all(files.map((file) => composer.addAttachment(file))).catch(
+			(error: unknown) => {
+				setAttachmentError(
+					error instanceof Error ? error.message : "Upload failed",
+				);
+			},
+		);
+	};
+
+	useEffect(() => {
+		if (!model.data) return;
+
+		const onDragEnter = (event: DragEvent) => {
+			if (!isFileDrag(event.dataTransfer)) return;
+			event.preventDefault();
+			dragDepth.current += 1;
+			setIsFileDragActive(true);
+		};
+		const onDragOver = (event: DragEvent) => {
+			if (!isFileDrag(event.dataTransfer)) return;
+			event.preventDefault();
+			if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+		};
+		const onDragLeave = (event: DragEvent) => {
+			if (!isFileDrag(event.dataTransfer)) return;
+			dragDepth.current = Math.max(0, dragDepth.current - 1);
+			if (dragDepth.current === 0) setIsFileDragActive(false);
+		};
+		const onDrop = (event: DragEvent) => {
+			if (!isFileDrag(event.dataTransfer)) return;
+			event.preventDefault();
+			dragDepth.current = 0;
+			setIsFileDragActive(false);
+			const files = Array.from(event.dataTransfer?.files ?? []);
+			if (files.length) addDroppedFiles(files);
+		};
+
+		window.addEventListener("dragenter", onDragEnter);
+		window.addEventListener("dragover", onDragOver);
+		window.addEventListener("dragleave", onDragLeave);
+		window.addEventListener("drop", onDrop);
+		return () => {
+			window.removeEventListener("dragenter", onDragEnter);
+			window.removeEventListener("dragover", onDragOver);
+			window.removeEventListener("dragleave", onDragLeave);
+			window.removeEventListener("drop", onDrop);
+		};
+	}, [composer, model.data]);
+
 	const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-		setPasteError(null);
+		setAttachmentError(null);
 		if (!pasteThresholds.enabled || event.clipboardData.files.length > 0)
 			return;
 		const text = event.clipboardData.getData("text/plain");
@@ -1037,7 +1094,7 @@ export function Thread({
 			composer.setText(
 				currentText.slice(0, start) + text + currentText.slice(end),
 			);
-			setPasteError(message);
+			setAttachmentError(message);
 		});
 	};
 
@@ -1046,6 +1103,12 @@ export function Thread({
 			<ThreadPrimitive.Root
 				style={{ position: "relative", height: "100%", minHeight: 0 }}
 			>
+				{isFileDragActive && (
+					<div className="solar-file-drop-overlay">
+						<FileUp size={28} />
+						<span>Drop files to attach them to this chat</span>
+					</div>
+				)}
 				<ThreadPrimitive.Viewport
 					style={{
 						height: "100%",
@@ -1082,12 +1145,12 @@ export function Thread({
 							)}
 						</ComposerPrimitive.Queue>
 						<ContextStatusIndicator status={contextStatus} />
-						{pasteError && (
+						{attachmentError && (
 							<div
 								role="alert"
 								className="alert alert-error alert-soft text-sm"
 							>
-								{pasteError}
+								{attachmentError}
 							</div>
 						)}
 						<ComposerPrimitive.Input

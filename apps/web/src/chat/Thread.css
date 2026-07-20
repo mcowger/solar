@@ -67,6 +67,23 @@
   margin-block: 0.75em;
 }
 
+.solar-file-drop-overlay {
+  position: absolute;
+  z-index: 20;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border: 2px dashed var(--color-primary);
+  border-radius: 1rem;
+  background: color-mix(in oklch, var(--color-primary) 12%, var(--color-base-100));
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
 /* Floating composer: docked at the bottom, centered, with margin from the
    viewport edges. The dock lets clicks fall through its empty margins to the
    messages while the card itself stays interactive. */

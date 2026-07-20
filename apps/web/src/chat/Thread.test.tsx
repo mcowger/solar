@@ -3,9 +3,22 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import {
 	ContextStatusIndicator,
 	EmptyAssistantResponse,
+	isFileDrag,
 	shouldConvertPastedText,
 	SummaryEventCard,
 } from "./Thread";
+
+describe("isFileDrag", () => {
+	test("recognizes file drags without treating text drags as attachments", () => {
+		expect(isFileDrag({ types: ["Files"] } as unknown as DataTransfer)).toBe(
+			true,
+		);
+		expect(
+			isFileDrag({ types: ["text/plain"] } as unknown as DataTransfer),
+		).toBe(false);
+		expect(isFileDrag(null)).toBe(false);
+	});
+});
 
 describe("shouldConvertPastedText", () => {
 	const settings = { lineThreshold: 20, byteThreshold: 5 * 1024 };
