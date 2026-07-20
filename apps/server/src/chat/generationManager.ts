@@ -36,6 +36,7 @@ interface Generation {
 	controller: AbortController;
 	subscribers: Set<Subscriber>;
 	text: string;
+	reasoning: string;
 	parts: unknown | null;
 	toolCalls: PersistedToolCall[];
 	usage: {
@@ -120,6 +121,7 @@ export class GenerationManager {
 			controller: new AbortController(),
 			subscribers: new Set(),
 			text: "",
+			reasoning: "",
 			parts: null,
 			toolCalls: [],
 			usage: {
@@ -289,6 +291,7 @@ export class GenerationManager {
 							throw new Error(event.error.errorMessage ?? "Generation failed");
 						}
 						if (event.type === "text_delta") gen.text += event.delta;
+						if (event.type === "thinking_delta") gen.reasoning += event.delta;
 						if (event.type === "done") {
 							// Store the whole pi assistant message so context can be
 							// reconstructed losslessly on later turns.
@@ -468,13 +471,14 @@ export class GenerationManager {
 	}
 
 	private async persist(gen: Generation, status: MessageStatus): Promise<void> {
+		const persistedParts = withPersistedReasoning(gen.parts, gen.reasoning);
 		await db
 			.updateTable("message")
 			.set({
 				text: gen.text,
-				parts: gen.parts
+				parts: persistedParts
 					? JSON.stringify({
-							...(gen.parts as Record<string, unknown>),
+							...(persistedParts as Record<string, unknown>),
 							solarToolCalls: gen.toolCalls,
 						})
 					: null,
@@ -507,6 +511,29 @@ export class GenerationManager {
 			.where("id", "=", gen.conversationId)
 			.execute();
 	}
+}
+
+function withPersistedReasoning(parts: unknown, reasoning: string): unknown {
+	if (!reasoning || !parts || typeof parts !== "object") return parts;
+
+	const message = { ...(parts as Record<string, unknown>) };
+	const content = Array.isArray(message.content) ? [...message.content] : [];
+	const thinkingIndex = content.findIndex(
+		(part) =>
+			part != null &&
+			typeof part === "object" &&
+			(part as { type?: unknown }).type === "thinking",
+	);
+	if (thinkingIndex >= 0) {
+		content[thinkingIndex] = {
+			...(content[thinkingIndex] as Record<string, unknown>),
+			thinking: reasoning,
+		};
+	} else {
+		content.unshift({ type: "thinking", thinking: reasoning });
+	}
+	message.content = content;
+	return message;
 }
 
 function parseTitle(response: string): string | null {

@@ -178,6 +178,34 @@ describe("GenerationManager SSE lifecycle", () => {
 		);
 	});
 
+	test("persists streamed reasoning when the final provider message omits it", async () => {
+		streamFactory = () =>
+			events(
+				{ type: "thinking_delta", delta: "First " },
+				{ type: "thinking_delta", delta: "second" },
+				{
+					type: "done",
+					reason: "stop",
+					message: {
+						role: "assistant",
+						content: [{ type: "text", text: "Answer" }],
+						usage: { input: 3, output: 5 },
+					},
+				},
+			);
+		const manager = new GenerationManager();
+
+		start(manager);
+		await readEvents(manager.subscribe("message-1"));
+
+		const messageUpdate = updates.find((update) => update.table === "message");
+		const parts = JSON.parse(String(messageUpdate?.values.parts));
+		expect(parts.content).toEqual([
+			{ type: "thinking", thinking: "First second" },
+			{ type: "text", text: "Answer" },
+		]);
+	});
+
 	test("replays only events after the requested SSE event id", async () => {
 		streamFactory = () =>
 			events({ type: "text_delta", delta: "Hello" }, doneEvent);
