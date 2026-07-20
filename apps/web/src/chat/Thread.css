@@ -585,16 +585,31 @@
   text-decoration: underline;
 }
 
-.solar-citation-list a span,
+.solar-citation-list a > span,
 .solar-citation-list a small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.solar-citation-list a span {
+.solar-citation-list a > span:first-child {
   font-size: 12px;
   font-weight: 600;
+}
+
+.solar-citation-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.solar-citation-meta small {
+  min-width: 0;
+}
+
+.solar-citation-meta .badge {
+  flex: none;
 }
 
 .solar-citation-list a small {

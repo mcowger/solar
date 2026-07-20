@@ -204,9 +204,15 @@ function CitationSources({
 					const body = (
 						<>
 							<span>{citation.title}</span>
-							{citation.domain && <small>{citation.domain}</small>}
-							{category && (
-								<span className="badge badge-ghost badge-xs">{category}</span>
+							{(citation.domain || category) && (
+								<span className="solar-citation-meta">
+									{citation.domain && <small>{citation.domain}</small>}
+									{category && (
+										<span className="badge badge-ghost badge-xs">
+											{category}
+										</span>
+									)}
+								</span>
 							)}
 						</>
 					);
