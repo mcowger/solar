@@ -34,6 +34,7 @@
     "mathjs": "^15.2.0",
     "openjsxl": "^1.0.0",
     "serialize-error": "^13.0.1",
+    "tldts": "^7.4.9",
     "unpdf": "^1.6.2",
     "zod": "^4.4.3"
   },

@@ -1,0 +1,6 @@
+/** OpenAlex CC0 source-catalog snapshot, restricted to repositories. */
+export const RESEARCH_DOMAINS = new Set(
+	`zenodo.org figshare.com pubmed.ncbi.nlm.nih.gov gbif.org arxiv.org lareferencia.info hal.science gallica.bnf.fr doaj.org dialnet.unirioja.es ssrn.com repec.org osti.gov cyberleninka.ru openedition.org dataverse.harvard.edu persee.fr cairn.info dergipark.gov.tr ncbi.nlm.nih.gov biorxiv.org biodiversitylibrary.org osf.io europepmc.org theses.fr escholarship.org ntrs.nasa.gov cds.cern.ch data.mendeley.com hepdata.net boldsystems.org archaeologydataservice.ac.uk preprints.org ora.ox.ac.uk iris.edu shodhganga.inflibnet.ac.in doabooks.org diva-portal.org tdx.cat econstor.eu lirias.kuleuven.be digital.csic.es agritrop.cirad.fr medrxiv.org redalyc.org datadryad.org icpsr.umich.edu tib.eu edoc.mpg.de opendata.cern.ch philpapers.org works.hcommons.org ccdc.cam.ac.uk bacdive.dsmz.de glis.fao.org academiccommons.columbia.edu discover.dtic.mil data.hpc.imperial.ac.uk arcadados.fiocruz.br research.vu.nl data.ru.nl flore.unifi.it recercat.cat uct.figshare.com lpsn.dsmz.de resefe.fr digital.library.pitt.edu idaillinois.org research.unipd.it pure.qub.ac.uk research.tue.nl publicaties.rwth-aachen.de freidok.uni-freiburg.de archive-ouverte.unige.ch scholarbank.nus.edu.sg`.split(
+		" ",
+	),
+);

@@ -223,6 +223,14 @@ export interface ProviderCallTelemetryTable {
 	createdAt: Generated<string>;
 }
 
+/** Cached domain categories from Cloudflare Radar. A null category is a cached miss. */
+export interface SourceCategoryTable {
+	domain: string;
+	category: string | null;
+	source: string;
+	updatedAt: Generated<string>;
+}
+
 export interface Database {
 	apikey: Apikey;
 	app_meta: AppMetaTable;
@@ -241,4 +249,5 @@ export interface Database {
 	conversation_context_state: ConversationContextStateTable;
 	generation_step: GenerationStepTable;
 	provider_call_telemetry: ProviderCallTelemetryTable;
+	source_category: SourceCategoryTable;
 }

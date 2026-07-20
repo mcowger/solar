@@ -12,6 +12,7 @@ export const config = {
 	authBaseURL,
 	googleClientId: process.env.GOOGLE_CLIENT_ID,
 	googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+	cloudflareRadarApiToken: process.env.CLOUDFLARE_RADAR_API_TOKEN,
 	// Optional comma-separated list of email domains allowed to sign up or sign
 	// in (Google and email/password). Empty means any domain is allowed.
 	allowedEmailDomains: (process.env.AUTH_ALLOWED_DOMAINS ?? "")

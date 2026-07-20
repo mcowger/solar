@@ -13,6 +13,8 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTRPC } from "../trpc";
 import "katex/dist/katex.min.css";
 
 type Citation = {
@@ -25,7 +27,22 @@ type Citation = {
 const SOURCE_BLOCK =
 	/(^|\n\n)(?:\*\*|__)?Sources?:(?:\*\*|__)?\s*([\s\S]*?)(?=\n\n|$)/gi;
 const MARKDOWN_LINK = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+const TRAILING_CITATION = /\s+(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))\s*$/;
 const MAX_VISIBLE_FAVICONS = 3;
+
+function citationFromLink(title: string, href: string) {
+	try {
+		const url = new URL(href);
+		return {
+			title,
+			url: url.href,
+			domain: url.hostname.replace(/^www\./, ""),
+			favicon: `${url.origin}/favicon.ico`,
+		};
+	} catch {
+		return null;
+	}
+}
 
 export function citationsFrom(text: string) {
 	const citations: Citation[] = [];
@@ -39,27 +56,29 @@ export function citationsFrom(text: string) {
 			const href = link[2];
 			if (!title || !href) continue;
 
-			try {
-				const url = new URL(href);
-				citations.push({
-					title,
-					url: url.href,
-					domain: url.hostname.replace(/^www\./, ""),
-					favicon: `${url.origin}/favicon.ico`,
-				});
-			} catch {
-				continue;
-			}
+			const citation = citationFromLink(title, href);
+			if (citation) citations.push(citation);
 		}
+	}
+
+	const trailingCitation = text
+		.replace(SOURCE_BLOCK, "")
+		.match(TRAILING_CITATION);
+	const title = trailingCitation?.[2];
+	const href = trailingCitation?.[3];
+	if (title && href) {
+		const citation = citationFromLink(title, href);
+		if (citation) citations.push(citation);
 	}
 
 	return citations;
 }
 
 export function removeCitationBlocks(text: string) {
-	return text.replace(SOURCE_BLOCK, (block, leading) =>
+	const withoutSourceBlocks = text.replace(SOURCE_BLOCK, (block, leading) =>
 		citationsFrom(block).length ? leading : block,
 	);
+	return withoutSourceBlocks.replace(TRAILING_CITATION, "");
 }
 
 function SourceFavicon({ citation }: { citation: Citation }) {
@@ -77,7 +96,13 @@ function SourceFavicon({ citation }: { citation: Citation }) {
 	);
 }
 
-function CitationSources({ citations }: { citations: Citation[] }) {
+function CitationSources({
+	citations,
+	categories,
+}: {
+	citations: Citation[];
+	categories: Map<string, string>;
+}) {
 	if (!citations.length) return null;
 
 	const visibleCitations = citations.slice(0, MAX_VISIBLE_FAVICONS);
@@ -111,6 +136,11 @@ function CitationSources({ citations }: { citations: Citation[] }) {
 						<a href={citation.url} target="_blank" rel="noreferrer">
 							<span>{citation.title}</span>
 							<small>{citation.domain}</small>
+							{categories.has(citation.domain) && (
+								<span className="badge badge-ghost badge-xs">
+									{categories.get(citation.domain)}
+								</span>
+							)}
 						</a>
 					</li>
 				))}
@@ -175,6 +205,16 @@ export function MarkdownText() {
 	const dark = useDarkTheme();
 	const text = useAuiState((s) => (s.part.type === "text" ? s.part.text : ""));
 	const citations = citationsFrom(text);
+	const trpc = useTRPC();
+	const { data: sourceCategories } = useQuery({
+		...trpc.sourceCategories.queryOptions({
+			urls: citations.map((citation) => citation.url),
+		}),
+		enabled: citations.length > 0,
+	});
+	const categories = new Map(
+		sourceCategories?.map(({ domain, category }) => [domain, category]),
+	);
 
 	return (
 		<>
@@ -194,7 +234,7 @@ export function MarkdownText() {
 					),
 				}}
 			/>
-			<CitationSources citations={citations} />
+			<CitationSources citations={citations} categories={categories} />
 		</>
 	);
 }
