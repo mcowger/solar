@@ -22,6 +22,14 @@ interface SolarAttachmentMeta {
 	kind: "image" | "text" | "document";
 }
 
+interface UserLocation {
+	timeZone: string;
+	latitude?: number;
+	longitude?: number;
+	accuracy?: number;
+	timestamp?: number;
+}
+
 interface SolarMessage {
 	id: string;
 	role: "user" | "assistant";
@@ -130,6 +138,28 @@ export function useSolarRuntime(
 	const runQueuedTurnRef = useRef<(message: AppendMessage) => void>(
 		() => undefined,
 	);
+	const userLocationRef = useRef<UserLocation>({
+		timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+	});
+
+	useEffect(() => {
+		const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		userLocationRef.current = { timeZone };
+		if (!navigator.geolocation) return;
+		navigator.geolocation.getCurrentPosition(
+			(position) => {
+				userLocationRef.current = {
+					timeZone,
+					latitude: position.coords.latitude,
+					longitude: position.coords.longitude,
+					accuracy: position.coords.accuracy,
+					timestamp: position.timestamp,
+				};
+			},
+			() => undefined,
+			{ maximumAge: 300_000, timeout: 10_000 },
+		);
+	}, []);
 	const [messageQueue] = useState(() =>
 		createMessageQueue({
 			run: (message) => runQueuedTurnRef.current(message),
@@ -393,14 +423,17 @@ export function useSolarRuntime(
 	}, [conversationId, consume, loadHistory, messageQueue]);
 
 	const streamTurn = useCallback(
-		async (url: string, body: unknown) => {
+		async (url: string, body: Record<string, unknown>) => {
 			const abort = new AbortController();
 			const displayId = crypto.randomUUID();
 			abortRef.current = abort;
 			const request = fetch(url, {
 				method: "POST",
 				headers: jsonHeaders,
-				body: JSON.stringify(body),
+				body: JSON.stringify({
+					...body,
+					userLocation: userLocationRef.current,
+				}),
 				signal: abort.signal,
 			});
 			setIsRunning(true);

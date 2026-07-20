@@ -1833,6 +1833,18 @@ export function Settings({ onClose }: { onClose: () => void }) {
 								))}
 							</div>
 						)}
+						<footer className="px-1 text-xs text-base-content/60">
+							Location data ©{" "}
+							<a
+								className="link link-hover"
+								href="https://www.openstreetmap.org/copyright"
+								target="_blank"
+								rel="noreferrer"
+							>
+								OpenStreetMap contributors
+							</a>
+							, ODbL.
+						</footer>
 					</div>
 				</div>
 			</div>

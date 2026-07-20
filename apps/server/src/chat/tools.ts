@@ -1,9 +1,10 @@
-import { resolveBuiltinTools } from "./builtins";
+import { resolveBuiltinTools, type UserLocation } from "./builtins";
 import { resolveMcpTools, type ResolvedTool } from "./mcp";
 
 export interface ToolResolutionContext {
 	userId: string;
 	conversationId: string;
+	userLocation?: UserLocation;
 }
 
 export interface ToolProvider {
@@ -11,8 +12,8 @@ export interface ToolProvider {
 }
 
 class BuiltinToolProvider implements ToolProvider {
-	async resolve(): Promise<ResolvedTool[]> {
-		return resolveBuiltinTools();
+	async resolve(context: ToolResolutionContext): Promise<ResolvedTool[]> {
+		return resolveBuiltinTools(context.userLocation);
 	}
 }
 

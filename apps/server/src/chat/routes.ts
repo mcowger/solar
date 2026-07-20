@@ -32,6 +32,8 @@ import type { DocumentInputCapabilities } from "./nativeAttachmentAdapters";
 import { toolProvider } from "./tools";
 import { contextRuntime } from "../context/runtime";
 import { ContextRepository } from "../context/repository";
+import type { UserLocation } from "./builtins";
+import { reverseGeocode } from "./location";
 
 export const chatRoutes = new Hono();
 
@@ -155,6 +157,41 @@ const sseHeaders = {
 	connection: "keep-alive",
 };
 
+function parseUserLocation(value: unknown): UserLocation | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const location = value as Record<string, unknown>;
+	const timeZone =
+		typeof location.timeZone === "string" ? location.timeZone : undefined;
+	const latitude =
+		typeof location.latitude === "number" &&
+		Number.isFinite(location.latitude) &&
+		location.latitude >= -90 &&
+		location.latitude <= 90
+			? location.latitude
+			: undefined;
+	const longitude =
+		typeof location.longitude === "number" &&
+		Number.isFinite(location.longitude) &&
+		location.longitude >= -180 &&
+		location.longitude <= 180
+			? location.longitude
+			: undefined;
+	const accuracy =
+		typeof location.accuracy === "number" &&
+		Number.isFinite(location.accuracy) &&
+		location.accuracy >= 0
+			? location.accuracy
+			: undefined;
+	const timestamp =
+		typeof location.timestamp === "number" &&
+		Number.isFinite(location.timestamp)
+			? location.timestamp
+			: undefined;
+	return timeZone || latitude !== undefined || longitude !== undefined
+		? { timeZone, latitude, longitude, accuracy, timestamp }
+		: undefined;
+}
+
 /** Deletes messages matching the predicate, freeing their attachments' on-disk
  * files first (SQLite's ON DELETE CASCADE only removes the DB rows). */
 async function deleteMessages(
@@ -203,6 +240,7 @@ async function streamNewAssistantTurn(
 	conversationId: string,
 	userId: string,
 	isAdmin: boolean,
+	userLocation?: UserLocation,
 	titleGeneration?: { firstMessage: string },
 ): Promise<string> {
 	// Resolve the model for this turn, then persist it so the conversation
@@ -253,7 +291,7 @@ async function streamNewAssistantTurn(
 		assembled.allowedAttachmentIds,
 	);
 	const resolvedTools = convo?.autoExecuteTools
-		? await toolProvider.resolve({ userId, conversationId })
+		? await toolProvider.resolve({ userId, conversationId, userLocation })
 		: [];
 	context.tools = resolvedTools.map(({ tool }) => tool);
 	const prompt = [...context.messages]
@@ -353,11 +391,14 @@ chatRoutes.post("/", async (c) => {
 	const user = await requireUser(c.req.raw);
 	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-	const { conversationId, text, attachmentIds } = (await c.req.json()) as {
-		conversationId: string;
-		text: string;
-		attachmentIds?: string[];
-	};
+	const { conversationId, text, attachmentIds, userLocation } =
+		(await c.req.json()) as {
+			conversationId: string;
+			text: string;
+			attachmentIds?: string[];
+			userLocation?: unknown;
+		};
+	const parsedUserLocation = parseUserLocation(userLocation);
 	const hasAttachments = Boolean(attachmentIds?.length);
 	if (!conversationId || (!text?.trim() && !hasAttachments)) {
 		return c.json(
@@ -435,6 +476,7 @@ chatRoutes.post("/", async (c) => {
 		conversationId,
 		user.id,
 		user.isAdmin,
+		await reverseGeocode(parsedUserLocation),
 		firstUserMessage.length === 1 ? { firstMessage: text ?? "" } : undefined,
 	);
 	return c.json({ messageId: assistantMessageId }, 202);
@@ -446,9 +488,10 @@ chatRoutes.post("/edit", async (c) => {
 	const user = await requireUser(c.req.raw);
 	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-	const { messageId, text } = (await c.req.json()) as {
+	const { messageId, text, userLocation } = (await c.req.json()) as {
 		messageId: string;
 		text: string;
+		userLocation?: unknown;
 	};
 	if (!messageId || !text?.trim()) {
 		return c.json({ error: "messageId and text are required" }, 400);
@@ -474,6 +517,7 @@ chatRoutes.post("/edit", async (c) => {
 		msg.conversationId,
 		user.id,
 		user.isAdmin,
+		await reverseGeocode(parseUserLocation(userLocation)),
 	);
 	return c.json({ messageId: assistantMessageId }, 202);
 });
@@ -486,7 +530,10 @@ chatRoutes.post("/regenerate", async (c) => {
 	const user = await requireUser(c.req.raw);
 	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-	const { messageId } = (await c.req.json()) as { messageId: string };
+	const { messageId, userLocation } = (await c.req.json()) as {
+		messageId: string;
+		userLocation?: unknown;
+	};
 	if (!messageId) return c.json({ error: "messageId required" }, 400);
 
 	const msg = await getOwnedMessage(user.id, messageId);
@@ -505,6 +552,7 @@ chatRoutes.post("/regenerate", async (c) => {
 		msg.conversationId,
 		user.id,
 		user.isAdmin,
+		await reverseGeocode(parseUserLocation(userLocation)),
 	);
 	return c.json({ messageId: assistantMessageId }, 202);
 });

@@ -2,27 +2,43 @@ import { Type } from "@earendil-works/pi-ai";
 import { evaluate } from "mathjs";
 import type { ResolvedTool } from "./mcp";
 
+export interface UserLocation {
+	timeZone?: string;
+	latitude?: number;
+	longitude?: number;
+	accuracy?: number;
+	timestamp?: number;
+	displayName?: string;
+	city?: string;
+	region?: string;
+	country?: string;
+	countryCode?: string;
+}
+
 const asText = (value: unknown) =>
 	typeof value === "string" ? value : JSON.stringify(value, null, 2);
 
-function getCurrentDatetime(args: { timeZone?: string }): {
+function getCurrentDatetime(
+	args: { timeZone?: string },
+	userLocation?: UserLocation,
+): {
 	content: string;
 	isError: boolean;
 } {
 	const now = new Date();
 	try {
-		const timeZone = args.timeZone;
-		const formatted = new Intl.DateTimeFormat("en-US", {
+		const timeZone = args.timeZone ?? userLocation?.timeZone;
+		const localTimeZone = timeZone ?? "UTC";
+		const local = new Intl.DateTimeFormat("en-US", {
 			timeZone,
 			dateStyle: "full",
 			timeStyle: "long",
 		}).format(now);
 		return {
 			content: asText({
-				iso: now.toISOString(),
 				unix: Math.floor(now.getTime() / 1000),
-				timeZone: timeZone ?? "UTC",
-				formatted,
+				utc: now.toISOString(),
+				local: { timeZone: localTimeZone, formatted: local },
 			}),
 			isError: false,
 		};
@@ -32,6 +48,27 @@ function getCurrentDatetime(args: { timeZone?: string }): {
 			isError: true,
 		};
 	}
+}
+
+function getUserLocation(userLocation?: UserLocation): {
+	content: string;
+	isError: boolean;
+} {
+	return {
+		content: asText({
+			timeZone: userLocation?.timeZone ?? "UTC",
+			latitude: userLocation?.latitude,
+			longitude: userLocation?.longitude,
+			accuracy: userLocation?.accuracy,
+			timestamp: userLocation?.timestamp,
+			displayName: userLocation?.displayName,
+			city: userLocation?.city,
+			region: userLocation?.region,
+			country: userLocation?.country,
+			countryCode: userLocation?.countryCode,
+		}),
+		isError: false,
+	};
 }
 
 function getTimezoneInfo(args: { timeZone: string }): {
@@ -104,11 +141,13 @@ const builtin = (
 	execute: async (args) => execute(args),
 });
 
-export function resolveBuiltinTools(): ResolvedTool[] {
+export function resolveBuiltinTools(
+	userLocation?: UserLocation,
+): ResolvedTool[] {
 	return [
 		builtin(
 			"get_current_datetime",
-			'Get the current date and time as an ISO 8601 string, Unix timestamp, and a human-readable form. Optionally provide an IANA time zone (e.g. "America/New_York") to localize the result; defaults to UTC.',
+			'Get the current date and time in UTC and the user\'s local time zone, plus a Unix timestamp. Optionally provide an IANA time zone (e.g. "America/New_York") to override the browser time zone.',
 			Type.Object({
 				timeZone: Type.Optional(
 					Type.String({
@@ -116,7 +155,13 @@ export function resolveBuiltinTools(): ResolvedTool[] {
 					}),
 				),
 			}),
-			(args) => getCurrentDatetime(args as { timeZone?: string }),
+			(args) => getCurrentDatetime(args as { timeZone?: string }, userLocation),
+		),
+		builtin(
+			"get_user_location",
+			"Get the user’s browser-provided location, including IANA time zone and, when permission was granted, latitude, longitude, and accuracy.",
+			Type.Object({}),
+			() => getUserLocation(userLocation),
 		),
 		builtin(
 			"get_timezone_info",
