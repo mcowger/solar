@@ -194,6 +194,9 @@ function CodeHighlighter({
 				background: "var(--color-base-300)",
 				color: "var(--color-base-content)",
 			}}
+			codeTagProps={{
+				style: { background: "transparent", color: "inherit" },
+			}}
 		>
 			{code}
 		</SyntaxHighlighter>

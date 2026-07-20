@@ -13,6 +13,7 @@ import {
 	Ban,
 	Bot,
 	Camera,
+	Check,
 	ChevronDown,
 	Copy,
 	Cog,
@@ -468,7 +469,12 @@ function UserMessage() {
 						className="solar-action-btn"
 						aria-label="Copy message"
 					>
-						<Copy size={16} />
+						<MessagePrimitive.If copied>
+							<Check size={16} />
+						</MessagePrimitive.If>
+						<MessagePrimitive.If copied={false}>
+							<Copy size={16} />
+						</MessagePrimitive.If>
 					</ActionBarPrimitive.Copy>
 				</ActionBarPrimitive.Root>
 			</div>
@@ -578,7 +584,12 @@ function AssistantMessage() {
 						className="solar-action-btn"
 						aria-label="Copy response"
 					>
-						<Copy size={16} />
+						<MessagePrimitive.If copied>
+							<Check size={16} />
+						</MessagePrimitive.If>
+						<MessagePrimitive.If copied={false}>
+							<Copy size={16} />
+						</MessagePrimitive.If>
 					</ActionBarPrimitive.Copy>
 					<ActionBarPrimitive.Reload
 						className="solar-action-btn"

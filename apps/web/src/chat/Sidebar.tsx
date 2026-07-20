@@ -171,8 +171,8 @@ export function Sidebar({
 		return (
 			<div
 				key={c.id}
-				className={`group relative flex items-center gap-1 rounded-lg px-2 py-1.5 ${
-					active ? "bg-base-300" : "hover:bg-base-200"
+				className={`group relative flex h-9 items-center gap-1 rounded-lg px-2 ${
+					active ? "bg-base-300" : "hover:bg-base-300/60"
 				}`}
 			>
 				<button
@@ -408,7 +408,7 @@ export function Sidebar({
 								onClick={() => onSelect(r.id)}
 								title={r.title}
 								className={`block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm ${
-									r.id === activeId ? "bg-base-300" : "hover:bg-base-200"
+									r.id === activeId ? "bg-base-300" : "hover:bg-base-300/60"
 								}`}
 							>
 								{r.title}
