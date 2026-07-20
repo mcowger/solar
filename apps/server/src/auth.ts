@@ -1,7 +1,10 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { APIError } from "better-auth/api";
+import { apiKey } from "@better-auth/api-key";
 import { config } from "./config";
 import { dialect, sqlite } from "./db";
+
+export const API_KEY_HEADER = "x-api-key";
 
 /** Throws unless the email's domain is on the (optional) allowlist. */
 function assertAllowedEmailDomain(email: string): void {
@@ -60,6 +63,19 @@ export const auth = betterAuth({
 			requireLocalEmailVerified: false,
 		},
 	},
+	plugins: [
+		apiKey({
+			apiKeyHeaders: API_KEY_HEADER,
+			defaultPrefix: "sk_solar_",
+			requireName: true,
+			keyExpiration: {
+				defaultExpiresIn: null,
+				disableCustomExpiresTime: true,
+			},
+			rateLimit: { enabled: false },
+			enableSessionForAPIKeys: true,
+		}) as unknown as BetterAuthPlugin,
+	],
 	user: {
 		additionalFields: {
 			// Admin/user roles (full enforcement + admin UI land in M4). Assigned by
@@ -100,3 +116,38 @@ export const auth = betterAuth({
 		},
 	},
 });
+
+export async function getSolarSession(headers: Headers) {
+	let session: Awaited<ReturnType<typeof auth.api.getSession>>;
+	try {
+		session = await auth.api.getSession({ headers });
+	} catch {
+		return null;
+	}
+	if (!session) return null;
+	const user = sqlite
+		.query("SELECT role, isDisabled FROM user WHERE id = ?")
+		.get(session.user.id) as { role: string; isDisabled: number } | null;
+	if (
+		!user ||
+		user.isDisabled ||
+		(headers.has(API_KEY_HEADER) && user.role !== "admin")
+	)
+		return null;
+	return {
+		session: session.session,
+		user: { ...session.user, role: user.role },
+	};
+}
+
+interface ApiKeyApi {
+	createApiKey(input: {
+		body: { name: string; userId: string };
+	}): Promise<{ id: string; key: string }>;
+}
+
+export function createSolarApiKey(name: string, userId: string) {
+	return (auth.api as unknown as ApiKeyApi).createApiKey({
+		body: { name, userId },
+	});
+}

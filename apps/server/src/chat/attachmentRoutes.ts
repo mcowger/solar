@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { auth } from "../auth";
+import { getSolarSession } from "../auth";
 import {
 	AttachmentError,
 	readAttachment,
@@ -10,8 +10,7 @@ import {
 export const attachmentRoutes = new Hono();
 
 async function requireUserId(req: Request): Promise<string | null> {
-	const session = await auth.api.getSession({ headers: req.headers });
-	return session?.user?.id ?? null;
+	return (await getSolarSession(req.headers))?.user.id ?? null;
 }
 
 // Upload an attachment ahead of sending: composer picks a file, this stores it
