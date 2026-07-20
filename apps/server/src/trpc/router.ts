@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { sql } from "kysely";
 import { z } from "zod";
-import { createSolarApiKey } from "../auth";
+import { createSolarApiKey, createSolarUser } from "../auth";
 import { config } from "../config";
 import { db, sqlite } from "../db";
 import {
@@ -1277,6 +1277,26 @@ const adminRouter = router({
 				createdAt: string;
 			}[],
 	),
+
+	createUser: adminProcedure
+		.input(
+			z.object({
+				name: z.string().trim().min(1).max(100),
+				email: z.string().email(),
+				password: z.string().min(8).max(128),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			try {
+				await createSolarUser(input);
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						error instanceof Error ? error.message : "Unable to create user",
+				});
+			}
+		}),
 
 	setUserRole: adminProcedure
 		.input(z.object({ userId: z.string(), role: z.enum(["admin", "user"]) }))

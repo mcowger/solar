@@ -40,6 +40,7 @@ export const auth = betterAuth({
 					google: {
 						clientId: config.googleClientId,
 						clientSecret: config.googleClientSecret,
+						disableSignUp: true,
 						// Enforce the email-domain allowlist on every Google sign-in
 						// (including linking to existing users). The profile email comes
 						// from Google's signed ID token, so it can be trusted.
@@ -150,4 +151,12 @@ export function createSolarApiKey(name: string, userId: string) {
 	return (auth.api as unknown as ApiKeyApi).createApiKey({
 		body: { name, userId },
 	});
+}
+
+export function createSolarUser(input: {
+	name: string;
+	email: string;
+	password: string;
+}) {
+	return auth.api.signUpEmail({ body: input });
 }

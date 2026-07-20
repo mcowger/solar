@@ -1,4 +1,4 @@
-import { auth } from "../auth";
+import { auth, createSolarApiKey } from "../auth";
 import { sqlite } from "./index";
 
 /**
@@ -24,8 +24,10 @@ export async function seedDevUser(): Promise<void> {
 	};
 	if (row.c > 0) return;
 
-	await auth.api.signUpEmail({
+	const result = await auth.api.signUpEmail({
 		body: { email: DEV_EMAIL, password: DEV_PASSWORD, name: "Dev Admin" },
 	});
+	const apiKey = await createSolarApiKey("Development", result.user.id);
 	console.log(`seeded dev admin account: ${DEV_EMAIL} / ${DEV_PASSWORD}`);
+	console.log(`seeded dev API key: ${apiKey.key}`);
 }

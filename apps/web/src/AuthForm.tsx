@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { signIn, signUp } from "./auth";
+import { signIn } from "./auth";
 import { useGoogleAuthEnabled } from "./authProviders";
 import { ThemeToggle } from "./ThemeToggle";
 
-/** Minimal email/password login + register (M1). */
+/** Minimal email/password login. */
 export function AuthForm() {
-	const [mode, setMode] = useState<"signin" | "signup">("signin");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
-	const [name, setName] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const googleEnabled = useGoogleAuthEnabled();
@@ -27,10 +25,7 @@ export function AuthForm() {
 			document.activeElement.blur();
 		setBusy(true);
 		setError(null);
-		const res =
-			mode === "signin"
-				? await signIn.email({ email, password })
-				: await signUp.email({ email, password, name });
+		const res = await signIn.email({ email, password });
 		setBusy(false);
 		if (res.error) setError(res.error.message ?? "Authentication failed");
 	}
@@ -49,15 +44,6 @@ export function AuthForm() {
 						<ThemeToggle />
 					</div>
 					<form onSubmit={submit} className="grid gap-3">
-						{mode === "signup" && (
-							<input
-								className="input w-full"
-								placeholder="Name"
-								value={name}
-								onChange={(e) => setName(e.target.value)}
-								required
-							/>
-						)}
 						<input
 							className="input w-full"
 							type="email"
@@ -80,7 +66,7 @@ export function AuthForm() {
 							type="submit"
 							disabled={busy}
 						>
-							{mode === "signin" ? "Sign in" : "Create account"}
+							Sign in
 						</button>
 					</form>
 					{googleEnabled && (
@@ -100,14 +86,6 @@ export function AuthForm() {
 						</>
 					)}
 					{error && <p className="text-error">{error}</p>}
-					<button
-						className="btn btn-link justify-start px-0"
-						onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
-					>
-						{mode === "signin"
-							? "Need an account? Register"
-							: "Have an account? Sign in"}
-					</button>
 				</div>
 			</section>
 		</main>

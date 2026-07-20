@@ -1063,6 +1063,7 @@ function Users() {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
 	const { data: session } = useSession();
+	const [newUser, setNewUser] = useState({ name: "", email: "", password: "" });
 	const users = useQuery(trpc.admin.listUsers.queryOptions());
 	const invalidate = () =>
 		qc.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
@@ -1075,11 +1076,69 @@ function Users() {
 	const remove = useMutation(
 		trpc.admin.deleteUser.mutationOptions({ onSuccess: invalidate }),
 	);
+	const create = useMutation(
+		trpc.admin.createUser.mutationOptions({
+			onSuccess: () => {
+				setNewUser({ name: "", email: "", password: "" });
+				invalidate();
+			},
+		}),
+	);
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
 			<div className="card-body p-5">
 				<h3 className="card-title">Users</h3>
+				<form
+					className="grid gap-2 sm:grid-cols-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						create.mutate(newUser);
+					}}
+				>
+					<input
+						className="input input-sm min-w-0"
+						placeholder="Name"
+						value={newUser.name}
+						onChange={(event) =>
+							setNewUser({ ...newUser, name: event.target.value })
+						}
+						required
+					/>
+					<input
+						className="input input-sm min-w-0"
+						type="email"
+						placeholder="Email"
+						value={newUser.email}
+						onChange={(event) =>
+							setNewUser({ ...newUser, email: event.target.value })
+						}
+						required
+					/>
+					<input
+						className="input input-sm min-w-0"
+						type="password"
+						placeholder="Password (min 8)"
+						value={newUser.password}
+						onChange={(event) =>
+							setNewUser({ ...newUser, password: event.target.value })
+						}
+						minLength={8}
+						required
+					/>
+					<button
+						className="btn btn-sm"
+						disabled={create.isPending}
+						type="submit"
+					>
+						{create.isPending ? "Adding…" : "Add user"}
+					</button>
+				</form>
+				{create.isError && (
+					<div role="alert" className="alert alert-error alert-soft text-sm">
+						{create.error.message}
+					</div>
+				)}
 				{users.isError && (
 					<div role="alert" className="alert alert-error alert-soft">
 						{users.error.message}

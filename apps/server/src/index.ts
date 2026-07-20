@@ -175,6 +175,7 @@ app.use("/trpc/*", async (c, next) => {
 
 // Better Auth handles all of /api/auth/*.
 app.all("/api/auth/api-key/*", (c) => c.notFound());
+app.all("/api/auth/sign-up/email", (c) => c.notFound());
 app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
 
 // Decoupled chat streaming (SSE) — see chat/generationManager.ts.

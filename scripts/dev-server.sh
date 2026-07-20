@@ -45,6 +45,10 @@ show_server_info() {
   fi
 }
 
+show_seed_info() {
+  grep -E '^seeded dev (admin account|API key):' "$LOGFILE" || true
+}
+
 case "${1:-}" in
   start)
     if is_running; then
@@ -68,6 +72,7 @@ case "${1:-}" in
     sleep 3
     if is_running; then
       echo "dev server started (pid $(cat "$PIDFILE")) -> http://localhost:$SERVER_PORT  logs: $LOGFILE"
+      show_seed_info
     else
       echo "dev server failed to start; last log lines:"
       tail -n 20 "$LOGFILE"
