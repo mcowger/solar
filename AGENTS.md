@@ -7,7 +7,7 @@ Domain-specific guidance lives next to the code:
 
 - `apps/server/AGENTS.md` — server entrypoint, database/migrations, chat/generation
 - `apps/web/AGENTS.md` — frontend styling, build, runtime, and test notes
-- `docs/chat-history.md` — chat-history CLI, staging sync, history import/export
+- `docs/chat-history.md` — operations CLI, history import/export, staging deploy
 
 ## Current phase: experimentation
 
@@ -41,15 +41,15 @@ to a file — no `nohup`/`disown`, no blocked shells, and a clean group-kill on
 stop. Never start the server with raw `... &`/`nohup` from an agent shell.
 
 ```bash
-bun run dev:start     # start detached (waits ~3s, fails fast with logs)
-bun run dev:status    # running / stopped (+ pid)
-bun run dev:logs      # last 80 log lines (bun run dev:logs 200 for more)
-bun run dev:restart   # stop + start
-bun run dev:stop      # SIGTERM the process group, clean up pidfile
+bun run solar dev start     # start detached (waits ~3s, fails fast with logs)
+bun run solar dev status    # running / stopped (+ pid)
+bun run solar dev logs      # last 80 log lines (bun run solar dev logs 200 for more)
+bun run solar dev restart   # stop + start
+bun run solar dev stop      # SIGTERM the process group, clean up pidfile
 ```
 
 Pidfile/logfile live at `.dev-server.pid` / `.dev-server.log` (gitignored).
-`dev:start` selects a stable worktree-specific port in the 3000–3999 range;
+`solar dev start` selects a stable worktree-specific port in the 3000–3999 range;
 see `apps/server/src/config.ts` for `PASEO_PORT`, `PORT`, and `DATABASE_PATH`
 overrides.
 
@@ -72,11 +72,11 @@ and no Vite** — don't add one.
 
 | Command | What it does |
 | --- | --- |
-| `bun run dev:start` / `dev:stop` / `dev:status` / `dev:logs` / `dev:restart` | Managed detached dev server (preferred; see above) |
+| `bun run solar dev <start\|stop\|restart\|status\|logs>` | Managed detached dev server (preferred; see above) |
 | `bun run build` | Production bundle of the web app → `apps/server/dist/web` |
 | `bun run migrate` / `migrate:auth` | App (Kysely) / Better Auth migrations against `solar.db` |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
-| `bun run chat-history` / `sync-staging-history` / `dev:load-history` | History tooling — see `docs/chat-history.md` |
+| `bun run solar history …` / `bun run solar staging deploy` | Server operations — see `docs/chat-history.md` |
 | `bun run typecheck` | `tsc` for server, web, shared, and Playwright tests |
 | `bun run test` | Run server and frontend Bun unit tests (`test:server` / `test:web` for one) |
 | `bun run test:e2e` | Playwright E2E in Chromium (`test:e2e:all` for all three browsers) |
@@ -92,7 +92,7 @@ Run `bun run typecheck` before committing.
   cost:
 
   ```bash
-  SOLAR_MOCK_LLM=1 bun run dev:start
+  SOLAR_MOCK_LLM=1 bun run solar dev start
   ```
 
   Only exercise the real provider when explicitly validating provider wiring.

@@ -114,7 +114,7 @@ password `password`.
 
 ```sh
 bun install
-bun run dev:start
+bun run solar dev start
 ```
 
 The managed server chooses a stable worktree-specific port in the `3000–3999`

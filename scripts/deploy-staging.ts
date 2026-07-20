@@ -1,21 +1,22 @@
 import { spawnSync } from "node:child_process";
 
-const context = process.env.SOLAR_STAGING_DOCKER_CONTEXT ?? "dolphin";
-const sshHost = process.env.SOLAR_STAGING_SSH_HOST ?? context;
+const context = process.env.SOLAR_DEPLOY_DOCKER_CONTEXT ?? "dolphin";
+const sshHost = process.env.SOLAR_DEPLOY_SSH_HOST ?? context;
 const stagingUrl = (
-	process.env.SOLAR_STAGING_URL ?? "https://solar.home.cowger.us"
+	process.env.SOLAR_URL ?? "https://solar.home.cowger.us"
 ).replace(/\/$/, "");
-const containerName = process.env.SOLAR_STAGING_CONTAINER_NAME ?? "Solar";
-const imageName = process.env.SOLAR_STAGING_IMAGE_NAME ?? "solar";
+const containerName = process.env.SOLAR_DEPLOY_CONTAINER_NAME ?? "Solar";
+const imageName = process.env.SOLAR_DEPLOY_IMAGE_NAME ?? "solar";
 const imageRetention = Number.parseInt(
-	process.env.SOLAR_STAGING_IMAGE_RETAIN ?? "3",
+	process.env.SOLAR_DEPLOY_IMAGE_RETAIN ?? "3",
 	10,
 );
 const healthTimeout = Number.parseInt(
-	process.env.SOLAR_STAGING_HEALTH_TIMEOUT ?? "60",
+	process.env.SOLAR_DEPLOY_HEALTH_TIMEOUT ?? "60",
 	10,
 );
-const targetPlatform = process.env.SOLAR_TARGETPLATFORM ?? "linux/amd64";
+const targetPlatform =
+	process.env.SOLAR_DEPLOY_TARGET_PLATFORM ?? "linux/amd64";
 
 const timestamp = new Date()
 	.toISOString()
@@ -178,15 +179,14 @@ if (!healthy) {
 }
 
 const historyOutput =
-	process.env.SOLAR_STAGING_HISTORY_OUTPUT ??
-	`.staging-history/${timestamp}.json`;
+	process.env.SOLAR_HISTORY_OUTPUT ?? `.staging-history/${timestamp}.json`;
 console.log(`\nExporting all staging chat history to ${historyOutput}...`);
 runCommand(
 	"bun",
 	[
 		"run",
-		"chat-history",
-		"--",
+		"solar",
+		"history",
 		"export-all",
 		"--url",
 		stagingUrl,
@@ -194,17 +194,6 @@ runCommand(
 		historyOutput,
 	],
 	{
-		env: {
-			...process.env,
-			SOLAR_SESSION_COOKIE:
-				process.env.SOLAR_STAGING_SESSION_COOKIE ??
-				process.env.SOLAR_SESSION_COOKIE,
-			SOLAR_ADMIN_EMAIL:
-				process.env.SOLAR_STAGING_ADMIN_EMAIL ?? process.env.SOLAR_ADMIN_EMAIL,
-			SOLAR_ADMIN_PASSWORD:
-				process.env.SOLAR_STAGING_ADMIN_PASSWORD ??
-				process.env.SOLAR_ADMIN_PASSWORD,
-		},
 		stream: true,
 	},
 );

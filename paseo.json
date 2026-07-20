@@ -4,15 +4,12 @@
       "bunx skills experimental_install",
       "bun install"
     ],
-    "teardown": "bun run dev:stop && rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
+    "teardown": "bun run solar dev stop && rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
   },
   "scripts": {
     "web": {
       "type": "service",
-      "command": "bun run dev:foreground"
-    },
-    "dev:load-history": {
-      "command": "bun run dev:load-history"
+      "command": "bun run solar dev start --foreground"
     },
     "typecheck": {
       "command": "bun run typecheck"
@@ -20,8 +17,8 @@
     "build": {
       "command": "bun run build"
     },
-    "deploy:staging": {
-      "command": "bun run deploy:staging"
+    "staging:deploy": {
+      "command": "bun run solar staging deploy"
     },
     "migrate": {
       "command": "bun run migrate"
