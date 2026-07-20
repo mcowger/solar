@@ -3,10 +3,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import {
 	ContextStatusIndicator,
 	EmptyAssistantResponse,
+	formatToolInputPreview,
+	GroupedToolCalls,
+	groupToolCalls,
 	isFileDrag,
 	shouldConvertPastedText,
 	SummaryEventCard,
 } from "./Thread";
+import type { SolarToolCall } from "./useSolarRuntime";
 
 describe("isFileDrag", () => {
 	test("recognizes file drags without treating text drags as attachments", () => {
@@ -118,6 +122,70 @@ describe("SummaryEventCard", () => {
 		expect(screen.getByText("Conversation summarized")).toBeInTheDocument();
 		expect(screen.getByText("12.4K → 3.1K tokens")).toBeInTheDocument();
 		expect(screen.getByText("75% smaller")).toBeInTheDocument();
+	});
+});
+
+describe("GroupedToolCalls", () => {
+	const calls: SolarToolCall[] = [
+		{
+			id: "exa-1",
+			name: "mcp__exa__web_search_exa",
+			serverName: "Exa",
+			remoteName: "web_search_exa",
+			args: JSON.stringify({ query: "first search" }),
+			status: "complete",
+			output: "first result",
+		},
+		{
+			id: "builtin-1",
+			name: "get_current_datetime",
+			args: "{}",
+			status: "complete",
+		},
+		{
+			id: "exa-2",
+			name: "mcp__exa__web_search_exa",
+			serverName: "Exa",
+			remoteName: "web_search_exa",
+			args: JSON.stringify({ query: "second search", limit: 5 }),
+			status: "executing",
+		},
+	];
+
+	test("groups by displayed identity in first-seen order", () => {
+		const groups = groupToolCalls(calls);
+		expect(groups.map((group) => group.name)).toEqual([
+			"Exa (web_search_exa)",
+			"get_current_datetime",
+		]);
+		expect(groups[0]!.calls.map((call) => call.id)).toEqual(["exa-1", "exa-2"]);
+	});
+
+	test("formats parsed input as a compact preview", () => {
+		expect(formatToolInputPreview(calls[2]!)).toBe(
+			'query: "second search", limit: 5',
+		);
+		expect(
+			formatToolInputPreview({
+				...calls[2]!,
+				args: "",
+				status: "streaming",
+			}),
+		).toBe("Input pending…");
+	});
+
+	test("renders equal collapsed groups with aggregate statuses", () => {
+		const { container } = render(<GroupedToolCalls toolCalls={calls} />);
+		const groups =
+			container.querySelectorAll<HTMLDetailsElement>(".solar-tool-group");
+
+		expect(groups).toHaveLength(2);
+		expect([...groups].every((group) => !group.open)).toBe(true);
+		expect(
+			screen.getByText(/Complete: 1\s+In Progress: 1/),
+		).toBeInTheDocument();
+		expect(screen.getAllByText("Complete").length).toBeGreaterThanOrEqual(1);
+		expect(container.querySelectorAll(".solar-tool-call")).toHaveLength(3);
 	});
 });
 

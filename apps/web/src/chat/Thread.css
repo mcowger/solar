@@ -198,6 +198,7 @@
   display: grid;
   gap: 4px;
   margin-bottom: 8px;
+  width: min(100%, 40rem);
 }
 
 .solar-summary-event {
@@ -207,7 +208,7 @@
   width: min(100%, 32rem);
 }
 
-.solar-tool-call {
+.solar-tool-group {
   border-radius: 8px;
   background: var(--color-base-200);
   border: 1px solid var(--color-base-300);
@@ -216,7 +217,7 @@
   overflow: hidden;
 }
 
-.solar-tool-call summary {
+.solar-tool-group summary {
   align-items: center;
   cursor: pointer;
   display: flex;
@@ -225,13 +226,28 @@
   padding: 6px 8px;
 }
 
-.solar-tool-call summary::-webkit-details-marker {
+.solar-tool-group summary::-webkit-details-marker {
   display: none;
+}
+
+.solar-tool-group-calls {
+  border-top: 1px solid var(--color-base-300);
+  display: grid;
+  gap: 4px;
+  padding: 4px;
+}
+
+.solar-tool-call {
+  background: color-mix(in oklch, var(--color-base-100) 68%, transparent);
+  border: 1px solid var(--color-base-300);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .solar-tool-status {
   background: color-mix(in oklch, var(--color-base-content) 45%, transparent);
   border-radius: 50%;
+  flex: 0 0 auto;
   height: 6px;
   width: 6px;
 }
@@ -250,16 +266,34 @@
   background: var(--color-error);
 }
 
-.solar-tool-name {
+.solar-tool-name,
+.solar-tool-input-preview {
   color: var(--color-base-content);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.solar-tool-input-preview {
+  color: color-mix(in oklch, var(--color-base-content) 82%, transparent);
+}
+
 .solar-tool-state {
   color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
   margin-left: auto;
+  white-space: pre;
+}
+
+.solar-tool-caret {
+  color: color-mix(in oklch, var(--color-base-content) 62%, transparent);
+  flex: 0 0 auto;
+  transition: transform 150ms ease;
+}
+
+.solar-tool-group[open] > .solar-tool-group-summary .solar-tool-caret,
+.solar-tool-call[open] > summary .solar-tool-caret {
+  transform: rotate(180deg);
 }
 
 .solar-tool-call-details {

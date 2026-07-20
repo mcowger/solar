@@ -371,6 +371,160 @@ function Reasoning() {
 	);
 }
 
+function getToolDisplayName(call: SolarToolCall): string {
+	return call.serverName && call.remoteName
+		? `${call.serverName} (${call.remoteName})`
+		: call.name;
+}
+
+export interface SolarToolCallGroup {
+	name: string;
+	calls: SolarToolCall[];
+}
+
+export function groupToolCalls(
+	toolCalls: SolarToolCall[],
+): SolarToolCallGroup[] {
+	const groups = new Map<string, SolarToolCallGroup>();
+	for (const call of toolCalls) {
+		const name = getToolDisplayName(call);
+		const group = groups.get(name);
+		if (group) group.calls.push(call);
+		else groups.set(name, { name, calls: [call] });
+	}
+	return [...groups.values()];
+}
+
+function truncatePreview(value: string): string {
+	const singleLine = value.replace(/\s+/g, " ").trim();
+	return singleLine.length > 96 ? `${singleLine.slice(0, 95)}…` : singleLine;
+}
+
+export function formatToolInputPreview(call: SolarToolCall): string {
+	const args = call.args.trim();
+	if (!args) {
+		return call.status === "streaming" ? "Input pending…" : "No input";
+	}
+
+	try {
+		const parsed: unknown = JSON.parse(args);
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			const entries = Object.entries(parsed);
+			if (!entries.length) return "No input";
+			return truncatePreview(
+				entries
+					.map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+					.join(", "),
+			);
+		}
+		return truncatePreview(JSON.stringify(parsed));
+	} catch {
+		return truncatePreview(args);
+	}
+}
+
+function getToolStateLabel(call: SolarToolCall): string {
+	if (call.status === "streaming") return "Preparing";
+	if (call.status === "executing") return "Running";
+	if (call.status === "error") return "Failed";
+	return "Complete";
+}
+
+function getGroupStatus(group: SolarToolCallGroup): SolarToolCall["status"] {
+	if (
+		group.calls.some(
+			(call) => call.status === "streaming" || call.status === "executing",
+		)
+	) {
+		return "executing";
+	}
+	if (group.calls.some((call) => call.status === "error")) return "error";
+	return "complete";
+}
+
+function getGroupStateLabel(group: SolarToolCallGroup): string {
+	if (group.calls.length === 1) return getToolStateLabel(group.calls[0]!);
+
+	const complete = group.calls.filter(
+		(call) => call.status === "complete",
+	).length;
+	const inProgress = group.calls.filter(
+		(call) => call.status === "streaming" || call.status === "executing",
+	).length;
+	const failed = group.calls.filter((call) => call.status === "error").length;
+	return [
+		complete ? `Complete: ${complete}` : "",
+		inProgress ? `In Progress: ${inProgress}` : "",
+		failed ? `Failed: ${failed}` : "",
+	]
+		.filter(Boolean)
+		.join("  ");
+}
+
+function ToolCallDetails({ call }: { call: SolarToolCall }) {
+	return (
+		<div className="solar-tool-call-details">
+			<span>Input</span>
+			<pre>{call.args || "{}"}</pre>
+			{call.output !== undefined && (
+				<>
+					<span>{call.status === "error" ? "Error" : "Output"}</span>
+					<pre>{call.output}</pre>
+				</>
+			)}
+		</div>
+	);
+}
+
+export function GroupedToolCalls({
+	toolCalls,
+}: {
+	toolCalls: SolarToolCall[];
+}) {
+	if (!toolCalls.length) return null;
+
+	return (
+		<div className="solar-tool-calls">
+			{groupToolCalls(toolCalls).map((group) => {
+				const status = getGroupStatus(group);
+				return (
+					<details key={group.name} className="solar-tool-group">
+						<summary className="solar-tool-group-summary">
+							<span
+								className={`solar-tool-status solar-tool-status-${status}`}
+							/>
+							<span className="solar-tool-name">{group.name}</span>
+							<span className="solar-tool-state">
+								{getGroupStateLabel(group)}
+							</span>
+							<ChevronDown className="solar-tool-caret" size={14} />
+						</summary>
+						<div className="solar-tool-group-calls">
+							{group.calls.map((call) => (
+								<details key={call.id} className="solar-tool-call">
+									<summary>
+										<span
+											className={`solar-tool-status solar-tool-status-${call.status}`}
+										/>
+										<span className="solar-tool-input-preview">
+											{formatToolInputPreview(call)}
+										</span>
+										<span className="solar-tool-state">
+											{getToolStateLabel(call)}
+										</span>
+										<ChevronDown className="solar-tool-caret" size={13} />
+									</summary>
+									<ToolCallDetails call={call} />
+								</details>
+							))}
+						</div>
+					</details>
+				);
+			})}
+		</div>
+	);
+}
+
 function ToolCalls() {
 	const toolCalls = useAuiState(
 		(s) =>
@@ -381,49 +535,7 @@ function ToolCalls() {
 			)?.toolCalls ?? EMPTY_TOOL_CALLS,
 	);
 
-	if (!toolCalls.length) return null;
-
-	return (
-		<div className="solar-tool-calls">
-			{toolCalls.map((call) => (
-				<details
-					key={call.id}
-					className="solar-tool-call"
-					open={call.status === "streaming" || call.status === "executing"}
-				>
-					<summary>
-						<span
-							className={`solar-tool-status solar-tool-status-${call.status}`}
-						/>
-						<span className="solar-tool-name">
-							{call.serverName && call.remoteName
-								? `${call.serverName} (${call.remoteName})`
-								: call.name}
-						</span>
-						<span className="solar-tool-state">
-							{call.status === "streaming"
-								? "Preparing"
-								: call.status === "executing"
-									? "Running"
-									: call.status === "error"
-										? "Failed"
-										: "Complete"}
-						</span>
-					</summary>
-					<div className="solar-tool-call-details">
-						<span>Input</span>
-						<pre>{call.args || "{}"}</pre>
-						{call.output !== undefined && (
-							<>
-								<span>{call.status === "error" ? "Error" : "Output"}</span>
-								<pre>{call.output}</pre>
-							</>
-						)}
-					</div>
-				</details>
-			))}
-		</div>
-	);
+	return <GroupedToolCalls toolCalls={toolCalls} />;
 }
 
 function formatTokens(tokens: number | null): string {
