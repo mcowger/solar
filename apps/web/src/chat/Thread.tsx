@@ -951,6 +951,7 @@ export function Thread({
 				style={{
 					flex: 1,
 					overflowY: "auto",
+					overscrollBehaviorY: "contain",
 					padding: "1rem",
 					display: "flex",
 					flexDirection: "column",

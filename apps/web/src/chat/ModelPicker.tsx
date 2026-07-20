@@ -53,24 +53,16 @@ export function ModelPicker({ conversationId }: { conversationId: string }) {
 
 	if (models.length === 0) {
 		return (
-			<div style={{ padding: "0.5rem 1rem", color: "#999", fontSize: 13 }}>
+			<div className="border-b border-base-300 px-4 py-2 text-sm text-base-content/60">
 				No models configured.
 			</div>
 		);
 	}
 
 	return (
-		<div
-			style={{
-				display: "flex",
-				alignItems: "center",
-				gap: 8,
-				padding: "0.4rem 1rem",
-				borderBottom: "1px solid #eee",
-				fontSize: 13,
-			}}
-		>
+		<div className="flex items-center gap-2 border-b border-base-300 px-4 py-1.5 text-sm">
 			<select
+				className="select select-sm"
 				value={cur ? key(cur) : ""}
 				onChange={(e) => {
 					const m = models.find((x) => key(x) === e.target.value);
