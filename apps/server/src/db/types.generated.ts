@@ -217,6 +217,13 @@ export interface Session {
 	userId: string;
 }
 
+export interface SourceCategory {
+	category: string | null;
+	domain: string | null;
+	source: string;
+	updatedAt: Generated<string>;
+}
+
 export interface Tag {
 	createdAt: Generated<string>;
 	id: string | null;
@@ -277,6 +284,7 @@ export interface DB {
 	provider_call_telemetry: ProviderCallTelemetry;
 	provider_config: ProviderConfig;
 	session: Session;
+	source_category: SourceCategory;
 	tag: Tag;
 	user: User;
 	user_mcp_server_preference: UserMcpServerPreference;

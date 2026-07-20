@@ -46,6 +46,7 @@ import {
 	pasteSettingsInputSchema,
 	setPasteSettings,
 } from "../chat/pasteSettings";
+import { SourceCategoryResolver } from "../sources/categories";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -2134,6 +2135,9 @@ const tagRouter = router({
 
 export const appRouter = router({
 	pasteSettings: protectedProcedure.query(() => getPasteSettings()),
+	sourceCategories: protectedProcedure
+		.input(z.object({ urls: z.array(z.string().url()).max(20) }))
+		.query(({ input }) => new SourceCategoryResolver(db).resolve(input.urls)),
 	health: publicProcedure.query(async () => {
 		const row = await db
 			.selectFrom("app_meta")

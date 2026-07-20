@@ -137,6 +137,7 @@ SQLite and attachments are created relative to the current directory by default.
 | --- | --- |
 | `BETTER_AUTH_SECRET` | Required signing secret; use 32+ random characters |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google OAuth credentials |
+| `CLOUDFLARE_RADAR_API_TOKEN` | Optional Cloudflare Radar token for source categories |
 | `DATABASE_PATH` | SQLite file path |
 | `SOLAR_ATTACHMENTS_DIR` | Local attachment storage directory |
 | `PORT` / `PASEO_PORT` | Listening port / managed dev-server override |
@@ -145,6 +146,11 @@ SQLite and attachments are created relative to the current directory by default.
 Provider keys, enabled models, presets, context policies, and MCP servers are
 managed from the authenticated UI. See `.env.example` for the complete runtime
 surface.
+
+Source-category badges use a bundled registry of 300+ news domains derived from
+[Wikidata's CC0](https://www.wikidata.org/wiki/Wikidata:Data_access) news-media
+and newspaper records. Unknown domains are resolved through the optional
+Cloudflare Radar fallback and persisted locally.
 
 Google OAuth is enabled when both Google credentials are set. Configure the
 Google OAuth redirect URI as `${BETTER_AUTH_URL}/api/auth/callback/google`.
