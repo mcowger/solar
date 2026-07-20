@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="Solar, a lightweight self-hosted AI workspace connecting Pi-powered generation with models, tools, files, and durable context">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Solar, a self-hosted AI workspace for models, tools, files, and durable context">
 </p>
 
 <p align="center">
@@ -8,56 +8,93 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
+  <a href="#see-it-work">See it work</a> ·
   <a href="#what-you-get">Capabilities</a> ·
-  <a href="#how-it-works">How it works</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#administration">Administration</a> ·
   <a href="#status">Status</a>
 </p>
 
-## See the surface
+## See it work
 
-Solar keeps the working set visible without making the interface feel like an
-admin console: conversations on the left, model selection above the thread,
-and controls for attachments, reasoning, verbosity, and MCP tools in the
-composer.
+Solar keeps research, source evidence, model choice, tools, and the next prompt
+in one working surface. This example combines web and local-tool calls while
+keeping its source trail attached to the reply.
 
 <p align="center">
-  <img src="./assets/readme/Screenshot 2026-07-18 at 10.26.39 PM.png" width="100%" alt="A populated Solar conversation in dark mode with folders, model selection, streamed Thinking, Markdown, code, and the compact composer">
+  <img src="./assets/readme/cited-research-desktop.png" width="100%" alt="Solar desktop conversation showing a sourced research answer, source chips, chat history, model selection, and composer controls">
 </p>
 
 <p align="center">
-  <img src="./assets/readme/Screenshot 2026-07-18 at 10.26.46 PM.png" width="30%" alt="Solar reasoning effort menu from default through max">
-  &nbsp;
-  <img src="./assets/readme/Screenshot 2026-07-18 at 10.26.49 PM.png" width="30%" alt="Solar answer verbosity menu with low, medium, and high choices">
-  &nbsp;
-  <img src="./assets/readme/Screenshot 2026-07-18 at 10.26.55 PM.png" width="36%" alt="Solar MCP tool picker with automatic execution and individual remote server toggles">
-</p>
-
-<p align="center">
-  <img src="./assets/readme/mobile-workspace.png" width="32%" alt="Solar mobile workspace with a collapsible navigation drawer and full-width composer">
+  <img src="./assets/readme/cited-research-mobile.png" width="32%" alt="Solar mobile conversation with cited research, source links, and the full composer">
   &nbsp;&nbsp;
-  <img src="./assets/readme/theme-picker.png" width="64%" alt="Solar theme picker showing 37 persistent themes including Solar Light and Solar Dark">
+  <img src="./assets/readme/cited-research-dark-theme.png" width="64%" alt="Solar dark-theme desktop conversation with cited research and source chips">
+</p>
+
+### Evidence stays with the answer
+
+Source chips work inline and a compact source list collects the material behind
+the response.
+
+<p align="center">
+  <img src="./assets/readme/inline-citation-chips.png" width="100%" alt="Inline source chips from NPR, Reuters, and CBS News beside a cited answer">
+</p>
+
+### Set up the conversation, not just the prompt
+
+Start from a reusable preset, choose a configured model, set answer detail, and
+select the MCP servers that may run. The conversation menu makes its current
+context window, compaction progress, and cost inspectable.
+
+<p align="center">
+  <img src="./assets/readme/preset-menu.png" width="30%" alt="New-chat preset menu with Legal and Quick presets">
+  &nbsp;
+  <img src="./assets/readme/model-picker.png" width="30%" alt="Model picker listing configured GPT and Claude models">
+  &nbsp;
+  <img src="./assets/readme/answer-verbosity-picker.png" width="30%" alt="Answer verbosity selector from minimal through max">
+</p>
+
+<p align="center">
+  <img src="./assets/readme/preset-editor-live-context.png" width="100%" alt="Preset editor with model, system prompt, live context values, reasoning effort, verbosity, and scope">
+</p>
+
+<p align="center">
+  <img src="./assets/readme/mcp-tool-controls.png" width="48%" alt="MCP tool menu with automatic execution and per-server toggles">
+  &nbsp;
+  <img src="./assets/readme/context-and-cost.png" width="40%" alt="Conversation menu showing context, compaction percentage, cost, and a copyable chat ID">
+</p>
+
+### Give the agent real work
+
+Files become native model inputs where supported. Tool activity streams as part
+of the answer, including built-in context tools and remote MCP servers; the
+finished answer can cite the sources it used.
+
+<p align="center">
+  <img src="./assets/readme/document-and-image-attachments.png" width="100%" alt="Solar answer summarizing an attached PDF and image">
+</p>
+
+<p align="center">
+  <img src="./assets/readme/multi-tool-execution.png" width="48%" alt="A Solar response running built-in date and location tools alongside an Exa web-search tool">
+  &nbsp;
+  <img src="./assets/readme/multi-tool-answer-with-sources.png" width="48%" alt="Completed multi-tool answer with local news, terminal output, solar production data, and source links">
 </p>
 
 ## What you get
 
-### A capable agent surface, kept small
-
-- **Pi under the hood.** `pi-agent-core` drives the agent loop and `pi-ai`
-  provides a unified path across configured providers and model APIs. Switch
-  models per conversation instead of rebuilding the workspace around one vendor.
-  - This also means excellent support for provider and API specific behaviors.  OpenAI cache keys, Anthropic breakpoints, Deepseek reasoning replay, etc all work out of the box.
-- **Live controls.** Choose reasoning effort, expose provider reasoning output,
-  and set answer verbosity when the selected model supports them. Thinking,
-  tool calls, Markdown, code, and LaTeX stream into the thread as first-class
-  parts.
+- **Pi-powered, model-flexible chat.** `pi-agent-core` drives the agent loop and
+  `pi-ai` provides a unified path across configured providers and model APIs.
+  Switch models per conversation without rebuilding the workspace around one
+  vendor.
+- **First-class streamed parts.** Thinking, tool calls, Markdown, code, LaTeX,
+  citations, and source lists arrive in the thread as they are produced.
 - **Remote MCP tools.** Connect Streamable HTTP MCP servers, discover tools,
-  prompts, and resources, then enable them globally, per user, or per
-  conversation. Tool calls show their remote server and execution state.
-- **Context that manages itself.** Solar assembles a bounded context from stable
-  instructions, the first request, a rolling structured summary, and the most
-  useful recent turns. Background compaction reduces old reasoning and bulky
-  tool transactions before summarizing older history.
+  prompts, and resources, and enable them globally, per user, or per
+  conversation.
+- **Context that manages itself.** Solar builds a bounded context from stable
+  instructions, the first request, a structured rolling summary, and useful
+  recent turns. Background compaction reduces old reasoning and bulky tool
+  transactions before older history is summarized.
 - **Files without a heavy RAG pipeline.** Images become provider-native vision
   inputs. Plain text and supported Office/PDF documents are extracted or passed
   through according to model capability—no embeddings or vector database
@@ -65,11 +102,10 @@ composer.
 - **Persistent by default.** Conversations, native message parts, tool steps,
   summaries, usage, and attachments live in one SQLite database plus a local
   data directory. A dropped browser connection does not cancel generation;
-  reload can bring it right back.
-- **Full theme and device support.** Themes are saved automatically, with 37
-  available choices including Solar Light and Solar Dark. The responsive shell
-  turns the sidebar into a drawer on narrow screens, and the web manifest ships
-  standalone PWA metadata and maskable icons.
+  reload can bring it back.
+- **Responsive and themed.** The sidebar becomes a drawer on narrow screens;
+  themes persist automatically, with Solar Light and Solar Dark among the
+  choices.
 - **Lightweight deployment.** A single Bun/Hono process serves the API, SSE
   stream, and React build. No separate frontend host, queue, vector store, or
   services bundle is required.
@@ -131,6 +167,49 @@ bunx @mcowger/solar
 
 SQLite and attachments are created relative to the current directory by default.
 
+## Administration
+
+Solar puts the operational surface in the product: users and administrator API
+keys; provider endpoints and imported models; model capabilities and context
+policy; task-model and large-paste settings; and aggregated token usage.
+
+<details>
+<summary><strong>Users and API keys</strong></summary>
+<br>
+<p align="center">
+  <img src="./assets/readme/admin-users.png" width="100%" alt="Administration users screen with user creation and role controls">
+</p>
+<p align="center">
+  <img src="./assets/readme/admin-api-keys.png" width="100%" alt="Administration API keys screen with create, rotate, and revoke controls">
+</p>
+</details>
+
+<details>
+<summary><strong>Providers, models, and context</strong></summary>
+<br>
+<p align="center">
+  <img src="./assets/readme/provider-endpoints-and-models.png" width="100%" alt="Provider configuration with API endpoints and imported models">
+</p>
+<p align="center">
+  <img src="./assets/readme/model-capabilities-settings.png" width="48%" alt="Per-model settings for visibility, documents, thinking, verbosity, context window, and context management">
+  &nbsp;
+  <img src="./assets/readme/global-context-policy.png" width="48%" alt="Global context-management settings with a customizable summary prompt">
+</p>
+</details>
+
+<details>
+<summary><strong>Operations and defaults</strong></summary>
+<br>
+<p align="center">
+  <img src="./assets/readme/task-model-settings.png" width="100%" alt="Task-model configuration with the chat-title prompt">
+</p>
+<p align="center">
+  <img src="./assets/readme/paste-handling-settings.png" width="48%" alt="Large-paste handling settings that convert text to a removable attachment">
+  &nbsp;
+  <img src="./assets/readme/usage-dashboard.png" width="48%" alt="Usage dashboard aggregating messages and input and output tokens by user and model">
+</p>
+</details>
+
 ## Configuration
 
 | Variable | Purpose |
@@ -159,10 +238,10 @@ account; accounts with different email addresses are not linked.
 
 ## Status
 
-Solar is an experimental build. The core streamed chat path, multi-provider
-model selection, presets, reasoning controls, attachments, context management,
-admin surface, PWA shell, and remote MCP integration are present; APIs and UI
-details may still evolve.
+Solar is experimental. The streamed chat path, multi-provider model selection,
+presets, reasoning controls, citations, attachments, context management, admin
+surface, PWA shell, and remote MCP integration are present; APIs and UI details
+may still evolve.
 
 The project deliberately does **not** include RAG/vector search, voice, image
 generation, channels, enterprise SSO, or horizontal multi-node scaling.
@@ -182,8 +261,8 @@ Auth owns its auth migrations.
 ### Playwright E2E setup (one-time)
 
 On a new Linux machine, install Playwright's host packages once, then install
-browser binaries as the regular user (do not run the second command with
-`sudo`, or the browsers land in root's cache):
+browser binaries as the regular user (do not run the second command with `sudo`,
+or the browsers land in root's cache):
 
 ```sh
 sudo node ./node_modules/@playwright/test/cli.js install-deps chromium firefox webkit
