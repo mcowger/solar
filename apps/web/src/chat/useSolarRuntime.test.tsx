@@ -161,7 +161,7 @@ function renderRuntime() {
 	});
 	return renderHook(
 		({ summaryRevision }: { summaryRevision?: number }) =>
-			useSolarRuntime("conv-1", true, [], summaryRevision),
+			useSolarRuntime("conv-1", true, [], false, summaryRevision),
 		{
 			initialProps: { summaryRevision: undefined as number | undefined },
 			wrapper: ({ children }: { children: ReactNode }) => (

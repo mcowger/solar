@@ -58,6 +58,7 @@ const DOCUMENT_EXTENSIONS: Record<string, string> = {
 		".docx",
 };
 const DOCUMENT_MIME_TYPES = new Set(Object.keys(DOCUMENT_EXTENSIONS));
+const DEFAULT_DOCUMENT_MIME_TYPES = [...DOCUMENT_MIME_TYPES];
 
 export function isDocumentFile(file: File): boolean {
 	return isDocumentMimeType(file.type);
@@ -70,10 +71,18 @@ export function isDocumentMimeType(mimeType: string | undefined): boolean {
 export class SolarAttachmentAdapter implements AttachmentAdapter {
 	public readonly accept: string;
 
-	constructor(allowImages: boolean, documentMimeTypes: readonly string[]) {
-		const documentAccept = documentMimeTypes.flatMap((mime) => {
+	constructor(
+		allowImages: boolean,
+		documentMimeTypes: readonly string[],
+		allowDocuments = false,
+	) {
+		const supportedDocumentMimeTypes =
+			documentMimeTypes.length || !allowDocuments
+				? documentMimeTypes
+				: DEFAULT_DOCUMENT_MIME_TYPES;
+		const documentAccept = supportedDocumentMimeTypes.flatMap((mime) => {
 			const extension = DOCUMENT_EXTENSIONS[mime];
-			return extension ? [extension, mime] : [mime];
+			return extension ? [extension] : [mime];
 		});
 		this.accept = [
 			...(allowImages ? IMAGE_ACCEPT : []),

@@ -241,6 +241,7 @@ function ConversationView({
 		conversationId,
 		current.data?.vision ?? false,
 		current.data?.documentMimeTypes ?? [],
+		current.data?.documents ?? false,
 		context.data?.summaryEvent?.revision,
 	);
 	return (

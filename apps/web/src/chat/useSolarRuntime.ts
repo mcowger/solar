@@ -122,6 +122,7 @@ export function useSolarRuntime(
 	conversationId: string,
 	allowImages: boolean,
 	documentMimeTypes: readonly string[],
+	allowDocuments: boolean,
 	summaryRevision?: number | null,
 ) {
 	const trpc = useTRPC();
@@ -558,8 +559,13 @@ export function useSolarRuntime(
 	}, []);
 
 	const attachmentAdapter = useMemo(
-		() => new SolarAttachmentAdapter(allowImages, documentMimeTypes),
-		[allowImages, documentMimeTypes],
+		() =>
+			new SolarAttachmentAdapter(
+				allowImages,
+				documentMimeTypes,
+				allowDocuments,
+			),
+		[allowImages, documentMimeTypes, allowDocuments],
 	);
 
 	return useExternalStoreRuntime({
