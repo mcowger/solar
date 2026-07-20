@@ -424,6 +424,40 @@
   color: #c00;
 }
 
+.solar-inline-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 1px;
+  padding: 1px 8px 1px 3px;
+  border: 1px solid color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-base-100) 72%, transparent);
+  color: var(--color-base-content);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.4;
+  text-decoration: none;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.solar-inline-source:hover {
+  border-color: color-mix(in oklch, var(--color-primary) 45%, transparent);
+  color: var(--color-primary);
+}
+
+.solar-inline-source .solar-source-favicon {
+  width: 16px;
+  height: 16px;
+  border-width: 1px;
+  font-size: 7px;
+}
+
+.solar-inline-source .solar-source-favicon img {
+  padding: 2px;
+}
+
 .solar-citation-sources {
   display: block;
   margin-top: 12px;
