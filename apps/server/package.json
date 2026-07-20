@@ -31,6 +31,7 @@
     "kysely-bun-sqlite": "^0.4.0",
     "loglayer": "^9.4.0",
     "mammoth": "^1.12.0",
+    "mathjs": "^15.2.0",
     "openjsxl": "^1.0.0",
     "serialize-error": "^13.0.1",
     "unpdf": "^1.6.2",
