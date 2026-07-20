@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Star } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
 
@@ -238,6 +239,7 @@ export function Presets({ onClose }: { onClose: () => void }) {
 	const qc = useQueryClient();
 	const models = useQuery(trpc.model.available.queryOptions());
 	const presets = useQuery(trpc.preset.list.queryOptions());
+	const userDefault = useQuery(trpc.preset.userDefault.queryOptions());
 	const [form, setForm] = useState<PresetForm | null>(null);
 
 	const invalidate = () =>
@@ -261,6 +263,12 @@ export function Presets({ onClose }: { onClose: () => void }) {
 	);
 	const remove = useMutation(
 		trpc.preset.remove.mutationOptions({ onSuccess: invalidate }),
+	);
+	const setUserDefault = useMutation(
+		trpc.preset.setUserDefault.mutationOptions({
+			onSuccess: () =>
+				qc.invalidateQueries({ queryKey: trpc.preset.userDefault.queryKey() }),
+		}),
 	);
 
 	const modelList = models.data ?? [];
@@ -340,6 +348,30 @@ export function Presets({ onClose }: { onClose: () => void }) {
 									· {p.scope}
 									{p.reasoningEffort ? ` · ${p.reasoningEffort}` : ""}
 								</p>
+							</div>
+							<div
+								className="tooltip tooltip-left"
+								data-tip={
+									userDefault.data === p.id
+										? "Remove as your default preset"
+										: "Use as your default preset for new chats"
+								}
+							>
+								<button
+									type="button"
+									className={`btn btn-sm btn-ghost btn-circle${userDefault.data === p.id ? " text-warning" : ""}`}
+									onClick={() =>
+										setUserDefault.mutate({
+											id: userDefault.data === p.id ? null : p.id,
+										})
+									}
+									disabled={setUserDefault.isPending}
+								>
+									<Star
+										size={16}
+										fill={userDefault.data === p.id ? "currentColor" : "none"}
+									/>
+								</button>
 							</div>
 							{p.owned ? (
 								<>

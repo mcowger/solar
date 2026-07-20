@@ -321,6 +321,42 @@ export async function setUserDefault(
 		.execute();
 }
 
+export async function getUserDefaultPreset(
+	userId: string,
+): Promise<string | null> {
+	const row = await db
+		.selectFrom("user_setting")
+		.select("defaultPresetId")
+		.where("userId", "=", userId)
+		.executeTakeFirst();
+	return row?.defaultPresetId ?? null;
+}
+
+export async function setUserDefaultPreset(
+	userId: string,
+	presetId: string | null,
+): Promise<void> {
+	const values = {
+		userId,
+		defaultProvider: null,
+		defaultEndpointId: null,
+		defaultModelId: null,
+		defaultApi: null,
+		defaultPresetId: presetId,
+		updatedAt: new Date().toISOString(),
+	};
+	await db
+		.insertInto("user_setting")
+		.values(values)
+		.onConflict((oc) =>
+			oc.column("userId").doUpdateSet({
+				defaultPresetId: values.defaultPresetId,
+				updatedAt: values.updatedAt,
+			}),
+		)
+		.execute();
+}
+
 export async function getAdminDefault(): Promise<ModelSelection | null> {
 	return getAppMetaSelection(ADMIN_DEFAULT_KEY);
 }

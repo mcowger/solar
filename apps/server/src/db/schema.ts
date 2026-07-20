@@ -157,13 +157,14 @@ export interface AttachmentTable {
 	createdAt: Generated<string>;
 }
 
-/** Per-user preferences (M3): currently the personal default model. */
+/** Per-user preferences (M3): personal default model and preset. */
 export interface UserSettingTable {
 	userId: string;
 	defaultProvider: string | null;
 	defaultEndpointId: string | null;
 	defaultModelId: string | null;
 	defaultApi: string | null;
+	defaultPresetId: string | null;
 	updatedAt: Generated<string>;
 }
 

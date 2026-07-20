@@ -237,7 +237,7 @@ export interface User {
 	emailVerified: number;
 	id: string;
 	image: string | null;
-	isDisabled: number;
+	isDisabled: Generated<number>;
 	name: string;
 	role: string;
 	updatedAt: string;
@@ -253,6 +253,7 @@ export interface UserSetting {
 	defaultApi: string | null;
 	defaultEndpointId: string | null;
 	defaultModelId: string | null;
+	defaultPresetId: string | null;
 	defaultProvider: string | null;
 	updatedAt: Generated<string>;
 	userId: string | null;

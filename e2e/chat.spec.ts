@@ -199,6 +199,32 @@ test("signs in and streams a mock chat response", async ({ page }) => {
 	).toBeVisible();
 });
 
+test("uses the user's default preset for new chats", async ({ page }) => {
+	await signIn(page);
+
+	await page.locator('[data-tip="Presets"] button').click();
+	await page.getByRole("button", { name: "New preset" }).click();
+	const presetForm = page.locator(".modal.modal-open .card");
+	await presetForm.getByRole("textbox").first().fill("Vision default");
+	await presetForm
+		.getByRole("combobox")
+		.first()
+		.selectOption("mock/mock/mock-vision/mock");
+	await presetForm.getByRole("button", { name: "Save preset" }).click();
+
+	const preset = page
+		.getByText("Vision default", { exact: true })
+		.locator("..")
+		.locator("..");
+	await preset.getByRole("button").first().click();
+	await expect(preset.locator("button.text-warning")).toBeVisible();
+	await page.getByRole("button", { name: "Close" }).click();
+	await page.getByRole("button", { name: "New chat" }).click();
+	await expect(page.getByRole("combobox").first()).toHaveValue(
+		"mock/mock/mock-vision/mock",
+	);
+});
+
 test("force-stops a stale response from its hover control", async ({
 	page,
 }) => {

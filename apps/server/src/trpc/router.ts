@@ -16,6 +16,7 @@ import {
 	getTaskModel,
 	getTitlePrompt,
 	getUserDefault,
+	getUserDefaultPreset,
 	importProviderModels,
 	listAvailableModels,
 	loadProviderConfigs,
@@ -27,6 +28,7 @@ import {
 	setTaskModel,
 	setTitlePrompt,
 	setUserDefault,
+	setUserDefaultPreset,
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
 import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
@@ -166,6 +168,8 @@ const conversationRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			const id = crypto.randomUUID();
+			const presetId =
+				input.presetId ?? (await getUserDefaultPreset(ctx.user.id));
 			// Snapshot the preset (model + system prompt + reasoning params) onto the
 			// conversation so later preset edits don't mutate this conversation.
 			let snapshot: {
@@ -187,11 +191,11 @@ const conversationRouter = router({
 				reasoningSummary: 0,
 				verbosity: null,
 			};
-			if (input.presetId) {
+			if (presetId) {
 				const preset = await db
 					.selectFrom("preset")
 					.selectAll()
-					.where("id", "=", input.presetId)
+					.where("id", "=", presetId)
 					.executeTakeFirst();
 				// Presets are usable by the owner (any scope) or anyone (shared).
 				if (
@@ -1668,6 +1672,7 @@ async function assertCanEditPreset(
 	if (preset.userId !== userId && !isAdmin) {
 		throw new TRPCError({ code: "FORBIDDEN" });
 	}
+	return preset;
 }
 
 const presetRouter = router({
@@ -1698,6 +1703,36 @@ const presetRouter = router({
 				owned: r.userId === ctx.user.id,
 			}));
 	}),
+
+	userDefault: protectedProcedure.query(async ({ ctx }) => {
+		return getUserDefaultPreset(ctx.user.id);
+	}),
+
+	setUserDefault: protectedProcedure
+		.input(z.object({ id: z.string().nullable() }))
+		.mutation(async ({ ctx, input }) => {
+			if (input.id) {
+				const preset = await db
+					.selectFrom("preset")
+					.selectAll()
+					.where("id", "=", input.id)
+					.executeTakeFirst();
+				if (!preset) throw new TRPCError({ code: "NOT_FOUND" });
+				if (preset.userId !== ctx.user.id && preset.scope !== "shared") {
+					throw new TRPCError({ code: "FORBIDDEN" });
+				}
+				await assertCanUseModel(
+					{
+						provider: preset.provider,
+						endpointId: preset.endpointId ?? preset.modelApi,
+						modelId: preset.modelId,
+						api: preset.modelApi,
+					},
+					ctx.user.role === "admin",
+				);
+			}
+			await setUserDefaultPreset(ctx.user.id, input.id);
+		}),
 
 	create: protectedProcedure
 		.input(presetInputSchema)
@@ -1730,7 +1765,7 @@ const presetRouter = router({
 		.input(presetInputSchema.extend({ id: z.string() }))
 		.mutation(async ({ ctx, input }) => {
 			const isAdmin = (ctx.user as { role?: string }).role === "admin";
-			await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
+			const preset = await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
 			await assertCanUseModel(input, isAdmin);
 			if (input.scope === "shared") await assertCanUseModel(input, false);
 			await db
@@ -1749,6 +1784,14 @@ const presetRouter = router({
 				})
 				.where("id", "=", input.id)
 				.execute();
+			if (input.scope === "personal") {
+				await db
+					.updateTable("user_setting")
+					.set({ defaultPresetId: null, updatedAt: new Date().toISOString() })
+					.where("defaultPresetId", "=", input.id)
+					.where("userId", "!=", preset.userId)
+					.execute();
+			}
 		}),
 
 	remove: protectedProcedure
@@ -1756,6 +1799,11 @@ const presetRouter = router({
 		.mutation(async ({ ctx, input }) => {
 			const isAdmin = (ctx.user as { role?: string }).role === "admin";
 			await assertCanEditPreset(ctx.user.id, isAdmin, input.id);
+			await db
+				.updateTable("user_setting")
+				.set({ defaultPresetId: null, updatedAt: new Date().toISOString() })
+				.where("defaultPresetId", "=", input.id)
+				.execute();
 			await db.deleteFrom("preset").where("id", "=", input.id).execute();
 		}),
 });
