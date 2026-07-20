@@ -26,6 +26,31 @@ export interface Account {
 	userId: string;
 }
 
+export interface Apikey {
+	configId: string;
+	createdAt: string;
+	enabled: number | null;
+	expiresAt: string | null;
+	id: string;
+	key: string;
+	lastRefillAt: string | null;
+	lastRequest: string | null;
+	metadata: string | null;
+	name: string | null;
+	permissions: string | null;
+	prefix: string | null;
+	rateLimitEnabled: number | null;
+	rateLimitMax: number | null;
+	rateLimitTimeWindow: number | null;
+	referenceId: string;
+	refillAmount: number | null;
+	refillInterval: number | null;
+	remaining: number | null;
+	requestCount: number | null;
+	start: string | null;
+	updatedAt: string;
+}
+
 export interface AppMeta {
 	key: string | null;
 	updatedAt: Generated<string>;
@@ -237,6 +262,7 @@ export interface Verification {
 
 export interface DB {
 	account: Account;
+	apikey: Apikey;
 	app_meta: AppMeta;
 	attachment: Attachment;
 	conversation: Conversation;

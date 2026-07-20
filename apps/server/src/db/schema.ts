@@ -8,6 +8,7 @@
  * picture across both migration owners.
  */
 import type { Generated } from "kysely";
+import type { Apikey } from "./types.generated";
 
 export interface AppMetaTable {
 	key: string;
@@ -223,6 +224,7 @@ export interface ProviderCallTelemetryTable {
 }
 
 export interface Database {
+	apikey: Apikey;
 	app_meta: AppMetaTable;
 	user_setting: UserSettingTable;
 	conversation: ConversationTable;

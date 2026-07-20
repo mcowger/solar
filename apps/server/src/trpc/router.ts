@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { sql } from "kysely";
 import { z } from "zod";
+import { createSolarApiKey, createSolarUser } from "../auth";
 import { config } from "../config";
 import { db, sqlite } from "../db";
 import {
@@ -1277,6 +1278,26 @@ const adminRouter = router({
 			}[],
 	),
 
+	createUser: adminProcedure
+		.input(
+			z.object({
+				name: z.string().trim().min(1).max(100),
+				email: z.string().email(),
+				password: z.string().min(8).max(128),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			try {
+				await createSolarUser(input);
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message:
+						error instanceof Error ? error.message : "Unable to create user",
+				});
+			}
+		}),
+
 	setUserRole: adminProcedure
 		.input(z.object({ userId: z.string(), role: z.enum(["admin", "user"]) }))
 		.mutation(async ({ ctx, input }) => {
@@ -1310,6 +1331,61 @@ const adminRouter = router({
 			sqlite
 				.query("UPDATE user SET role = ? WHERE id = ?")
 				.run(input.role, input.userId);
+			if (input.role === "user")
+				await db
+					.deleteFrom("apikey")
+					.where("referenceId", "=", input.userId)
+					.execute();
+		}),
+
+	listApiKeys: adminProcedure.query(({ ctx }) =>
+		db
+			.selectFrom("apikey")
+			.select(["id", "name", "start", "createdAt"])
+			.where("referenceId", "=", ctx.user.id)
+			.orderBy("createdAt", "desc")
+			.execute(),
+	),
+
+	createApiKey: adminProcedure
+		.input(z.object({ name: z.string().trim().min(1).max(32) }))
+		.mutation(async ({ ctx, input }) => {
+			const key = await createSolarApiKey(input.name, ctx.user.id);
+			return { id: key.id, key: key.key };
+		}),
+
+	revokeApiKey: adminProcedure
+		.input(z.object({ keyId: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			const deleted = await db
+				.deleteFrom("apikey")
+				.where("id", "=", input.keyId)
+				.where("referenceId", "=", ctx.user.id)
+				.returning("id")
+				.executeTakeFirst();
+			if (!deleted) throw new TRPCError({ code: "NOT_FOUND" });
+		}),
+
+	rotateApiKey: adminProcedure
+		.input(z.object({ keyId: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			const current = await db
+				.selectFrom("apikey")
+				.select("name")
+				.where("id", "=", input.keyId)
+				.where("referenceId", "=", ctx.user.id)
+				.executeTakeFirst();
+			if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+			const key = await createSolarApiKey(
+				current.name ?? "API key",
+				ctx.user.id,
+			);
+			await db
+				.deleteFrom("apikey")
+				.where("id", "=", input.keyId)
+				.where("referenceId", "=", ctx.user.id)
+				.execute();
+			return { id: key.id, key: key.key };
 		}),
 
 	setUserDisabled: adminProcedure

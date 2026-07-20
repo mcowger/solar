@@ -1063,6 +1063,7 @@ function Users() {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
 	const { data: session } = useSession();
+	const [newUser, setNewUser] = useState({ name: "", email: "", password: "" });
 	const users = useQuery(trpc.admin.listUsers.queryOptions());
 	const invalidate = () =>
 		qc.invalidateQueries({ queryKey: trpc.admin.listUsers.queryKey() });
@@ -1075,11 +1076,69 @@ function Users() {
 	const remove = useMutation(
 		trpc.admin.deleteUser.mutationOptions({ onSuccess: invalidate }),
 	);
+	const create = useMutation(
+		trpc.admin.createUser.mutationOptions({
+			onSuccess: () => {
+				setNewUser({ name: "", email: "", password: "" });
+				invalidate();
+			},
+		}),
+	);
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
 			<div className="card-body p-5">
 				<h3 className="card-title">Users</h3>
+				<form
+					className="grid gap-2 sm:grid-cols-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						create.mutate(newUser);
+					}}
+				>
+					<input
+						className="input input-sm min-w-0"
+						placeholder="Name"
+						value={newUser.name}
+						onChange={(event) =>
+							setNewUser({ ...newUser, name: event.target.value })
+						}
+						required
+					/>
+					<input
+						className="input input-sm min-w-0"
+						type="email"
+						placeholder="Email"
+						value={newUser.email}
+						onChange={(event) =>
+							setNewUser({ ...newUser, email: event.target.value })
+						}
+						required
+					/>
+					<input
+						className="input input-sm min-w-0"
+						type="password"
+						placeholder="Password (min 8)"
+						value={newUser.password}
+						onChange={(event) =>
+							setNewUser({ ...newUser, password: event.target.value })
+						}
+						minLength={8}
+						required
+					/>
+					<button
+						className="btn btn-sm"
+						disabled={create.isPending}
+						type="submit"
+					>
+						{create.isPending ? "Adding…" : "Add user"}
+					</button>
+				</form>
+				{create.isError && (
+					<div role="alert" className="alert alert-error alert-soft text-sm">
+						{create.error.message}
+					</div>
+				)}
 				{users.isError && (
 					<div role="alert" className="alert alert-error alert-soft">
 						{users.error.message}
@@ -1142,6 +1201,156 @@ function Users() {
 							</div>
 						);
 					})}
+				</div>
+			</div>
+		</section>
+	);
+}
+
+function ApiKeys() {
+	const trpc = useTRPC();
+	const qc = useQueryClient();
+	const [name, setName] = useState("");
+	const [revealedKey, setRevealedKey] = useState<string | null>(null);
+	const keys = useQuery(trpc.admin.listApiKeys.queryOptions());
+	const invalidate = () =>
+		qc.invalidateQueries({ queryKey: trpc.admin.listApiKeys.queryKey() });
+	const create = useMutation(
+		trpc.admin.createApiKey.mutationOptions({
+			onSuccess: (result) => {
+				setName("");
+				setRevealedKey(result.key);
+				invalidate();
+			},
+		}),
+	);
+	const rotate = useMutation(
+		trpc.admin.rotateApiKey.mutationOptions({
+			onSuccess: (result) => {
+				setRevealedKey(result.key);
+				invalidate();
+			},
+		}),
+	);
+	const revoke = useMutation(
+		trpc.admin.revokeApiKey.mutationOptions({ onSuccess: invalidate }),
+	);
+
+	return (
+		<section className="card card-border bg-base-100 shadow-sm">
+			<div className="card-body gap-4 p-5">
+				<div>
+					<h3 className="card-title">API keys</h3>
+					<p className="text-sm opacity-70">
+						Keys grant full administrator access. They never expire and can only
+						be used by their creating admin.
+					</p>
+				</div>
+				{revealedKey && (
+					<div role="alert" className="alert alert-success alert-soft">
+						<div className="min-w-0 flex-1">
+							<p className="font-medium">Copy this key now</p>
+							<p className="text-sm">It cannot be shown again.</p>
+							<input
+								className="input mt-2 w-full font-mono text-xs"
+								readOnly
+								value={revealedKey}
+								onFocus={(event) => event.currentTarget.select()}
+							/>
+						</div>
+						<button
+							className="btn btn-sm"
+							onClick={() => void navigator.clipboard.writeText(revealedKey)}
+						>
+							Copy
+						</button>
+					</div>
+				)}
+				<div className="flex flex-col gap-2 sm:flex-row">
+					<input
+						className="input input-sm min-w-0 flex-1"
+						value={name}
+						onChange={(event) => setName(event.target.value)}
+						placeholder="Key name"
+					/>
+					<button
+						className="btn btn-sm"
+						disabled={!name.trim() || create.isPending}
+						onClick={() => create.mutate({ name: name.trim() })}
+					>
+						{create.isPending ? "Creating…" : "Create key"}
+					</button>
+				</div>
+				{(keys.isError ||
+					create.isError ||
+					rotate.isError ||
+					revoke.isError) && (
+					<div role="alert" className="alert alert-error alert-soft text-sm">
+						{keys.error?.message ??
+							create.error?.message ??
+							rotate.error?.message ??
+							revoke.error?.message}
+					</div>
+				)}
+				<div className="overflow-x-auto">
+					<table className="table table-sm">
+						<thead>
+							<tr>
+								<th>Name</th>
+								<th>Key</th>
+								<th>Created</th>
+								<th />
+							</tr>
+						</thead>
+						<tbody>
+							{keys.data?.map((key) => (
+								<tr key={key.id}>
+									<td>{key.name}</td>
+									<td className="font-mono text-xs">{key.start}…</td>
+									<td>{new Date(key.createdAt).toLocaleDateString()}</td>
+									<td>
+										<div className="flex justify-end gap-2">
+											<button
+												className="btn btn-sm"
+												disabled={rotate.isPending || revoke.isPending}
+												onClick={() => {
+													if (
+														window.confirm(
+															`Rotate ${key.name}? The old key stops working immediately.`,
+														)
+													)
+														rotate.mutate({ keyId: key.id });
+												}}
+											>
+												Rotate
+											</button>
+											<button
+												className="btn btn-error btn-soft btn-sm"
+												disabled={rotate.isPending || revoke.isPending}
+												onClick={() => {
+													if (
+														window.confirm(
+															`Revoke ${key.name}? This cannot be undone.`,
+														)
+													)
+														revoke.mutate({ keyId: key.id });
+												}}
+											>
+												Revoke
+											</button>
+										</div>
+									</td>
+								</tr>
+							))}
+							{keys.data?.length === 0 && (
+								<tr>
+									<td colSpan={4} className="text-center opacity-60">
+										No API keys yet.
+									</td>
+								</tr>
+							)}
+						</tbody>
+					</table>
 				</div>
 			</div>
 		</section>
@@ -1503,6 +1712,7 @@ function PasteHandling() {
 
 const sections = [
 	"users",
+	"api keys",
 	"providers",
 	"task model",
 	"paste handling",
@@ -1562,6 +1772,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
 							))}
 						</div>
 						{section === "users" && <Users />}
+						{section === "api keys" && <ApiKeys />}
 						{section === "usage" && <Usage />}
 						{section === "logging" && <Logging />}
 						{section === "task model" && <TaskModel />}

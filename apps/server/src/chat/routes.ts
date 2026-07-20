@@ -8,7 +8,7 @@ import {
 	createCompactionSummaryMessage,
 } from "@earendil-works/pi-agent-core";
 import { Hono } from "hono";
-import { auth } from "../auth";
+import { getSolarSession } from "../auth";
 import { db, sqlite } from "../db";
 import { logger } from "../logger";
 import {
@@ -41,13 +41,9 @@ interface AuthenticatedUser {
 }
 
 async function requireUser(req: Request): Promise<AuthenticatedUser | null> {
-	const session = await auth.api.getSession({ headers: req.headers });
-	if (!session) return null;
-	const user = sqlite
-		.query("SELECT role, isDisabled FROM user WHERE id = ?")
-		.get(session.user.id) as { role: string; isDisabled: number } | null;
-	if (!user || user.isDisabled) return null;
-	return { id: session.user.id, isAdmin: user.role === "admin" };
+	const principal = await getSolarSession(req.headers);
+	if (!principal) return null;
+	return { id: principal.user.id, isAdmin: principal.user.role === "admin" };
 }
 
 async function ownsConversation(userId: string, conversationId: string) {

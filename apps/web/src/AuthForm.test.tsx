@@ -12,13 +12,6 @@ const signInEmail = mock(
 		password: string;
 	}): Promise<AuthResult> => ({ error: null }),
 );
-const signUpEmail = mock(
-	async (_credentials: {
-		email: string;
-		password: string;
-		name: string;
-	}): Promise<AuthResult> => ({ error: null }),
-);
 const signInSocial = mock(
 	async (_options: { provider: string }): Promise<AuthResult> => ({
 		error: null,
@@ -27,7 +20,6 @@ const signInSocial = mock(
 
 mock.module("./auth", () => ({
 	signIn: { email: signInEmail, social: signInSocial },
-	signUp: { email: signUpEmail },
 }));
 mock.module("./ThemeToggle", () => ({ ThemeToggle: () => null }));
 
@@ -40,7 +32,6 @@ const { AuthForm } = await import("./AuthForm");
 
 beforeEach(() => {
 	signInEmail.mockClear();
-	signUpEmail.mockClear();
 	signInSocial.mockClear();
 	googleEnabled = true;
 });
@@ -63,32 +54,12 @@ describe("AuthForm", () => {
 		});
 	});
 
-	test("switches to registration and displays an authentication error", async () => {
-		signUpEmail.mockResolvedValueOnce({
-			error: { message: "Email is already registered" },
-		});
-		const user = userEvent.setup();
+	test("does not offer self-registration", () => {
 		render(<AuthForm />);
 
-		await user.click(
-			screen.getByRole("button", { name: "Need an account? Register" }),
-		);
-		await user.type(screen.getByPlaceholderText("Name"), "Solar User");
-		await user.type(screen.getByPlaceholderText("Email"), "person@example.com");
-		await user.type(
-			screen.getByPlaceholderText("Password (min 8)"),
-			"password",
-		);
-		await user.click(screen.getByRole("button", { name: "Create account" }));
-
-		expect(signUpEmail).toHaveBeenCalledWith({
-			email: "person@example.com",
-			password: "password",
-			name: "Solar User",
-		});
 		expect(
-			await screen.findByText("Email is already registered"),
-		).toBeInTheDocument();
+			screen.queryByRole("button", { name: /register|create account/i }),
+		).not.toBeInTheDocument();
 	});
 
 	test("starts Google sign-in", async () => {
