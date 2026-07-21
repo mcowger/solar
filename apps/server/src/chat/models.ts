@@ -80,12 +80,14 @@ export async function* streamChat(
 	);
 	let turnContext = context;
 	let toolStepsCompleted = false;
+	let accumulatedText = "";
 	while (true) {
 		const startedAt = Date.now();
 		let message: AssistantMessage | undefined;
 		let reason: string | undefined;
 		let error: unknown;
 		let outputStarted = false;
+		let newTurnTextStarted = false;
 		try {
 			const events = streamModel(resolved, turnContext, signal, params);
 			for await (const event of events) {
@@ -122,6 +124,30 @@ export async function* streamChat(
 						event.error.errorMessage =
 							"Failed to parse streaming response from provider endpoint. If you are routing Gemini through an OpenAI-compatible proxy (like Plexus, OpenRouter, or OpenCode), change the endpoint's API type in Admin Settings to 'Chat' (openai-completions) or 'Responses' (openai-responses) instead of 'Gemini' (google-generative-ai).";
 					}
+				}
+				if (event.type === "text_delta") {
+					if (
+						toolStepsCompleted &&
+						!newTurnTextStarted &&
+						accumulatedText.length > 0
+					) {
+						newTurnTextStarted = true;
+						const padding = accumulatedText.endsWith("\n\n")
+							? ""
+							: accumulatedText.endsWith("\n")
+								? "\n"
+								: "\n\n";
+						if (padding) {
+							accumulatedText += padding;
+							yield {
+								type: "text_delta",
+								contentIndex: event.contentIndex,
+								delta: padding,
+								partial: event.partial,
+							};
+						}
+					}
+					accumulatedText += event.delta;
 				}
 				yield event;
 				if (event.type !== "start") outputStarted = true;

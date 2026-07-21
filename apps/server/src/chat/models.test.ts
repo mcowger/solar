@@ -338,4 +338,90 @@ describe("mock model streaming", () => {
 			message: partialMsg,
 		});
 	});
+
+	test("inserts newline separation between text deltas across tool turns", async () => {
+		expectNoProviderCalls = false;
+		let callCount = 0;
+		providerStream = async function* () {
+			callCount += 1;
+			if (callCount === 1) {
+				yield {
+					type: "text_delta",
+					delta: "First turn justification.",
+				};
+				yield {
+					type: "done",
+					reason: "toolUse",
+					message: {
+						api: "test",
+						provider: "test",
+						model: "model",
+						content: [
+							{
+								type: "text",
+								text: "First turn justification.",
+							},
+							{
+								type: "toolCall",
+								id: "call-1",
+								name: "search",
+								arguments: {},
+							},
+						],
+						usage: { input: 5, output: 2 },
+						stopReason: "toolUse",
+						timestamp: 1,
+					},
+				};
+				return;
+			}
+			yield {
+				type: "text_delta",
+				delta: "Final answer.",
+			};
+			yield {
+				type: "done",
+				reason: "stop",
+				message: {
+					api: "test",
+					provider: "test",
+					model: "model",
+					content: [{ type: "text", text: "Final answer." }],
+					usage: { input: 8, output: 2 },
+					stopReason: "stop",
+					timestamp: 2,
+				},
+			};
+		};
+
+		const providerSelection = {
+			provider: "test",
+			endpointId: "test",
+			modelId: "model",
+			api: "test",
+		};
+
+		const events: any[] = [];
+		for await (const event of streamChat(
+			contextFor("Search"),
+			providerSelection,
+			{},
+			new AbortController().signal,
+			[
+				{
+					tool: { name: "search" },
+					execute: async () => ({ content: "found", isError: false }),
+				},
+			] as never,
+		)) {
+			events.push(event);
+		}
+
+		const textDeltas = events
+			.filter((e) => e.type === "text_delta")
+			.map((e) => e.delta);
+		expect(textDeltas.join("")).toBe(
+			"First turn justification.\n\nFinal answer.",
+		);
+	});
 });
