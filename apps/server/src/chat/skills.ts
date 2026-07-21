@@ -9,18 +9,30 @@ export interface SkillInvocation {
 	content: string;
 }
 
-export function parseSkill(content: string): {
-	name: string;
-	description: string;
-} {
-	if (new TextEncoder().encode(content).byteLength > MAX_SKILL_BYTES)
-		throw new Error("SKILL.md must not exceed 64 KiB");
+function skillBodyOffset(content: string): number {
 	const opening = content.match(/^---[ \t]*\r?\n/);
 	if (!opening) throw new Error("SKILL.md must begin with YAML frontmatter");
 	const frontmatterText = content.slice(opening[0].length);
 	const closing = /^---[ \t]*(?:\r?\n|$)/m.exec(frontmatterText);
 	if (!closing || closing.index === undefined)
 		throw new Error("SKILL.md frontmatter must be closed");
+	return opening[0].length + closing.index + closing[0].length;
+}
+
+export function skillInstructions(content: string): string {
+	return content.slice(skillBodyOffset(content));
+}
+
+export function parseSkill(content: string): {
+	name: string;
+	description: string;
+} {
+	if (new TextEncoder().encode(content).byteLength > MAX_SKILL_BYTES)
+		throw new Error("SKILL.md must not exceed 64 KiB");
+	skillBodyOffset(content);
+	const opening = content.match(/^---[ \t]*\r?\n/)!;
+	const frontmatterText = content.slice(opening[0].length);
+	const closing = /^---[ \t]*(?:\r?\n|$)/m.exec(frontmatterText)!;
 	const document = parseDocument(frontmatterText.slice(0, closing.index));
 	if (document.errors.length)
 		throw new Error("SKILL.md frontmatter is invalid YAML");

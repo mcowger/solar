@@ -81,7 +81,9 @@ describe("skill chat context", () => {
 describe("read_skill", () => {
 	test("only returns skills supplied from the exposed, authenticated-user catalog", async () => {
 		const [tool] = resolveSkillTools([{ name: "visible", content: valid }]);
-		expect((await tool!.execute({ name: "visible" })).content).toBe(valid);
+		expect((await tool!.execute({ name: "visible" })).content).toBe(
+			"# Release notes\n",
+		);
 		const hidden = await tool!.execute({ name: "hidden" });
 		expect(hidden.isError).toBe(true);
 		expect((await tool!.execute({ name: "hidden" })).isError).toBe(true);

@@ -1,7 +1,7 @@
 import { resolveBuiltinTools, type UserLocation } from "./builtins";
 import { resolveMcpTools, type ResolvedTool } from "./mcp";
 import { Type } from "@earendil-works/pi-ai";
-import { listExposedSkills } from "./skills";
+import { listExposedSkills, skillInstructions } from "./skills";
 
 export interface ToolResolutionContext {
 	userId: string;
@@ -59,7 +59,7 @@ export function resolveSkillTools(
 					};
 				const skill = skills.find((candidate) => candidate.name === args.name);
 				return skill
-					? { content: skill.content, isError: false }
+					? { content: skillInstructions(skill.content), isError: false }
 					: {
 							content: "Skill is not exposed or does not exist.",
 							isError: true,
