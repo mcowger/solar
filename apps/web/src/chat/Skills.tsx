@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, Trash2, Upload } from "lucide-react";
+import { Download, Pencil, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 
@@ -13,6 +13,7 @@ export function Skills({ onClose }: { onClose: () => void }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
+	const [draft, setDraft] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const skills = useQuery(trpc.skill.list.queryOptions());
 	const selected = useQuery(
@@ -25,6 +26,17 @@ export function Skills({ onClose }: { onClose: () => void }) {
 		queryClient.invalidateQueries({ queryKey: trpc.skill.list.queryKey() });
 	const create = useMutation(
 		trpc.skill.create.mutationOptions({ onSuccess: invalidate }),
+	);
+	const update = useMutation(
+		trpc.skill.update.mutationOptions({
+			onSuccess: async () => {
+				await invalidate();
+				await queryClient.invalidateQueries({
+					queryKey: trpc.skill.get.queryKey({ id: selectedId ?? "" }),
+				});
+			},
+			onError: (mutationError) => setError(errorMessage(mutationError)),
+		}),
 	);
 	const setExposed = useMutation(
 		trpc.skill.setExposed.mutationOptions({
@@ -46,6 +58,10 @@ export function Skills({ onClose }: { onClose: () => void }) {
 		dialogRef.current?.showModal();
 	}, []);
 
+	useEffect(() => {
+		if (selected.data) setDraft(selected.data.content);
+	}, [selected.data]);
+
 	async function upload(file: File | undefined) {
 		setError(null);
 		if (!file) return;
@@ -59,6 +75,17 @@ export function Skills({ onClose }: { onClose: () => void }) {
 		} catch (uploadError) {
 			setError(errorMessage(uploadError));
 		}
+	}
+
+	function openEditor(id: string) {
+		setError(null);
+		setSelectedId(id);
+	}
+
+	async function save() {
+		if (!selectedId) return;
+		setError(null);
+		await update.mutateAsync({ id: selectedId, content: draft });
 	}
 
 	function download() {
@@ -161,10 +188,10 @@ export function Skills({ onClose }: { onClose: () => void }) {
 									<button
 										type="button"
 										className="btn btn-ghost btn-sm btn-square"
-										title="Preview skill"
-										onClick={() => setSelectedId(skill.id)}
+										title="Edit skill"
+										onClick={() => openEditor(skill.id)}
 									>
-										<Eye size={16} />
+										<Pencil size={16} />
 									</button>
 									<button
 										type="button"
@@ -190,7 +217,7 @@ export function Skills({ onClose }: { onClose: () => void }) {
 						<section className="mt-6 rounded-box border border-base-300 bg-base-200 p-4">
 							<div className="mb-3 flex items-center justify-between gap-3">
 								<span className="font-mono text-sm">
-									/{selected.data?.name ?? "…"}
+									Editing /{selected.data?.name ?? "…"}
 								</span>
 								<div className="flex gap-2">
 									<button
@@ -206,7 +233,7 @@ export function Skills({ onClose }: { onClose: () => void }) {
 										className="btn btn-ghost btn-sm"
 										onClick={() => setSelectedId(null)}
 									>
-										Close preview
+										Close editor
 									</button>
 								</div>
 							</div>
@@ -217,9 +244,28 @@ export function Skills({ onClose }: { onClose: () => void }) {
 									{errorMessage(selected.error)}
 								</p>
 							) : (
-								<pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
-									{selected.data?.content}
-								</pre>
+								<fieldset className="fieldset gap-2">
+									<legend className="fieldset-legend">SKILL.md</legend>
+									<textarea
+										className="textarea min-h-80 w-full resize-y font-mono text-xs"
+										value={draft}
+										disabled={update.isPending}
+										onChange={(event) => setDraft(event.target.value)}
+									/>
+									<div className="mt-2 flex justify-end">
+										<button
+											type="button"
+											className="btn btn-primary btn-sm"
+											disabled={update.isPending}
+											onClick={() => void save()}
+										>
+											{update.isPending && (
+												<span className="loading loading-spinner loading-xs" />
+											)}
+											Save changes
+										</button>
+									</div>
+								</fieldset>
 							)}
 						</section>
 					)}

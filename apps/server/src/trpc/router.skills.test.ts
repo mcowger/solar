@@ -150,6 +150,28 @@ describe("skill router", () => {
 		await expect(owner.skill.list()).resolves.toEqual([]);
 	});
 
+	test("updates an owned skill's content and catalog metadata", async () => {
+		const owner = appRouter.createCaller({ user: { id: "owner" } } as never);
+		const { id } = await owner.skill.create({ content });
+		const updatedContent = `---
+name: patch-notes
+description: Draft patch notes.
+---
+# Patch notes
+`;
+
+		await owner.skill.update({ id, content: updatedContent });
+
+		await expect(owner.skill.get({ id })).resolves.toMatchObject({
+			name: "patch-notes",
+			description: "Draft patch notes.",
+			content: updatedContent,
+		});
+		await expect(owner.skill.list()).resolves.toMatchObject([
+			{ id, name: "patch-notes", description: "Draft patch notes." },
+		]);
+	});
+
 	test("maps both duplicate checks and a unique-index race to CONFLICT", async () => {
 		const caller = appRouter.createCaller({ user: { id: "owner" } } as never);
 		forceUniqueError = true;

@@ -700,6 +700,39 @@ const skillRouter = router({
 			if (!skill) throw new TRPCError({ code: "NOT_FOUND" });
 			return { ...skill, exposed: Boolean(skill.exposed) };
 		}),
+	update: protectedProcedure
+		.input(z.object({ id: z.string(), content: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			let parsed: { name: string; description: string };
+			try {
+				parsed = parseSkill(input.content);
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: error instanceof Error ? error.message : "Invalid SKILL.md",
+				});
+			}
+			try {
+				const result = await db
+					.updateTable("skill")
+					.set({
+						...parsed,
+						content: input.content,
+						updatedAt: new Date().toISOString(),
+					})
+					.where("id", "=", input.id)
+					.where("userId", "=", ctx.user.id)
+					.executeTakeFirst();
+				if (!result.numUpdatedRows) throw new TRPCError({ code: "NOT_FOUND" });
+			} catch (error) {
+				if (isUniqueConstraint(error))
+					throw new TRPCError({
+						code: "CONFLICT",
+						message: "Skill name already exists",
+					});
+				throw error;
+			}
+		}),
 	setExposed: protectedProcedure
 		.input(z.object({ id: z.string(), exposed: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
