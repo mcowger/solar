@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { parseTimelineItems, type SolarToolCall } from "./useSolarRuntime";
 
 /**
  * Fake EventSource driving the SSE consumption in useSolarRuntime. Tests emit
@@ -349,5 +350,65 @@ describe("useSolarRuntime stream errors", () => {
 			expect(result.current.thread.getState().isRunning).toBe(false),
 		);
 		unmount();
+	});
+});
+
+describe("parseTimelineItems", () => {
+	test("parses chronological sequence from structured message parts", () => {
+		const partsJson = JSON.stringify({
+			content: [
+				{ type: "thinking", thinking: "Step 1 thought" },
+				{ type: "text", text: "Step 1 text" },
+				{ type: "toolCall", id: "call-1", name: "search" },
+				{ type: "text", text: "Final answer" },
+			],
+			solarToolCalls: [
+				{
+					id: "call-1",
+					name: "search",
+					args: '{"q":"foo"}',
+					status: "complete",
+					output: "results",
+				},
+			],
+		});
+
+		const items = parseTimelineItems(partsJson, "Fallback text");
+		expect(items).toEqual([
+			{ kind: "reasoning", id: "reasoning-0", text: "Step 1 thought" },
+			{ kind: "text", id: "text-1", text: "Step 1 text" },
+			{
+				kind: "toolCalls",
+				id: "tools-2",
+				calls: [
+					{
+						id: "call-1",
+						name: "search",
+						args: '{"q":"foo"}',
+						status: "complete",
+						output: "results",
+					},
+				],
+			},
+			{ kind: "text", id: "text-3", text: "Final answer" },
+		]);
+	});
+
+	test("falls back cleanly when parts string is absent", () => {
+		const toolCalls: SolarToolCall[] = [
+			{ id: "call-1", name: "list", args: "{}", status: "complete" },
+		];
+		const items = parseTimelineItems(
+			null,
+			"Main output",
+			"Global reasoning",
+			toolCalls,
+		);
+
+		expect(items).toEqual([
+			{ kind: "toolCalls", id: "tools-fallback", calls: toolCalls },
+			{ kind: "reasoning", id: "reasoning-fallback", text: "Global reasoning" },
+			{ kind: "text", id: "text-fallback", text: "Main output" },
+		]);
 	});
 });

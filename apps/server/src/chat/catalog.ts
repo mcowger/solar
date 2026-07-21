@@ -333,6 +333,38 @@ export async function getUserDefaultPreset(
 	return row?.defaultPresetId ?? null;
 }
 
+export async function getUserDefaultDisplayMode(
+	userId: string,
+): Promise<"compact" | "timeline"> {
+	const row = await db
+		.selectFrom("user_setting")
+		.select("defaultDisplayMode")
+		.where("userId", "=", userId)
+		.executeTakeFirst();
+	return row?.defaultDisplayMode === "timeline" ? "timeline" : "compact";
+}
+
+export async function setUserDefaultDisplayMode(
+	userId: string,
+	displayMode: "compact" | "timeline",
+): Promise<void> {
+	const values = {
+		userId,
+		defaultDisplayMode: displayMode,
+		updatedAt: new Date().toISOString(),
+	};
+	await db
+		.insertInto("user_setting")
+		.values(values)
+		.onConflict((oc) =>
+			oc.column("userId").doUpdateSet({
+				defaultDisplayMode: displayMode,
+				updatedAt: values.updatedAt,
+			}),
+		)
+		.execute();
+}
+
 export async function setUserDefaultPreset(
 	userId: string,
 	presetId: string | null,

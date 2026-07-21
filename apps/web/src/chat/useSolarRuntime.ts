@@ -66,6 +66,118 @@ export interface SolarToolCall {
 	output?: string;
 }
 
+export type TimelineItem =
+	| { kind: "reasoning"; id: string; text: string }
+	| { kind: "toolCalls"; id: string; calls: SolarToolCall[] }
+	| { kind: "text"; id: string; text: string };
+
+export function parseTimelineItems(
+	partsStr: string | null | undefined,
+	fallbackText: string,
+	fallbackReasoning?: string,
+	fallbackToolCalls?: SolarToolCall[],
+): TimelineItem[] {
+	if (partsStr) {
+		try {
+			const parsed = JSON.parse(partsStr) as {
+				content?: Array<{
+					type?: string;
+					thinking?: string;
+					text?: string;
+					id?: string;
+					name?: string;
+				}>;
+				solarToolCalls?: SolarToolCall[];
+			};
+
+			const toolMap = new Map<string, SolarToolCall>();
+			const allToolCalls = parsed.solarToolCalls ?? fallbackToolCalls ?? [];
+			for (const call of allToolCalls) {
+				toolMap.set(call.id, call);
+			}
+
+			if (Array.isArray(parsed.content) && parsed.content.length > 0) {
+				const items: TimelineItem[] = [];
+				for (const part of parsed.content) {
+					if (part.type === "thinking" && part.thinking) {
+						const last = items.at(-1);
+						if (last && last.kind === "reasoning") {
+							last.text += part.thinking;
+						} else {
+							items.push({
+								kind: "reasoning",
+								id: `reasoning-${items.length}`,
+								text: part.thinking,
+							});
+						}
+					} else if (part.type === "toolCall") {
+						const id = part.id;
+						const call = id ? toolMap.get(id) : undefined;
+						const fallbackCall: SolarToolCall = call ?? {
+							id: id ?? `call-${items.length}`,
+							name: part.name ?? "tool",
+							args: "",
+							status: "complete",
+						};
+						const last = items.at(-1);
+						if (last && last.kind === "toolCalls") {
+							if (!last.calls.some((c) => c.id === fallbackCall.id)) {
+								last.calls.push(fallbackCall);
+							}
+						} else {
+							items.push({
+								kind: "toolCalls",
+								id: `tools-${items.length}`,
+								calls: [fallbackCall],
+							});
+						}
+					} else if (part.type === "text" && part.text) {
+						const last = items.at(-1);
+						if (last && last.kind === "text") {
+							last.text += part.text;
+						} else {
+							items.push({
+								kind: "text",
+								id: `text-${items.length}`,
+								text: part.text,
+							});
+						}
+					}
+				}
+				if (items.length > 0) {
+					return items;
+				}
+			}
+		} catch {
+			// Fall back to simple decomposition below
+		}
+	}
+
+	const items: TimelineItem[] = [];
+	if (fallbackToolCalls && fallbackToolCalls.length > 0) {
+		items.push({
+			kind: "toolCalls",
+			id: "tools-fallback",
+			calls: fallbackToolCalls,
+		});
+	}
+	if (fallbackReasoning) {
+		items.push({
+			kind: "reasoning",
+			id: "reasoning-fallback",
+			text: fallbackReasoning,
+		});
+	}
+	if (fallbackText) {
+		items.push({
+			kind: "text",
+			id: "text-fallback",
+			text: fallbackText,
+		});
+	}
+	return items;
+}
+
 function toCompleteAttachment(a: SolarAttachmentMeta): CompleteAttachment {
 	return {
 		id: a.id,
@@ -368,6 +480,7 @@ export function useSolarRuntime(
 				createdAt: r.createdAt,
 				reasoning: r.reasoning ?? undefined,
 				toolCalls: toolCallsByMessageRef.current.get(r.id) ?? r.toolCalls,
+				parts: r.parts,
 				summaryEvent:
 					contextState.summaryEvent && index === markerIndex
 						? {

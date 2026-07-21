@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	Check,
 	Copy,
+	ListTree,
 	LogOut,
 	Menu,
 	MoreHorizontal,
 	PanelLeft,
 	Plus,
 	Settings2,
+	Workflow,
 } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
@@ -116,7 +118,27 @@ function ContextMetrics({ conversationId }: { conversationId: string }) {
 }
 
 function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
+	const trpc = useTRPC();
+	const qc = useQueryClient();
 	const [copied, setCopied] = useState(false);
+
+	const displayModeQuery = useQuery(
+		trpc.conversation.getDisplayMode.queryOptions({ conversationId }),
+	);
+
+	const setUserDefaultMode = useMutation(
+		trpc.conversation.setUserDefaultDisplayMode.mutationOptions({
+			onSuccess: () => {
+				qc.invalidateQueries({
+					queryKey: trpc.conversation.getDisplayMode.queryKey({
+						conversationId,
+					}),
+				});
+			},
+		}),
+	);
+
+	const defaultMode = displayModeQuery.data?.defaultDisplayMode ?? "compact";
 
 	async function copyChatId() {
 		await navigator.clipboard.writeText(conversationId);
@@ -133,8 +155,35 @@ function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
 			>
 				<MoreHorizontal size={18} />
 			</div>
-			<div className="dropdown-content z-20 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+			<div className="dropdown-content z-20 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg space-y-2">
 				<ContextMetrics conversationId={conversationId} />
+				<div className="border-t border-base-300 pt-2 px-2 space-y-1">
+					<div className="text-xs font-semibold uppercase text-base-content/60">
+						Default Display Mode
+					</div>
+					<div className="join w-full grid grid-cols-2">
+						<button
+							type="button"
+							className={`btn btn-xs join-item ${defaultMode === "compact" ? "btn-primary" : "btn-ghost bg-base-200"}`}
+							disabled={setUserDefaultMode.isPending}
+							onClick={() =>
+								setUserDefaultMode.mutate({ displayMode: "compact" })
+							}
+						>
+							Compact
+						</button>
+						<button
+							type="button"
+							className={`btn btn-xs join-item ${defaultMode === "timeline" ? "btn-primary" : "btn-ghost bg-base-200"}`}
+							disabled={setUserDefaultMode.isPending}
+							onClick={() =>
+								setUserDefaultMode.mutate({ displayMode: "timeline" })
+							}
+						>
+							Timeline
+						</button>
+					</div>
+				</div>
 				<button
 					type="button"
 					className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
@@ -148,6 +197,45 @@ function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
 				</button>
 			</div>
 		</div>
+	);
+}
+
+function DisplayModeToggle({ conversationId }: { conversationId: string }) {
+	const trpc = useTRPC();
+	const qc = useQueryClient();
+	const query = useQuery(
+		trpc.conversation.getDisplayMode.queryOptions({ conversationId }),
+	);
+	const toggle = useMutation(
+		trpc.conversation.setDisplayMode.mutationOptions({
+			onSuccess: () => {
+				qc.invalidateQueries({
+					queryKey: trpc.conversation.getDisplayMode.queryKey({
+						conversationId,
+					}),
+				});
+			},
+		}),
+	);
+
+	const currentMode = query.data?.displayMode ?? "compact";
+	const nextMode = currentMode === "compact" ? "timeline" : "compact";
+
+	return (
+		<button
+			type="button"
+			className="btn btn-ghost btn-sm btn-circle"
+			title={`Display mode: ${currentMode === "compact" ? "Compact" : "Timeline"} (switch to ${nextMode === "compact" ? "Compact" : "Timeline"})`}
+			aria-label={`Display mode: ${currentMode}`}
+			disabled={toggle.isPending}
+			onClick={() => toggle.mutate({ conversationId, displayMode: nextMode })}
+		>
+			{currentMode === "compact" ? (
+				<ListTree size={18} />
+			) : (
+				<Workflow size={18} />
+			)}
+		</button>
 	);
 }
 
@@ -489,6 +577,7 @@ export function ChatApp() {
 						</button>
 					</div>
 					<div className="ml-auto flex items-center gap-1">
+						{activeId && <DisplayModeToggle conversationId={activeId} />}
 						{activeId && <ConversationInfoMenu conversationId={activeId} />}
 						<UserMenu
 							name={session?.user?.name}

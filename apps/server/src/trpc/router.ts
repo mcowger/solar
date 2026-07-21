@@ -21,6 +21,8 @@ import {
 	getTitlePrompt,
 	getUserDefault,
 	getUserDefaultPreset,
+	getUserDefaultDisplayMode,
+	setUserDefaultDisplayMode,
 	importProviderModels,
 	listAvailableModels,
 	loadProviderConfigs,
@@ -253,6 +255,7 @@ const conversationRouter = router({
 					};
 				}
 			}
+			const defaultDisplayMode = await getUserDefaultDisplayMode(ctx.user.id);
 			await db
 				.insertInto("conversation")
 				.values({
@@ -260,6 +263,7 @@ const conversationRouter = router({
 					userId: ctx.user.id,
 					title: input.title ?? "New conversation",
 					folderId: input.folderId ?? null,
+					displayMode: defaultDisplayMode,
 					...snapshot,
 				})
 				.execute();
@@ -603,6 +607,7 @@ const conversationRouter = router({
 					id: m.id,
 					role: m.role,
 					text: m.text,
+					parts: m.parts,
 					status: m.status,
 					createdAt: m.createdAt,
 					reasoning,
@@ -620,6 +625,52 @@ const conversationRouter = router({
 						m.status === "generating" && generationManager.isActive(m.id),
 				};
 			});
+		}),
+
+	getDisplayMode: protectedProcedure
+		.input(z.object({ conversationId: z.string() }))
+		.query(async ({ ctx, input }) => {
+			await assertOwnsConversation(ctx.user.id, input.conversationId);
+			const convo = await db
+				.selectFrom("conversation")
+				.select("displayMode")
+				.where("id", "=", input.conversationId)
+				.executeTakeFirst();
+			const defaultDisplayMode = await getUserDefaultDisplayMode(ctx.user.id);
+			const mode =
+				convo?.displayMode === "timeline" || convo?.displayMode === "compact"
+					? convo.displayMode
+					: defaultDisplayMode;
+			return {
+				displayMode: mode as "compact" | "timeline",
+				defaultDisplayMode,
+			};
+		}),
+
+	setDisplayMode: protectedProcedure
+		.input(
+			z.object({
+				conversationId: z.string(),
+				displayMode: z.enum(["compact", "timeline"]),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			await assertOwnsConversation(ctx.user.id, input.conversationId);
+			await db
+				.updateTable("conversation")
+				.set({ displayMode: input.displayMode })
+				.where("id", "=", input.conversationId)
+				.execute();
+		}),
+
+	setUserDefaultDisplayMode: protectedProcedure
+		.input(
+			z.object({
+				displayMode: z.enum(["compact", "timeline"]),
+			}),
+		)
+		.mutation(async ({ ctx, input }) => {
+			await setUserDefaultDisplayMode(ctx.user.id, input.displayMode);
 		}),
 });
 

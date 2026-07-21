@@ -76,6 +76,7 @@ export interface Attachment {
 export interface Conversation {
 	autoExecuteTools: Generated<number>;
 	createdAt: Generated<string>;
+	displayMode: string | null;
 	endpointId: string | null;
 	folderId: string | null;
 	id: string | null;
@@ -262,6 +263,7 @@ export interface UserMcpServerPreference {
 
 export interface UserSetting {
 	defaultApi: string | null;
+	defaultDisplayMode: string | null;
 	defaultEndpointId: string | null;
 	defaultModelId: string | null;
 	defaultPresetId: string | null;

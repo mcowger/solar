@@ -35,6 +35,7 @@ export interface ConversationTable {
 	reasoningSummary: Generated<number>;
 	verbosity: string | null;
 	presetVerbosity: string | null;
+	displayMode: string | null;
 	autoExecuteTools: Generated<number>;
 	createdAt: Generated<string>;
 	updatedAt: Generated<string>;
@@ -165,6 +166,7 @@ export interface UserSettingTable {
 	defaultModelId: string | null;
 	defaultApi: string | null;
 	defaultPresetId: string | null;
+	defaultDisplayMode: string | null;
 	updatedAt: Generated<string>;
 }
 

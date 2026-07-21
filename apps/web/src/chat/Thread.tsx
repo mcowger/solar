@@ -51,10 +51,12 @@ import {
 	type SkillOption,
 } from "./skillCommands";
 import { MarkdownText, PlainMarkdown } from "./MarkdownText";
-import type {
-	SolarConnectionStatus,
-	SolarSummaryEvent,
-	SolarToolCall,
+import {
+	parseTimelineItems,
+	type SolarConnectionStatus,
+	type SolarSummaryEvent,
+	type SolarToolCall,
+	type TimelineItem,
 } from "./useSolarRuntime";
 import "./Thread.css";
 
@@ -67,6 +69,10 @@ const DEFAULT_PASTE_SETTINGS = {
 
 /** Display name of the conversation's model, for the assistant identity row. */
 const ModelNameContext = createContext<string | undefined>(undefined);
+/** Active display mode (compact vs timeline) for assistant messages. */
+export const DisplayModeContext = createContext<"compact" | "timeline">(
+	"compact",
+);
 
 /** Format a message timestamp like "Today at 9:34 AM" / "Yesterday at …". */
 function formatMessageTimestamp(iso?: string): string {
@@ -919,7 +925,50 @@ export function AssistantStatusIndicator({
 	}
 }
 
+function ReasoningBlock({ text }: { text: string }) {
+	const [open, setOpen] = useState(false);
+
+	if (!text) return null;
+
+	return (
+		<div className="solar-reasoning">
+			<button
+				type="button"
+				className="solar-reasoning-toggle"
+				onClick={() => setOpen((o) => !o)}
+			>
+				Thought
+				<ChevronDown
+					size={13}
+					className={`solar-reasoning-caret${open ? " solar-reasoning-caret-open" : ""}`}
+				/>
+			</button>
+			{open && (
+				<div className="solar-reasoning-body">
+					<PlainMarkdown text={text} />
+				</div>
+			)}
+		</div>
+	);
+}
+
 function AssistantMessage() {
+	const displayMode = useContext(DisplayModeContext);
+	const parts = useAuiState(
+		(s) =>
+			(s.message.metadata?.custom as { parts?: string | null } | undefined)
+				?.parts,
+	);
+	const contentText = useAuiState((s) =>
+		s.message.content
+			.map((part) => (part.type === "text" ? part.text : ""))
+			.join(""),
+	);
+	const reasoningText = useAuiState((s) =>
+		s.message.content
+			.map((part) => (part.type === "reasoning" ? part.text : ""))
+			.join(""),
+	);
 	const isEmpty = useAuiState((s) =>
 		s.message.content.every((part) =>
 			part.type === "text"
@@ -992,21 +1041,60 @@ function AssistantMessage() {
 						<span className="solar-assistant-timestamp">{timestamp}</span>
 					)}
 				</div>
-				<ToolCalls />
-				<div className="solar-assistant-output">
-					{isEmpty ? (
-						<EmptyAssistantResponse
-							isRunning={isRunning}
-							connectionStatus={connectionStatus}
-							isStale={staleTurn}
-							onForceStop={forceStop}
-						/>
-					) : (
-						<MessagePrimitive.Content
-							components={{ Text: MarkdownText, Reasoning }}
-						/>
-					)}
-				</div>
+				{displayMode === "compact" ? (
+					<>
+						<ToolCalls />
+						<div className="solar-assistant-output">
+							{isEmpty ? (
+								<EmptyAssistantResponse
+									isRunning={isRunning}
+									connectionStatus={connectionStatus}
+									isStale={staleTurn}
+									onForceStop={forceStop}
+								/>
+							) : (
+								<MessagePrimitive.Content
+									components={{ Text: MarkdownText, Reasoning }}
+								/>
+							)}
+						</div>
+					</>
+				) : (
+					<div className="solar-assistant-output flex flex-col gap-3 mt-2">
+						{isEmpty ? (
+							<EmptyAssistantResponse
+								isRunning={isRunning}
+								connectionStatus={connectionStatus}
+								isStale={staleTurn}
+								onForceStop={forceStop}
+							/>
+						) : (
+							parseTimelineItems(
+								parts,
+								contentText,
+								reasoningText,
+								toolCalls,
+							).map((item: TimelineItem) => {
+								if (item.kind === "reasoning") {
+									return <ReasoningBlock key={item.id} text={item.text} />;
+								}
+								if (item.kind === "toolCalls") {
+									return (
+										<GroupedToolCalls key={item.id} toolCalls={item.calls} />
+									);
+								}
+								if (item.kind === "text") {
+									return (
+										<div key={item.id} className="solar-assistant-text-block">
+											<PlainMarkdown text={item.text} />
+										</div>
+									);
+								}
+								return null;
+							})
+						)}
+					</div>
+				)}
 				<ActionBarPrimitive.Root
 					className="solar-actions"
 					style={{ display: "flex", gap: 4 }}
@@ -1339,6 +1427,10 @@ export function Thread({
 	const model = useQuery(
 		trpc.model.forConversation.queryOptions({ conversationId }),
 	);
+	const displayModeQuery = useQuery(
+		trpc.conversation.getDisplayMode.queryOptions({ conversationId }),
+	);
+	const displayMode = displayModeQuery.data?.displayMode ?? "compact";
 	const modelName = model.data?.name ?? model.data?.modelId;
 	const attachmentAccept = buildAttachmentAccept(
 		model.data?.vision ?? false,
@@ -1444,107 +1536,109 @@ export function Thread({
 
 	return (
 		<ModelNameContext.Provider value={modelName}>
-			<ThreadPrimitive.Root
-				style={{ position: "relative", height: "100%", minHeight: 0 }}
-			>
-				{isFileDragActive && (
-					<div className="solar-file-drop-overlay">
-						<FileUp size={28} />
-						<span>Drop files to attach them to this chat</span>
-					</div>
-				)}
-				<ThreadPrimitive.Viewport
-					style={{
-						height: "100%",
-						overflowY: "auto",
-						overscrollBehaviorY: "contain",
-						paddingTop: "1rem",
-						paddingLeft: "1rem",
-						paddingRight: "1rem",
-						paddingBottom: composerHeight + 16,
-						display: "flex",
-						flexDirection: "column",
-						gap: 12,
-					}}
+			<DisplayModeContext.Provider value={displayMode}>
+				<ThreadPrimitive.Root
+					style={{ position: "relative", height: "100%", minHeight: 0 }}
 				>
-					<ThreadPrimitive.Messages
-						components={{
-							UserMessage,
-							UserEditComposer,
-							AssistantMessage,
-						}}
-					/>
-				</ThreadPrimitive.Viewport>
-
-				<div ref={composerRef} className="solar-composer-dock">
-					<ComposerPrimitive.Root className="solar-composer">
-						<ComposerPrimitive.Attachments>
-							{() => <AttachmentChip removable />}
-						</ComposerPrimitive.Attachments>
-						<ComposerPrimitive.Queue>
-							{({ queueItem }) => (
-								<span className="badge badge-info badge-sm self-start">
-									Queued: {queueItem.prompt}
-								</span>
-							)}
-						</ComposerPrimitive.Queue>
-						<ContextStatusIndicator status={contextStatus} />
-						{attachmentError && (
-							<div
-								role="alert"
-								className="alert alert-error alert-soft text-sm"
-							>
-								{attachmentError}
-							</div>
-						)}
-						<SkillAutocomplete
-							key={skillAutocompleteReset}
-							onPaste={handlePaste}
-						/>
-						<div className="flex items-center justify-between gap-2">
-							<div className="flex items-center gap-1">
-								<DesktopAttachmentPicker
-									attachmentAccept={attachmentAccept}
-									disabled={!model.data}
-								/>
-								<MobileAttachmentPicker
-									attachmentAccept={attachmentAccept}
-									disabled={!model.data}
-								/>
-								<div className="solar-composer-divider" />
-								<GenerationControls conversationId={conversationId} />
-								<McpControls
-									conversationId={conversationId}
-									onConfigure={onConfigureMcp}
-								/>
-							</div>
-							<div
-								className="flex items-center gap-1"
-								onClickCapture={() =>
-									setSkillAutocompleteReset((version) => version + 1)
-								}
-							>
-								<ThreadPrimitive.If running>
-									<ComposerPrimitive.Cancel
-										className="btn btn-error btn-sm btn-circle"
-										title="Interrupt response"
-									>
-										<Square size={16} />
-									</ComposerPrimitive.Cancel>
-								</ThreadPrimitive.If>
-								<ThreadPrimitive.If running={false}>
-									<ComposerPrimitive.Send
-										className="btn btn-primary btn-sm btn-circle"
-										title="Send or queue message"
-									>
-										<Send size={18} />
-									</ComposerPrimitive.Send>
-								</ThreadPrimitive.If>
-							</div>
+					{isFileDragActive && (
+						<div className="solar-file-drop-overlay">
+							<FileUp size={28} />
+							<span>Drop files to attach them to this chat</span>
 						</div>
-					</ComposerPrimitive.Root>
-				</div>
-			</ThreadPrimitive.Root>
+					)}
+					<ThreadPrimitive.Viewport
+						style={{
+							height: "100%",
+							overflowY: "auto",
+							overscrollBehaviorY: "contain",
+							paddingTop: "1rem",
+							paddingLeft: "1rem",
+							paddingRight: "1rem",
+							paddingBottom: composerHeight + 16,
+							display: "flex",
+							flexDirection: "column",
+							gap: 12,
+						}}
+					>
+						<ThreadPrimitive.Messages
+							components={{
+								UserMessage,
+								UserEditComposer,
+								AssistantMessage,
+							}}
+						/>
+					</ThreadPrimitive.Viewport>
+
+					<div ref={composerRef} className="solar-composer-dock">
+						<ComposerPrimitive.Root className="solar-composer">
+							<ComposerPrimitive.Attachments>
+								{() => <AttachmentChip removable />}
+							</ComposerPrimitive.Attachments>
+							<ComposerPrimitive.Queue>
+								{({ queueItem }) => (
+									<span className="badge badge-info badge-sm self-start">
+										Queued: {queueItem.prompt}
+									</span>
+								)}
+							</ComposerPrimitive.Queue>
+							<ContextStatusIndicator status={contextStatus} />
+							{attachmentError && (
+								<div
+									role="alert"
+									className="alert alert-error alert-soft text-sm"
+								>
+									{attachmentError}
+								</div>
+							)}
+							<SkillAutocomplete
+								key={skillAutocompleteReset}
+								onPaste={handlePaste}
+							/>
+							<div className="flex items-center justify-between gap-2">
+								<div className="flex items-center gap-1">
+									<DesktopAttachmentPicker
+										attachmentAccept={attachmentAccept}
+										disabled={!model.data}
+									/>
+									<MobileAttachmentPicker
+										attachmentAccept={attachmentAccept}
+										disabled={!model.data}
+									/>
+									<div className="solar-composer-divider" />
+									<GenerationControls conversationId={conversationId} />
+									<McpControls
+										conversationId={conversationId}
+										onConfigure={onConfigureMcp}
+									/>
+								</div>
+								<div
+									className="flex items-center gap-1"
+									onClickCapture={() =>
+										setSkillAutocompleteReset((version) => version + 1)
+									}
+								>
+									<ThreadPrimitive.If running>
+										<ComposerPrimitive.Cancel
+											className="btn btn-error btn-sm btn-circle"
+											title="Interrupt response"
+										>
+											<Square size={16} />
+										</ComposerPrimitive.Cancel>
+									</ThreadPrimitive.If>
+									<ThreadPrimitive.If running={false}>
+										<ComposerPrimitive.Send
+											className="btn btn-primary btn-sm btn-circle"
+											title="Send or queue message"
+										>
+											<Send size={18} />
+										</ComposerPrimitive.Send>
+									</ThreadPrimitive.If>
+								</div>
+							</div>
+						</ComposerPrimitive.Root>
+					</div>
+				</ThreadPrimitive.Root>
+			</DisplayModeContext.Provider>
 		</ModelNameContext.Provider>
 	);
 }
