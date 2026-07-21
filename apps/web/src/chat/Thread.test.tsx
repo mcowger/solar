@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { fireEvent, render, screen } from "@testing-library/react";
 import {
+	AssistantStatusIndicator,
 	ContextStatusIndicator,
 	EmptyAssistantResponse,
 	formatToolInputPreview,
+	getAssistantStatusState,
 	GroupedToolCalls,
 	groupToolCalls,
 	isFileDrag,
@@ -189,13 +191,126 @@ describe("GroupedToolCalls", () => {
 	});
 });
 
+describe("AssistantStatusIndicator & getAssistantStatusState", () => {
+	test("correctly computes state transitions for all 4 states", () => {
+		// State 1: Connecting
+		expect(
+			getAssistantStatusState({
+				isRunning: true,
+				connectionStatus: "connecting",
+				isEmpty: true,
+				hasToolCalls: false,
+			}),
+		).toBe("connecting");
+
+		// State 2: Request Sent
+		expect(
+			getAssistantStatusState({
+				isRunning: true,
+				connectionStatus: "request-sent",
+				isEmpty: true,
+				hasToolCalls: false,
+			}),
+		).toBe("request-sent");
+
+		// State 3: Response in progress (text content started)
+		expect(
+			getAssistantStatusState({
+				isRunning: true,
+				connectionStatus: "request-sent",
+				isEmpty: false,
+				hasToolCalls: false,
+			}),
+		).toBe("in-progress");
+
+		// State 3: Response in progress (tool call started)
+		expect(
+			getAssistantStatusState({
+				isRunning: true,
+				connectionStatus: "request-sent",
+				isEmpty: true,
+				hasToolCalls: true,
+			}),
+		).toBe("in-progress");
+
+		// State 4: Response complete (not running)
+		expect(
+			getAssistantStatusState({
+				isRunning: false,
+				connectionStatus: "request-sent",
+				isEmpty: false,
+				hasToolCalls: false,
+			}),
+		).toBe("complete");
+
+		// State 4: Response complete (no connection status / completed historical turn)
+		expect(
+			getAssistantStatusState({
+				isRunning: true,
+				connectionStatus: undefined,
+				isEmpty: false,
+				hasToolCalls: false,
+			}),
+		).toBe("complete");
+	});
+
+	test("renders corresponding icons and titles for each state", () => {
+		// Connecting state
+		const { container: c1 } = render(
+			<AssistantStatusIndicator
+				isRunning={true}
+				connectionStatus="connecting"
+				isEmpty={true}
+				hasToolCalls={false}
+			/>,
+		);
+		expect(c1.querySelector(".solar-status-connecting")).toBeTruthy();
+		expect(screen.getByTitle("Connecting…")).toBeInTheDocument();
+
+		// Request sent state
+		const { container: c2 } = render(
+			<AssistantStatusIndicator
+				isRunning={true}
+				connectionStatus="request-sent"
+				isEmpty={true}
+				hasToolCalls={false}
+			/>,
+		);
+		expect(c2.querySelector(".solar-status-request-sent")).toBeTruthy();
+		expect(screen.getByTitle("Request sent…")).toBeInTheDocument();
+
+		// Response in progress state
+		const { container: c3 } = render(
+			<AssistantStatusIndicator
+				isRunning={true}
+				connectionStatus="request-sent"
+				isEmpty={false}
+				hasToolCalls={false}
+			/>,
+		);
+		expect(c3.querySelector(".solar-status-in-progress")).toBeTruthy();
+		expect(screen.getByTitle("Response in progress…")).toBeInTheDocument();
+
+		// Complete state
+		const { container: c4 } = render(
+			<AssistantStatusIndicator
+				isRunning={false}
+				connectionStatus="request-sent"
+				isEmpty={false}
+				hasToolCalls={false}
+			/>,
+		);
+		expect(c4.querySelector(".solar-status-complete")).toBeTruthy();
+		expect(screen.getByTitle("Response complete")).toBeInTheDocument();
+	});
+});
+
 describe("EmptyAssistantResponse", () => {
-	test("shows connection status while a response is starting", () => {
+	test("returns null while a response is actively starting or running", () => {
 		const { container, rerender } = render(
 			<EmptyAssistantResponse isRunning={true} connectionStatus="connecting" />,
 		);
-		expect(container.querySelector(".solar-response-loader")).toBeTruthy();
-		expect(screen.getByText("Connecting…")).toBeInTheDocument();
+		expect(container.firstChild).toBeNull();
 
 		rerender(
 			<EmptyAssistantResponse
@@ -203,20 +318,16 @@ describe("EmptyAssistantResponse", () => {
 				connectionStatus="request-sent"
 			/>,
 		);
-		expect(screen.getByText("Request sent…")).toBeInTheDocument();
+		expect(container.firstChild).toBeNull();
 	});
 
 	test("distinguishes a completed empty response from an active generation", () => {
 		const { container, rerender } = render(
 			<EmptyAssistantResponse isRunning={true} />,
 		);
-		expect(container.querySelector(".solar-response-loader")).toBeTruthy();
-		expect(
-			screen.queryByText("The model returned an empty response."),
-		).not.toBeInTheDocument();
+		expect(container.firstChild).toBeNull();
 
 		rerender(<EmptyAssistantResponse isRunning={false} />);
-		expect(container.querySelector(".solar-response-loader")).toBeNull();
 		expect(
 			screen.getByText("The model returned an empty response."),
 		).toBeInTheDocument();

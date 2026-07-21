@@ -43,6 +43,45 @@
   color: var(--color-base-content);
 }
 
+.solar-assistant-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.solar-status-connecting,
+.solar-status-request-sent,
+.solar-status-in-progress {
+  animation: solar-status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.solar-status-connecting {
+  color: color-mix(in oklch, var(--color-base-content) 60%, transparent);
+}
+
+.solar-status-request-sent {
+  color: var(--color-info);
+}
+
+.solar-status-in-progress {
+  color: var(--color-primary);
+}
+
+.solar-status-complete {
+  color: var(--color-success);
+}
+
+@keyframes solar-status-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.92);
+  }
+}
+
 .solar-assistant-timestamp {
   font-size: 12px;
   color: color-mix(in oklch, var(--color-base-content) 52%, transparent);

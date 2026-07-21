@@ -15,6 +15,7 @@ import {
 	Camera,
 	Check,
 	ChevronDown,
+	CloudBackup,
 	Copy,
 	Cog,
 	FileText,
@@ -30,6 +31,7 @@ import {
 	Server,
 	Square,
 	SquarePen,
+	Unplug,
 	X,
 } from "lucide-react";
 import {
@@ -823,6 +825,100 @@ function UserEditComposer() {
 	);
 }
 
+export type AssistantStatusState =
+	| "connecting"
+	| "request-sent"
+	| "in-progress"
+	| "complete";
+
+export function getAssistantStatusState({
+	isRunning,
+	connectionStatus,
+	isEmpty,
+	hasToolCalls,
+}: {
+	isRunning: boolean;
+	connectionStatus?: SolarConnectionStatus;
+	isEmpty: boolean;
+	hasToolCalls: boolean;
+}): AssistantStatusState {
+	if (!isRunning || !connectionStatus) {
+		return "complete";
+	}
+	if (connectionStatus === "connecting") {
+		return "connecting";
+	}
+	if (connectionStatus === "request-sent") {
+		if (isEmpty && !hasToolCalls) {
+			return "request-sent";
+		}
+		return "in-progress";
+	}
+	return "complete";
+}
+
+export function AssistantStatusIndicator({
+	isRunning,
+	connectionStatus,
+	isEmpty,
+	hasToolCalls,
+}: {
+	isRunning: boolean;
+	connectionStatus?: SolarConnectionStatus;
+	isEmpty: boolean;
+	hasToolCalls: boolean;
+}) {
+	const state = getAssistantStatusState({
+		isRunning,
+		connectionStatus,
+		isEmpty,
+		hasToolCalls,
+	});
+
+	switch (state) {
+		case "connecting":
+			return (
+				<span
+					className="solar-assistant-status solar-status-connecting"
+					title="Connecting…"
+					aria-label="Connecting"
+				>
+					<Unplug size={14} />
+				</span>
+			);
+		case "request-sent":
+			return (
+				<span
+					className="solar-assistant-status solar-status-request-sent"
+					title="Request sent…"
+					aria-label="Request sent"
+				>
+					<Send size={14} />
+				</span>
+			);
+		case "in-progress":
+			return (
+				<span
+					className="solar-assistant-status solar-status-in-progress"
+					title="Response in progress…"
+					aria-label="Response in progress"
+				>
+					<CloudBackup size={14} />
+				</span>
+			);
+		case "complete":
+			return (
+				<span
+					className="solar-assistant-status solar-status-complete"
+					title="Response complete"
+					aria-label="Response complete"
+				>
+					<Check size={14} />
+				</span>
+			);
+	}
+}
+
 function AssistantMessage() {
 	const isEmpty = useAuiState((s) =>
 		s.message.content.every((part) =>
@@ -841,6 +937,14 @@ function AssistantMessage() {
 					| { connectionStatus?: SolarConnectionStatus }
 					| undefined
 			)?.connectionStatus,
+	);
+	const toolCalls = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| { toolCalls?: SolarToolCall[] }
+					| undefined
+			)?.toolCalls,
 	);
 	const staleTurn = useAuiState(
 		(s) =>
@@ -878,6 +982,12 @@ function AssistantMessage() {
 						<Bot size={18} />
 					</span>
 					<span className="solar-assistant-name">{modelName}</span>
+					<AssistantStatusIndicator
+						isRunning={isRunning}
+						connectionStatus={connectionStatus}
+						isEmpty={isEmpty}
+						hasToolCalls={Boolean(toolCalls && toolCalls.length > 0)}
+					/>
 					{timestamp && (
 						<span className="solar-assistant-timestamp">{timestamp}</span>
 					)}
@@ -958,14 +1068,7 @@ export function EmptyAssistantResponse({
 	}
 
 	if (isRunning) {
-		return (
-			<div className="flex items-center gap-2 text-sm text-base-content/60">
-				<LoaderCircle className="solar-response-loader" size={18} />
-				<span>
-					{connectionStatus === "connecting" ? "Connecting…" : "Request sent…"}
-				</span>
-			</div>
-		);
+		return null;
 	}
 
 	return (
