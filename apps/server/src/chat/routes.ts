@@ -40,6 +40,8 @@ import {
 import { reverseGeocode } from "./location";
 import {
 	contextualUserText,
+	isSkillReadResult,
+	parseSkillInvocation,
 	listExposedSkills,
 	skillCatalogContext,
 	SKILL_NAME_PATTERN,
@@ -101,6 +103,10 @@ async function buildContext(
 
 	const messages: PiMessage[] = [];
 	const documents: import("./attachments").NativeDocumentInput[] = [];
+	const latestUser = [...rows].reverse().find((row) => row.role === "user");
+	const hasExplicitSkill = Boolean(
+		parseSkillInvocation(latestUser?.parts ?? null),
+	);
 	for (const r of rows) {
 		if (messageIds && !messageIds.has(r.id)) continue;
 		if (r.role === "user") {
@@ -128,6 +134,10 @@ async function buildContext(
 				.execute();
 			for (const step of steps) {
 				const parsed = JSON.parse(step.data) as { role?: unknown };
+				// Keep ordinary history intact. An explicitly selected skill is a
+				// per-turn workflow, though, so earlier read_skill instructions must
+				// not compete with it.
+				if (hasExplicitSkill && isSkillReadResult(parsed)) continue;
 				if (typeof parsed.role === "string") messages.push(parsed as PiMessage);
 			}
 			// Intermediate tool/reasoning messages precede the final persisted reply.

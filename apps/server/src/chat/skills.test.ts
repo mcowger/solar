@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	contextualUserText,
+	isSkillReadResult,
 	parseSkill,
 	parseSkillInvocation,
 	skillCatalogContext,
@@ -58,6 +59,21 @@ describe("skill chat context", () => {
 		expect(contextualUserText("ship it", parts)).toContain(
 			"Use <literal-markup> unchanged.",
 		);
+		expect(contextualUserText("ship it", parts)).toContain(
+			"authoritative workflow for this turn",
+		);
+	});
+
+	test("does not replay prior skill instructions as tool context", () => {
+		expect(
+			isSkillReadResult({
+				role: "toolResult",
+				toolName: "read_skill",
+			}),
+		).toBe(true);
+		expect(
+			isSkillReadResult({ role: "toolResult", toolName: "web_search" }),
+		).toBe(false);
 	});
 
 	test("escapes delimiters in catalog metadata", () => {

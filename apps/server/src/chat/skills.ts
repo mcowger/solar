@@ -64,7 +64,16 @@ export function parseSkill(content: string): {
 }
 
 export function skillInvocationContext(invocation: SkillInvocation): string {
-	return `\n\n<explicit-skill name="${invocation.name}">\n${invocation.content}\n</explicit-skill>`;
+	return `\n\n<explicit-skill name="${invocation.name}">\nThe user explicitly selected this workflow for the current turn. Follow its instructions as the authoritative workflow for this turn. If an earlier message, tool result, or prior skill conflicts with it, follow this workflow instead.\n\n${invocation.content}\n</explicit-skill>`;
+}
+
+export function isSkillReadResult(value: unknown): boolean {
+	return (
+		Boolean(value) &&
+		typeof value === "object" &&
+		(value as { role?: unknown; toolName?: unknown }).role === "toolResult" &&
+		(value as { toolName?: unknown }).toolName === "read_skill"
+	);
 }
 
 export function parseSkillInvocation(
