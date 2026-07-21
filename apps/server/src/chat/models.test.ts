@@ -287,4 +287,55 @@ describe("mock model streaming", () => {
 
 		expect(calls.map((call) => call.purpose)).toEqual(["chat", "tool_loop"]);
 	});
+
+	test("completes stream gracefully using last partial message when google-genai trailing segment error is caught", async () => {
+		expectNoProviderCalls = false;
+		const partialMsg = {
+			role: "assistant",
+			content: [{ type: "text", text: "Hello world" }],
+			timestamp: Date.now(),
+			errorMessage: "Incomplete JSON segment at the end",
+		};
+		providerStream = async function* () {
+			yield {
+				type: "start",
+				partial: partialMsg,
+			};
+			yield {
+				type: "text_delta",
+				delta: "Hello world",
+				partial: partialMsg,
+			};
+			yield {
+				type: "error",
+				error: partialMsg,
+			};
+		};
+
+		const selectionWithRealProvider = {
+			provider: "real-provider",
+			endpointId: "endpoint-1",
+			modelId: "model-1",
+			api: "google-generative-ai",
+		};
+
+		const events: any[] = [];
+		for await (const event of streamChat(
+			contextFor("test"),
+			selectionWithRealProvider,
+			{},
+			new AbortController().signal,
+		)) {
+			events.push(event);
+		}
+
+		expect(events.length).toBeGreaterThan(0);
+		expect(events[0].type).toBe("start");
+		expect(events[1].type).toBe("text_delta");
+		expect(events[2]).toEqual({
+			type: "done",
+			reason: "stop",
+			message: partialMsg,
+		});
+	});
 });
