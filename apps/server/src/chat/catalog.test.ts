@@ -441,4 +441,38 @@ describe("catalog model policy", () => {
 			globalThis.fetch = originalFetch;
 		}
 	});
+
+	test("normalizes base URL for google-generative-ai endpoints", () => {
+		expect(
+			catalog.normalizeBaseUrlForApi(
+				"google-generative-ai",
+				"https://plexus.home.cowger.us/",
+			),
+		).toBe("https://plexus.home.cowger.us/v1beta");
+
+		expect(
+			catalog.normalizeBaseUrlForApi(
+				"google-generative-ai",
+				"https://plexus.home.cowger.us",
+			),
+		).toBe("https://plexus.home.cowger.us/v1beta");
+
+		expect(
+			catalog.normalizeBaseUrlForApi(
+				"google-generative-ai",
+				"https://plexus.home.cowger.us/v1beta",
+			),
+		).toBe("https://plexus.home.cowger.us/v1beta");
+
+		expect(catalog.normalizeBaseUrlForApi("google-generative-ai", "")).toBe(
+			"https://generativelanguage.googleapis.com/v1beta",
+		);
+
+		expect(
+			catalog.normalizeBaseUrlForApi(
+				"openai-completions",
+				"https://plexus.home.cowger.us/v1",
+			),
+		).toBe("https://plexus.home.cowger.us/v1");
+	});
 });

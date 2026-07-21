@@ -89,30 +89,38 @@ export async function* streamChat(
 		try {
 			const events = streamModel(resolved, turnContext, signal, params);
 			for await (const event of events) {
-				if (event.type === "error" && outputStarted) {
+				if (event.type === "error") {
 					const errorMsg = event.error.errorMessage ?? "";
-					// Robust defensive mapping: Google's official @google/genai SDK has a known stream parser bug
-					// (GitHub issue #1342) where trailing whitespace or a split TCP segment at stream end throws a
-					// fatal terminal "Incomplete JSON segment at the end" error.
-					//
-					// The underlying pi-ai library (google-generative-ai.js) safely catches all streaming exceptions and
-					// wraps them as an "error" event containing the already completed partial AssistantMessage.
-					//
-					// Following Pi Coding Agent's own robust pattern (agent-loop.js treats "done" and "error" identically
-					// once output starts), we gracefully map this trailing parser issue into a clean, successful
-					// "done" event so the user's generated response is preserved without showing an error banner.
-					if (errorMsg.includes("Incomplete JSON segment")) {
-						console.warn(
-							"Caught google-genai trailing segment error event; completing stream gracefully using the error-attached partial message.",
-						);
-						message = event.error;
-						reason = "stop";
-						yield {
-							type: "done",
-							reason: "stop",
-							message: event.error,
-						};
-						continue;
+					if (outputStarted) {
+						// Robust defensive mapping: Google's official @google/genai SDK has a known stream parser bug
+						// (GitHub issue #1342) where trailing whitespace or a split TCP segment at stream end throws a
+						// fatal terminal "Incomplete JSON segment at the end" error.
+						//
+						// The underlying pi-ai library (google-generative-ai.js) safely catches all streaming exceptions and
+						// wraps them as an "error" event containing the already completed partial AssistantMessage.
+						//
+						// Following Pi Coding Agent's own robust pattern (agent-loop.js treats "done" and "error" identically
+						// once output starts), we gracefully map this trailing parser issue into a clean, successful
+						// "done" event so the user's generated response is preserved without showing an error banner.
+						if (errorMsg.includes("Incomplete JSON segment")) {
+							console.warn(
+								"Caught google-genai trailing segment error event; completing stream gracefully using the error-attached partial message.",
+							);
+							message = event.error;
+							reason = "stop";
+							yield {
+								type: "done",
+								reason: "stop",
+								message: event.error,
+							};
+							continue;
+						}
+					} else if (errorMsg.includes("Incomplete JSON segment")) {
+						// If the stream fails immediately (0 output tokens) with "Incomplete JSON segment",
+						// the endpoint returned a non-SSE response (e.g. HTTP 404/405 error or protocol mismatch
+						// when routing a model through an OpenAI proxy like Plexus with the native Gemini API set).
+						event.error.errorMessage =
+							"Failed to parse streaming response from provider endpoint. If you are routing Gemini through an OpenAI-compatible proxy (like Plexus, OpenRouter, or OpenCode), change the endpoint's API type in Admin Settings to 'Chat' (openai-completions) or 'Responses' (openai-responses) instead of 'Gemini' (google-generative-ai).";
 					}
 				}
 				yield event;

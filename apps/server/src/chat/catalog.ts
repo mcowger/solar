@@ -552,6 +552,22 @@ function runtimeProviderId(selection: ModelSelection) {
 	return `solar:${selection.provider}:${selection.endpointId}`;
 }
 
+export function normalizeBaseUrlForApi(api: string, baseUrl: string): string {
+	const trimmed = baseUrl.trim().replace(/\/+$/, "");
+	if (!trimmed) {
+		if (api === "google-generative-ai") {
+			return "https://generativelanguage.googleapis.com/v1beta";
+		}
+		return "";
+	}
+	if (api === "google-generative-ai") {
+		if (!trimmed.endsWith("/v1beta") && !trimmed.endsWith("/v1")) {
+			return `${trimmed}/v1beta`;
+		}
+	}
+	return trimmed;
+}
+
 export async function resolveModel(
 	selection: ModelSelection,
 ): Promise<ResolvedModel> {
@@ -576,20 +592,24 @@ export async function resolveModel(
 	);
 	const known = entry ? catalogModel(selection.provider, entry) : undefined;
 	const provider = runtimeProviderId(selection);
+	const endpointBaseUrl = normalizeBaseUrlForApi(
+		selection.api,
+		endpoint.baseUrl,
+	);
 	const model: Model<Api> = known
 		? ({
 				...known,
 				id: selection.modelId,
 				provider,
 				api: selection.api as Api,
-				baseUrl: endpoint.baseUrl,
+				baseUrl: endpointBaseUrl,
 				...(entry?.piOptions ?? {}),
 				...(entry?.contextWindow ? { contextWindow: entry.contextWindow } : {}),
 			} as Model<Api>)
-		: synthesizeModel(selection, endpoint.baseUrl, provider, entry);
+		: synthesizeModel(selection, endpointBaseUrl, provider, entry);
 	const runtimeProvider = createProvider({
 		id: provider,
-		baseUrl: endpoint.baseUrl,
+		baseUrl: endpointBaseUrl,
 		auth: { apiKey: envApiKeyAuth("Solar provider API key", []) },
 		models: [model],
 		api: API_STREAMS,
@@ -681,8 +701,15 @@ export function streamModel(
 	});
 }
 
-function modelsUrl(baseUrl: string) {
-	const url = new URL(baseUrl);
+function modelsUrl(baseUrl: string, api?: string) {
+	const effective = api
+		? normalizeBaseUrlForApi(api, baseUrl)
+		: baseUrl.trim().replace(/\/+$/, "");
+	const url = new URL(effective);
+	if (api === "google-generative-ai") {
+		url.pathname = `${url.pathname.replace(/\/+$/, "")}/models`;
+		return url;
+	}
 	url.pathname = `${url.pathname.replace(/\/+$/, "")}${url.pathname.replace(/\/+$/, "").endsWith("/v1") ? "" : "/v1"}/models`;
 	return url;
 }
@@ -727,7 +754,7 @@ export async function discoverProviderModels(
 	);
 	if (!config || !endpoint || !endpoint.baseUrl)
 		throw new Error("Provider endpoint is not configured");
-	const response = await fetch(modelsUrl(endpoint.baseUrl), {
+	const response = await fetch(modelsUrl(endpoint.baseUrl, endpoint.api), {
 		headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
 	});
 	if (!response.ok)
