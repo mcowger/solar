@@ -47,6 +47,7 @@ export function ModelMenu({ conversationId }: { conversationId: string }) {
 		trpc.model.setUserDefault.mutationOptions({
 			onSuccess: () => {
 				qc.invalidateQueries({ queryKey: trpc.model.userDefault.queryKey() });
+				qc.invalidateQueries({ queryKey: trpc.preset.userDefault.queryKey() });
 			},
 		}),
 	);

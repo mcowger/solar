@@ -312,6 +312,7 @@ export async function setUserDefault(
 		defaultEndpointId: selection.endpointId,
 		defaultModelId: selection.modelId,
 		defaultApi: selection.api,
+		defaultPresetId: null,
 		updatedAt: new Date().toISOString(),
 	};
 	await db
@@ -348,12 +349,7 @@ export async function setUserDefaultPreset(
 	await db
 		.insertInto("user_setting")
 		.values(values)
-		.onConflict((oc) =>
-			oc.column("userId").doUpdateSet({
-				defaultPresetId: values.defaultPresetId,
-				updatedAt: values.updatedAt,
-			}),
-		)
+		.onConflict((oc) => oc.column("userId").doUpdateSet(values))
 		.execute();
 }
 

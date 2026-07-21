@@ -266,8 +266,10 @@ export function Presets({ onClose }: { onClose: () => void }) {
 	);
 	const setUserDefault = useMutation(
 		trpc.preset.setUserDefault.mutationOptions({
-			onSuccess: () =>
-				qc.invalidateQueries({ queryKey: trpc.preset.userDefault.queryKey() }),
+			onSuccess: () => {
+				qc.invalidateQueries({ queryKey: trpc.preset.userDefault.queryKey() });
+				qc.invalidateQueries({ queryKey: trpc.model.userDefault.queryKey() });
+			},
 		}),
 	);
 

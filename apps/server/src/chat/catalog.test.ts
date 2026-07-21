@@ -16,6 +16,28 @@ const state = {
 };
 
 const db = {
+	insertInto(table: string) {
+		return {
+			values(values: Record<string, unknown>) {
+				return {
+					onConflict() {
+						return {
+							execute: async () => {
+								if (
+									table === "user_setting" &&
+									typeof values.userId === "string"
+								) {
+									state.userSettings.set(values.userId, {
+										...(values as Record<string, string | null>),
+									});
+								}
+							},
+						};
+					},
+				};
+			},
+		};
+	},
 	selectFrom(table: string) {
 		return {
 			select() {
@@ -238,6 +260,22 @@ describe("catalog model policy", () => {
 		expect(await catalog.resolveSelection({}, undefined, true)).toEqual(
 			privateModel,
 		);
+	});
+
+	test("clears default preset when setting user default model and vice versa", async () => {
+		// Set a default preset first.
+		await catalog.setUserDefaultPreset("user-1", "preset-100");
+		expect(await catalog.getUserDefaultPreset("user-1")).toBe("preset-100");
+
+		// Setting user default model should clear the default preset.
+		await catalog.setUserDefault("user-1", publicModel);
+		expect(await catalog.getUserDefault("user-1")).toEqual(publicModel);
+		expect(await catalog.getUserDefaultPreset("user-1")).toBeNull();
+
+		// Setting default preset again should clear the default model.
+		await catalog.setUserDefaultPreset("user-1", "preset-200");
+		expect(await catalog.getUserDefaultPreset("user-1")).toBe("preset-200");
+		expect(await catalog.getUserDefault("user-1")).toBeNull();
 	});
 
 	test("rejects incomplete or removed defaults before falling back to the first visible model", async () => {
