@@ -8,6 +8,7 @@ import {
 	createCompactionSummaryMessage,
 } from "@earendil-works/pi-agent-core";
 import { Hono } from "hono";
+import { z } from "zod";
 import { getSolarSession } from "../auth";
 import { db, sqlite } from "../db";
 import { logger } from "../logger";
@@ -37,8 +38,22 @@ import {
 	type UserLocation,
 } from "./builtins";
 import { reverseGeocode } from "./location";
+import {
+	contextualUserText,
+	listExposedSkills,
+	skillCatalogContext,
+	SKILL_NAME_PATTERN,
+} from "./skills";
 
 export const chatRoutes = new Hono();
+
+const chatPostSchema = z.object({
+	conversationId: z.string().min(1),
+	text: z.string().optional().default(""),
+	attachmentIds: z.array(z.string()).optional(),
+	userLocation: z.unknown().optional(),
+	skillName: z.string().max(64).regex(SKILL_NAME_PATTERN).optional(),
+});
 
 interface AuthenticatedUser {
 	id: string;
@@ -95,11 +110,12 @@ async function buildContext(
 				allowedAttachmentIds,
 			);
 			documents.push(...attachmentContent.documents);
+			const userText = contextualUserText(r.text, r.parts);
 			const content =
 				attachmentContent.parts.length === 0
-					? r.text
+					? userText
 					: [
-							...(r.text ? [{ type: "text" as const, text: r.text }] : []),
+							...(userText ? [{ type: "text" as const, text: userText }] : []),
 							...attachmentContent.parts,
 						];
 			messages.push({ role: "user", content, timestamp: Date.now() });
@@ -297,9 +313,21 @@ async function streamNewAssistantTurn(
 		assembled.summary,
 		assembled.allowedAttachmentIds,
 	);
+	const catalog = skillCatalogContext(await listExposedSkills(userId));
+	if (catalog)
+		context.messages.unshift({
+			role: "user",
+			content: catalog,
+			timestamp: Date.now(),
+		});
+	const availableTools = await toolProvider.resolve({
+		userId,
+		conversationId,
+		userLocation,
+	});
 	const resolvedTools = convo?.autoExecuteTools
-		? await toolProvider.resolve({ userId, conversationId, userLocation })
-		: [];
+		? availableTools
+		: availableTools.filter((tool) => tool.tool.name === "read_skill");
 	context.tools = resolvedTools.map(({ tool }) => tool);
 	const prompt = [...context.messages]
 		.reverse()
@@ -382,6 +410,13 @@ async function streamNewAssistantTurn(
 				retryAssembly.summary,
 				retryAssembly.allowedAttachmentIds,
 			);
+			const retryCatalog = skillCatalogContext(await listExposedSkills(userId));
+			if (retryCatalog)
+				rebuilt.context.messages.unshift({
+					role: "user",
+					content: retryCatalog,
+					timestamp: Date.now(),
+				});
 			rebuilt.context.tools = resolvedTools.map(({ tool }) => tool);
 			return {
 				context: rebuilt.context,
@@ -398,16 +433,19 @@ chatRoutes.post("/", async (c) => {
 	const user = await requireUser(c.req.raw);
 	if (!user) return c.json({ error: "unauthorized" }, 401);
 
-	const { conversationId, text, attachmentIds, userLocation } =
-		(await c.req.json()) as {
-			conversationId: string;
-			text: string;
-			attachmentIds?: string[];
-			userLocation?: unknown;
-		};
+	let input: z.infer<typeof chatPostSchema>;
+	try {
+		const parsed = chatPostSchema.safeParse(await c.req.json());
+		if (!parsed.success) return c.json({ error: "invalid chat request" }, 400);
+		input = parsed.data;
+	} catch {
+		return c.json({ error: "invalid chat request" }, 400);
+	}
+	const { conversationId, text, attachmentIds, userLocation, skillName } =
+		input;
 	const parsedUserLocation = parseUserLocation(userLocation);
 	const hasAttachments = Boolean(attachmentIds?.length);
-	if (!conversationId || (!text?.trim() && !hasAttachments)) {
+	if (!conversationId || (!text?.trim() && !hasAttachments && !skillName)) {
 		return c.json(
 			{ error: "conversationId and text or an attachment are required" },
 			400,
@@ -416,6 +454,16 @@ chatRoutes.post("/", async (c) => {
 	if (!(await ownsConversation(user.id, conversationId))) {
 		return c.json({ error: "conversation not found" }, 404);
 	}
+	const invokedSkill = skillName
+		? await db
+				.selectFrom("skill")
+				.select(["name", "content"])
+				.where("userId", "=", user.id)
+				.where("name", "=", skillName)
+				.executeTakeFirst()
+		: undefined;
+	if (skillName && !invokedSkill)
+		return c.json({ error: "skill not found" }, 404);
 	if (attachmentIds?.length) {
 		const attachments = await attachmentMetadata(attachmentIds, user.id);
 		const documentMimeTypes = attachments
@@ -464,6 +512,9 @@ chatRoutes.post("/", async (c) => {
 			conversationId,
 			role: "user",
 			text: text ?? "",
+			parts: invokedSkill
+				? JSON.stringify({ solarSkillInvocation: invokedSkill })
+				: null,
 			status: "complete",
 			createdAt: new Date().toISOString(),
 		})

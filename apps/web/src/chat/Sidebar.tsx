@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	ChevronDown,
+	FileCode2,
 	FolderInput,
 	MoreHorizontal,
 	PanelLeftClose,
@@ -25,6 +26,7 @@ interface SidebarProps {
 	presets: { id: string; name: string }[];
 	onNewWithPreset: (presetId: string) => void;
 	onManagePresets: () => void;
+	onManageSkills: () => void;
 }
 
 interface ConversationItem {
@@ -87,6 +89,7 @@ export function Sidebar({
 	presets,
 	onNewWithPreset,
 	onManagePresets,
+	onManageSkills,
 }: SidebarProps) {
 	const trpc = useTRPC();
 	const qc = useQueryClient();
@@ -375,6 +378,18 @@ export function Sidebar({
 								>
 									<SlidersHorizontal size={15} />
 									Manage presets
+								</button>
+							</li>
+							<li>
+								<button
+									type="button"
+									onClick={() => {
+										onManageSkills();
+										closeMenu();
+									}}
+								>
+									<FileCode2 size={15} />
+									Manage skills
 								</button>
 							</li>
 						</ul>

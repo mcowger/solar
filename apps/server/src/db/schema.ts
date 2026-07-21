@@ -232,6 +232,17 @@ export interface SourceCategoryTable {
 	updatedAt: Generated<string>;
 }
 
+export interface SkillTable {
+	id: string;
+	userId: string;
+	name: string;
+	description: string;
+	content: string;
+	exposed: Generated<number>;
+	createdAt: Generated<string>;
+	updatedAt: Generated<string>;
+}
+
 export interface Database {
 	apikey: Apikey;
 	app_meta: AppMetaTable;
@@ -251,4 +262,5 @@ export interface Database {
 	generation_step: GenerationStepTable;
 	provider_call_telemetry: ProviderCallTelemetryTable;
 	source_category: SourceCategoryTable;
+	skill: SkillTable;
 }

@@ -17,6 +17,7 @@ import { ThemeToggle } from "../ThemeToggle";
 import { Settings } from "../admin/Settings";
 import { ModelMenu } from "./ModelPicker";
 import { Presets } from "./Presets";
+import { Skills } from "./Skills";
 import { Sidebar } from "./Sidebar";
 import { Thread } from "./Thread";
 import { McpServers } from "./McpServers";
@@ -238,12 +239,14 @@ function ConversationView({
 		...trpc.conversation.contextState.queryOptions({ conversationId }),
 		refetchInterval: 2_000,
 	});
+	const skills = useQuery(trpc.skill.list.queryOptions());
 	const runtime = useSolarRuntime(
 		conversationId,
 		current.data?.vision ?? false,
 		current.data?.documentMimeTypes ?? [],
 		current.data?.documents ?? false,
 		context.data?.summaryEvent?.revision,
+		skills.data ?? [],
 	);
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
@@ -271,6 +274,7 @@ export function ChatApp() {
 	const [draftId, setDraftId] = useState<string | undefined>();
 	const [showSettings, setShowSettings] = useState(false);
 	const [showPresets, setShowPresets] = useState(false);
+	const [showSkills, setShowSkills] = useState(false);
 	const [showMcpServers, setShowMcpServers] = useState(false);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -493,6 +497,7 @@ export function ChatApp() {
 							onSettings={() => {
 								setShowSettings(true);
 								setShowPresets(false);
+								setShowSkills(false);
 								setShowMcpServers(false);
 							}}
 						/>
@@ -507,6 +512,7 @@ export function ChatApp() {
 								setShowMcpServers(true);
 								setShowSettings(false);
 								setShowPresets(false);
+								setShowSkills(false);
 							}}
 						/>
 					) : (
@@ -520,6 +526,7 @@ export function ChatApp() {
 					<McpServers onClose={() => setShowMcpServers(false)} />
 				)}
 				{showPresets && <Presets onClose={() => setShowPresets(false)} />}
+				{showSkills && <Skills onClose={() => setShowSkills(false)} />}
 			</div>
 			<div ref={sidebarRef} className="drawer-side solar-sidebar">
 				<label
@@ -545,6 +552,14 @@ export function ChatApp() {
 					}}
 					onManagePresets={() => {
 						setShowPresets(true);
+						setShowSkills(false);
+						setShowSettings(false);
+						setShowMcpServers(false);
+						setDrawerOpen(false);
+					}}
+					onManageSkills={() => {
+						setShowSkills(true);
+						setShowPresets(false);
 						setShowSettings(false);
 						setShowMcpServers(false);
 						setDrawerOpen(false);

@@ -53,6 +53,7 @@ import {
 	setPasteSettings,
 } from "../chat/pasteSettings";
 import { SourceCategoryResolver } from "../sources/categories";
+import { parseSkill, parseSkillInvocation } from "../chat/skills";
 
 const t = initTRPC.context<TrpcContext>().create();
 
@@ -597,6 +598,7 @@ const conversationRouter = router({
 			return messages.map((m) => {
 				const reasoning = extractReasoning(m.parts);
 				const toolCalls = extractToolCalls(m.parts);
+				const skillInvocation = parseSkillInvocation(m.parts);
 				return {
 					id: m.id,
 					role: m.role,
@@ -605,6 +607,9 @@ const conversationRouter = router({
 					createdAt: m.createdAt,
 					reasoning,
 					toolCalls,
+					skillInvocation: skillInvocation
+						? { name: skillInvocation.name }
+						: null,
 					attachments: (attachmentsByMessage.get(m.id) ?? []).map((a) => ({
 						id: a.id,
 						filename: a.filename,
@@ -617,6 +622,119 @@ const conversationRouter = router({
 			});
 		}),
 });
+
+const skillRouter = router({
+	list: protectedProcedure.query(async ({ ctx }) => {
+		const rows = await db
+			.selectFrom("skill")
+			.select([
+				"id",
+				"name",
+				"description",
+				"exposed",
+				"createdAt",
+				"updatedAt",
+			])
+			.where("userId", "=", ctx.user.id)
+			.orderBy("name", "asc")
+			.execute();
+		return rows.map((row) => ({ ...row, exposed: Boolean(row.exposed) }));
+	}),
+	create: protectedProcedure
+		.input(z.object({ content: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			let parsed: { name: string; description: string };
+			try {
+				parsed = parseSkill(input.content);
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: error instanceof Error ? error.message : "Invalid SKILL.md",
+				});
+			}
+			const existing = await db
+				.selectFrom("skill")
+				.select("id")
+				.where("userId", "=", ctx.user.id)
+				.where("name", "=", parsed.name)
+				.executeTakeFirst();
+			if (existing)
+				throw new TRPCError({
+					code: "CONFLICT",
+					message: "Skill name already exists",
+				});
+			const id = crypto.randomUUID();
+			const now = new Date().toISOString();
+			try {
+				await db
+					.insertInto("skill")
+					.values({
+						id,
+						userId: ctx.user.id,
+						...parsed,
+						content: input.content,
+						exposed: 0,
+						createdAt: now,
+						updatedAt: now,
+					})
+					.execute();
+			} catch (error) {
+				if (isUniqueConstraint(error))
+					throw new TRPCError({
+						code: "CONFLICT",
+						message: "Skill name already exists",
+					});
+				throw error;
+			}
+			return { id };
+		}),
+	get: protectedProcedure
+		.input(z.object({ id: z.string() }))
+		.query(async ({ ctx, input }) => {
+			const skill = await db
+				.selectFrom("skill")
+				.selectAll()
+				.where("id", "=", input.id)
+				.where("userId", "=", ctx.user.id)
+				.executeTakeFirst();
+			if (!skill) throw new TRPCError({ code: "NOT_FOUND" });
+			return { ...skill, exposed: Boolean(skill.exposed) };
+		}),
+	setExposed: protectedProcedure
+		.input(z.object({ id: z.string(), exposed: z.boolean() }))
+		.mutation(async ({ ctx, input }) => {
+			const result = await db
+				.updateTable("skill")
+				.set({
+					exposed: input.exposed ? 1 : 0,
+					updatedAt: new Date().toISOString(),
+				})
+				.where("id", "=", input.id)
+				.where("userId", "=", ctx.user.id)
+				.executeTakeFirst();
+			if (!result.numUpdatedRows) throw new TRPCError({ code: "NOT_FOUND" });
+		}),
+	remove: protectedProcedure
+		.input(z.object({ id: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			const result = await db
+				.deleteFrom("skill")
+				.where("id", "=", input.id)
+				.where("userId", "=", ctx.user.id)
+				.executeTakeFirst();
+			if (!result.numDeletedRows) throw new TRPCError({ code: "NOT_FOUND" });
+		}),
+});
+
+function isUniqueConstraint(error: unknown): boolean {
+	return (
+		error instanceof Error &&
+		(/UNIQUE constraint failed: skill\.userId, skill\.name/.test(
+			error.message,
+		) ||
+			(error as { code?: unknown }).code === "SQLITE_CONSTRAINT_UNIQUE")
+	);
+}
 
 const allowlistEntrySchema = z
 	.object({
@@ -2260,6 +2378,7 @@ export const appRouter = router({
 	model: modelRouter,
 	preset: presetRouter,
 	mcp: mcpRouter,
+	skill: skillRouter,
 	admin: adminRouter,
 });
 

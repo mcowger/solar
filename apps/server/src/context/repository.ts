@@ -1,5 +1,6 @@
 import { sql, type Kysely } from "kysely";
 import type { ModelSelection } from "../chat/catalog";
+import { contextualUserText } from "../chat/skills";
 import type { Database } from "../db/schema";
 import { estimateImageTokens } from "./imageTokens";
 import { estimateClaudePdfTokens } from "./pdfTokens";
@@ -195,7 +196,14 @@ export class ContextRepository {
 					role: "user",
 					status: "complete",
 					content: [
-						...(row.text ? [{ kind: "text" as const, text: row.text }] : []),
+						...(contextualUserText(row.text, row.parts)
+							? [
+									{
+										kind: "text" as const,
+										text: contextualUserText(row.text, row.parts),
+									},
+								]
+							: []),
 						...(await Promise.all(
 							attachments.map(async (attachment) => ({
 								id: attachment.id,

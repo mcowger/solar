@@ -89,6 +89,10 @@ Run `bun run typecheck` before committing.
 
 ## Confirming functionality
 
+- **Stop when the requested baseline is verified.** Once relevant tests and
+  typechecks pass and one representative mock/browser smoke test confirms the
+  core flow, stop iterating. Report minor residual risks instead of repeatedly
+  retesting non-blocking polish; ask before pursuing additional refinement.
 - **NEVER verify against the live model.** Real provider calls cost money. For
   any UI/flow verification, run with `SOLAR_MOCK_LLM=1`, which swaps in a local
   echo generator (`streamChat`/`mockStream` in `apps/server/src/chat/models.ts`)

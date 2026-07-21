@@ -217,6 +217,17 @@ export interface Session {
 	userId: string;
 }
 
+export interface Skill {
+	content: string;
+	createdAt: Generated<string>;
+	description: string;
+	exposed: Generated<number>;
+	id: string | null;
+	name: string;
+	updatedAt: Generated<string>;
+	userId: string;
+}
+
 export interface SourceCategory {
 	category: string | null;
 	domain: string | null;
@@ -237,7 +248,7 @@ export interface User {
 	emailVerified: number;
 	id: string;
 	image: string | null;
-	isDisabled: Generated<number>;
+	isDisabled: number;
 	name: string;
 	role: string;
 	updatedAt: string;
@@ -285,6 +296,7 @@ export interface DB {
 	provider_call_telemetry: ProviderCallTelemetry;
 	provider_config: ProviderConfig;
 	session: Session;
+	skill: Skill;
 	source_category: SourceCategory;
 	tag: Tag;
 	user: User;

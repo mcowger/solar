@@ -25,6 +25,7 @@ import {
 	Podcast,
 	Repeat2,
 	Scissors,
+	Terminal,
 	Send,
 	Server,
 	Square,
@@ -38,9 +39,15 @@ import {
 	useRef,
 	useState,
 	type RefObject,
+	type ClipboardEvent,
 } from "react";
 import { useTRPC } from "../trpc";
 import { buildAttachmentAccept } from "./attachmentAdapter";
+import {
+	filterSkills,
+	moveSkillSelection,
+	type SkillOption,
+} from "./skillCommands";
 import { MarkdownText, PlainMarkdown } from "./MarkdownText";
 import type {
 	SolarConnectionStatus,
@@ -231,15 +238,21 @@ function MobileAttachmentPicker({
 							</button>
 						</li>
 					</ul>
-					<form method="dialog" className="mt-2">
-						<button type="submit" className="btn btn-block">
+					<div className="mt-2">
+						<button
+							type="button"
+							className="btn btn-block"
+							onClick={() => dialogRef.current?.close()}
+						>
 							Cancel
 						</button>
-					</form>
+					</div>
 				</div>
-				<form method="dialog" className="modal-backdrop">
-					<button type="submit">close</button>
-				</form>
+				<div className="modal-backdrop">
+					<button type="button" onClick={() => dialogRef.current?.close()}>
+						close
+					</button>
+				</div>
 			</dialog>
 		</>
 	);
@@ -638,6 +651,14 @@ function SignalMeter({
 }
 
 function UserMessage() {
+	const skillInvocation = useAuiState(
+		(s) =>
+			(
+				s.message.metadata?.custom as
+					| { skillInvocation?: { name: string } | null }
+					| undefined
+			)?.skillInvocation,
+	);
 	return (
 		<>
 			<SummaryEventMarker position="before" />
@@ -646,6 +667,11 @@ function UserMessage() {
 					{() => <AttachmentChip />}
 				</MessagePrimitive.Attachments>
 				<div className="solar-user-output">
+					{skillInvocation && (
+						<span className="badge badge-ghost badge-sm mr-2 font-mono">
+							/{skillInvocation.name}
+						</span>
+					)}
 					<MessagePrimitive.Content />
 				</div>
 				<ActionBarPrimitive.Root
@@ -673,6 +699,108 @@ function UserMessage() {
 			</div>
 			<SummaryEventMarker position="after" />
 		</>
+	);
+}
+
+function SkillAutocomplete({
+	onPaste,
+}: {
+	onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+}) {
+	const composer = useComposerRuntime();
+	const trpc = useTRPC();
+	const skills = useQuery(trpc.skill.list.queryOptions());
+	const inputRef = useRef<HTMLTextAreaElement>(null);
+	const isRunning = useAuiState((state) => state.thread.isRunning);
+	const [text, setText] = useState("");
+	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [open, setOpen] = useState(false);
+	const matches = filterSkills(text, skills.data ?? []);
+	const shouldShowSuggestions =
+		!isRunning &&
+		open &&
+		inputRef.current?.value.startsWith("/") &&
+		matches.length > 0;
+	useEffect(() => {
+		if (!isRunning) return;
+		setText("");
+		setOpen(false);
+	}, [isRunning]);
+
+	function select(skill: SkillOption) {
+		composer.setText(`/${skill.name} `);
+		setText(`/${skill.name} `);
+		setSelectedIndex(0);
+		setOpen(false);
+	}
+
+	return (
+		<div className="solar-skill-autocomplete">
+			{shouldShowSuggestions && (
+				<div className="solar-skill-menu">
+					<div className="solar-skill-menu-header">
+						<span className="solar-skill-menu-title">
+							<Terminal size={14} /> Skills
+						</span>
+						<span className="solar-skill-menu-hint">
+							<kbd className="kbd kbd-xs">↑</kbd>
+							<kbd className="kbd kbd-xs">↓</kbd>
+							to select
+							<kbd className="kbd kbd-xs">↵</kbd>
+						</span>
+					</div>
+					<div className="solar-skill-menu-list">
+						{matches.map((skill, index) => (
+							<button
+								key={skill.name}
+								type="button"
+								className={`solar-skill-option${index === selectedIndex ? " solar-skill-option-active" : ""}`}
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={() => select(skill)}
+							>
+								<span className="solar-skill-name">/{skill.name}</span>
+								<span className="solar-skill-description">
+									{skill.description}
+								</span>
+							</button>
+						))}
+					</div>
+				</div>
+			)}
+			<ComposerPrimitive.Input
+				ref={inputRef}
+				placeholder="Send a Message"
+				className="textarea textarea-ghost max-h-48 min-h-11 w-full resize-none bg-transparent px-2 py-1.5 focus:outline-none"
+				unstable_insertNewlineOnTouchEnter
+				onPaste={onPaste}
+				onChange={(event) => {
+					setText(event.currentTarget.value);
+					setSelectedIndex(0);
+					setOpen(event.currentTarget.value.startsWith("/"));
+				}}
+				onBlur={() => setOpen(false)}
+				onKeyDown={(event) => {
+					if (!matches.length) return;
+					if (event.key === "ArrowDown") {
+						event.preventDefault();
+						setSelectedIndex((index) =>
+							moveSkillSelection(index, 1, matches.length),
+						);
+					} else if (event.key === "ArrowUp") {
+						event.preventDefault();
+						setSelectedIndex((index) =>
+							moveSkillSelection(index, -1, matches.length),
+						);
+					} else if (event.key === "Enter" || event.key === "Tab") {
+						event.preventDefault();
+						select(matches[selectedIndex] ?? matches[0]!);
+					} else if (event.key === "Escape") {
+						event.preventDefault();
+						setOpen(false);
+					}
+				}}
+			/>
+		</div>
 	);
 }
 
@@ -1118,6 +1246,7 @@ export function Thread({
 	const pasteThresholds = pasteSettings.data ?? DEFAULT_PASTE_SETTINGS;
 	const [attachmentError, setAttachmentError] = useState<string | null>(null);
 	const [isFileDragActive, setIsFileDragActive] = useState(false);
+	const [skillAutocompleteReset, setSkillAutocompleteReset] = useState(0);
 	const composerRef = useRef<HTMLDivElement>(null);
 	const dragDepth = useRef(0);
 	const [composerHeight, setComposerHeight] = useState(88);
@@ -1265,10 +1394,8 @@ export function Thread({
 								{attachmentError}
 							</div>
 						)}
-						<ComposerPrimitive.Input
-							placeholder="Send a Message"
-							className="textarea textarea-ghost max-h-48 min-h-11 w-full resize-none bg-transparent px-2 py-1.5 focus:outline-none"
-							unstable_insertNewlineOnTouchEnter
+						<SkillAutocomplete
+							key={skillAutocompleteReset}
 							onPaste={handlePaste}
 						/>
 						<div className="flex items-center justify-between gap-2">
@@ -1288,7 +1415,12 @@ export function Thread({
 									onConfigure={onConfigureMcp}
 								/>
 							</div>
-							<div className="flex items-center gap-1">
+							<div
+								className="flex items-center gap-1"
+								onClickCapture={() =>
+									setSkillAutocompleteReset((version) => version + 1)
+								}
+							>
 								<ThreadPrimitive.If running>
 									<ComposerPrimitive.Cancel
 										className="btn btn-error btn-sm btn-circle"

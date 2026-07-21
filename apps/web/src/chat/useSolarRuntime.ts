@@ -14,6 +14,7 @@ import {
 	SolarAttachmentAdapter,
 } from "./attachmentAdapter";
 import type { UiChunk } from "./streamTypes";
+import { parseSkillCommand, type SkillOption } from "./skillCommands";
 
 interface SolarAttachmentMeta {
 	id: string;
@@ -42,6 +43,7 @@ interface SolarMessage {
 	toolCalls?: SolarToolCall[];
 	summaryEvent?: SolarSummaryEvent;
 	attachments?: SolarAttachmentMeta[];
+	skillInvocation?: { name: string } | null;
 }
 
 export type SolarConnectionStatus = "connecting" | "request-sent";
@@ -97,6 +99,7 @@ function convertMessage(m: SolarMessage): ThreadMessageLike {
 				forceStop: m.forceStop,
 				toolCalls: m.toolCalls,
 				summaryEvent: m.summaryEvent,
+				skillInvocation: m.skillInvocation,
 			},
 		},
 	};
@@ -124,6 +127,7 @@ export function useSolarRuntime(
 	documentMimeTypes: readonly string[],
 	allowDocuments: boolean,
 	summaryRevision?: number | null,
+	skills: readonly SkillOption[] = [],
 ) {
 	const trpc = useTRPC();
 	const queryClient = useQueryClient();
@@ -375,6 +379,7 @@ export function useSolarRuntime(
 							}
 						: undefined,
 				attachments: r.attachments.length ? r.attachments : undefined,
+				skillInvocation: r.skillInvocation,
 				isStale: r.status === "generating" && !r.isActive,
 				forceStop:
 					r.status === "generating" && !r.isActive
@@ -472,15 +477,19 @@ export function useSolarRuntime(
 
 	const onNew = useCallback(
 		async (message: AppendMessage) => {
-			const text = appendText(message).trim();
+			const command = parseSkillCommand(appendText(message), skills);
+			const text = command.text.trim();
 			const attachmentIds = (message.attachments ?? []).map((a) => a.id);
-			if (!text && attachmentIds.length === 0) return;
+			if (!text && attachmentIds.length === 0 && !command.skillName) return;
 			setMessages((prev) => [
 				...prev,
 				{
 					id: crypto.randomUUID(),
 					role: "user",
 					content: text,
+					skillInvocation: command.skillName
+						? { name: command.skillName }
+						: null,
 					createdAt: new Date().toISOString(),
 					attachments: message.attachments?.map((a) => ({
 						id: a.id,
@@ -496,12 +505,17 @@ export function useSolarRuntime(
 				},
 			]);
 			try {
-				await streamTurn("/api/chat", { conversationId, text, attachmentIds });
+				await streamTurn("/api/chat", {
+					conversationId,
+					text,
+					attachmentIds,
+					skillName: command.skillName,
+				});
 			} finally {
 				messageQueue.notifyIdle();
 			}
 		},
-		[conversationId, messageQueue, streamTurn],
+		[conversationId, messageQueue, skills, streamTurn],
 	);
 	runQueuedTurnRef.current = onNew;
 
