@@ -356,7 +356,7 @@ describe("catalog model policy", () => {
 				input: ["text"],
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow: 512_000,
-				maxTokens: 4096,
+				maxTokens: 16_384,
 			},
 			contextPolicy: {
 				enabled: true,

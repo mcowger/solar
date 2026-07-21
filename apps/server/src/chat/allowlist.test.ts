@@ -66,6 +66,8 @@ describe("parseAllowlist", () => {
 						api: "openai-responses",
 						reasoningEffort: "high",
 						verbosity: "low",
+						contextWindow: 128000,
+						maxTokens: 32768,
 					},
 					{
 						id: "gpt-4.1",
@@ -73,6 +75,7 @@ describe("parseAllowlist", () => {
 						api: "openai-responses",
 						reasoningEffort: "invalid",
 						verbosity: "maximum",
+						maxTokens: -100,
 					},
 				]),
 			),
@@ -84,6 +87,8 @@ describe("parseAllowlist", () => {
 				visibility: "public",
 				reasoningEffort: "high",
 				verbosity: "low",
+				contextWindow: 128000,
+				maxTokens: 32768,
 			},
 			{
 				id: "gpt-4.1",

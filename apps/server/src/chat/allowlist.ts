@@ -25,6 +25,7 @@ export interface AllowlistEntry {
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	verbosity?: "low" | "medium" | "high";
 	contextWindow?: number;
+	maxTokens?: number;
 	contextPolicy?: ModelContextPolicy;
 }
 
@@ -104,6 +105,11 @@ export function parseAllowlist(json: string): AllowlistEntry[] {
 					Number.isInteger(entry.contextWindow) &&
 					entry.contextWindow > 0
 						? { contextWindow: entry.contextWindow }
+						: {}),
+					...(typeof entry.maxTokens === "number" &&
+					Number.isInteger(entry.maxTokens) &&
+					entry.maxTokens > 0
+						? { maxTokens: entry.maxTokens }
 						: {}),
 					...(contextPolicy ? { contextPolicy } : {}),
 				},

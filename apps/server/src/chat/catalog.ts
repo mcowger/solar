@@ -605,6 +605,7 @@ export async function resolveModel(
 				baseUrl: endpointBaseUrl,
 				...(entry?.piOptions ?? {}),
 				...(entry?.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+				...(entry?.maxTokens ? { maxTokens: entry.maxTokens } : {}),
 			} as Model<Api>)
 		: synthesizeModel(selection, endpointBaseUrl, provider, entry);
 	const runtimeProvider = createProvider({
@@ -638,9 +639,10 @@ function synthesizeModel(
 		input: entry?.vision ? ["text", "image"] : ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 128_000,
-		maxTokens: 4096,
+		maxTokens: 16_384,
 		...(entry?.piOptions ?? {}),
 		...(entry?.contextWindow ? { contextWindow: entry.contextWindow } : {}),
+		...(entry?.maxTokens ? { maxTokens: entry.maxTokens } : {}),
 	} as Model<Api>;
 }
 
