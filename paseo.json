@@ -1,5 +1,8 @@
 {
   "worktree": {
+    "servicePorts": {
+      "portScript": "scripts/port-allocator.sh"
+    },
     "setup": [
       "bunx skills experimental_install",
       "bun install"

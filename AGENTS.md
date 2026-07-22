@@ -49,9 +49,10 @@ bun run solar dev stop      # SIGTERM the process group, clean up pidfile
 ```
 
 Pidfile/logfile live at `.dev-server.pid` / `.dev-server.log` (gitignored).
-`solar dev start` selects a stable worktree-specific port in the 3000–3999 range;
-see `apps/server/src/config.ts` for `PASEO_PORT`, `PORT`, and `DATABASE_PATH`
-overrides.
+`solar dev start` delegates to `scripts/port-allocator.sh` to select a stable
+worktree-specific port in the 3000–3999 range (matching Paseo's `servicePorts`
+allocator in `paseo.json`); see `apps/server/src/config.ts` for `PASEO_PORT`, `PORT`,
+and `DATABASE_PATH` overrides.
 
 **`.env` loading:** the server's cwd is `apps/server`, so Bun does not
 auto-load the root `.env` (which holds provider API keys). The managed scripts

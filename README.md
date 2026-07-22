@@ -153,8 +153,9 @@ bun install
 bun run solar dev start
 ```
 
-The managed server chooses a stable worktree-specific port in the `3000–3999`
-range. Set `PASEO_PORT` to override it. Use `SOLAR_MOCK_LLM=1` to exercise the
+The managed server uses `scripts/port-allocator.sh` to choose a stable worktree-specific
+port in the `3000–3999` range, consistent whether started manually or as a Paseo service
+(`paseo.json`). Set `PORT` or `PASEO_PORT` to override it. Use `SOLAR_MOCK_LLM=1` to exercise the
 full UI with a zero-cost local generator. On an empty development database, it
 prints the seeded admin login and generated Development API key, which persists
 with the database.
