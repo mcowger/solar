@@ -471,7 +471,8 @@ export class GenerationManager {
 	}
 
 	private async persist(gen: Generation, status: MessageStatus): Promise<void> {
-		const persistedParts = withPersistedReasoning(gen.parts, gen.reasoning);
+		const fullParts = buildFullAssistantParts(gen);
+		const persistedParts = withPersistedReasoning(fullParts, gen.reasoning);
 		await db
 			.updateTable("message")
 			.set({
@@ -511,6 +512,33 @@ export class GenerationManager {
 			.where("id", "=", gen.conversationId)
 			.execute();
 	}
+}
+
+function buildFullAssistantParts(gen: Generation): unknown {
+	const assistantSteps = gen.steps.filter(
+		(step) =>
+			step != null &&
+			typeof step === "object" &&
+			(step as { role?: unknown }).role === "assistant" &&
+			Array.isArray((step as { content?: unknown }).content),
+	);
+
+	if (assistantSteps.length === 0) return gen.parts;
+
+	const combinedContent: unknown[] = [];
+	for (const step of assistantSteps) {
+		const content = (step as { content: unknown[] }).content;
+		combinedContent.push(...content);
+	}
+
+	const baseMessage = (gen.parts as Record<string, unknown>) ?? {
+		role: "assistant",
+	};
+
+	return {
+		...baseMessage,
+		content: combinedContent,
+	};
 }
 
 function withPersistedReasoning(parts: unknown, reasoning: string): unknown {

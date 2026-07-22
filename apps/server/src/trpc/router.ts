@@ -101,6 +101,50 @@ function extractReasoning(parts: string | null): string | null {
 	}
 }
 
+function reconstructPartsFromSteps(
+	rawParts: string | null,
+	steps?: Array<{ data: string }>,
+): string | null {
+	if (!steps || steps.length === 0) return rawParts;
+
+	const combinedContent: unknown[] = [];
+	for (const step of steps) {
+		try {
+			const parsed = JSON.parse(step.data) as {
+				role?: string;
+				content?: unknown[];
+			};
+			if (parsed.role === "assistant" && Array.isArray(parsed.content)) {
+				combinedContent.push(...parsed.content);
+			}
+		} catch {
+			// ignore malformed step
+		}
+	}
+
+	if (combinedContent.length === 0) return rawParts;
+
+	let solarToolCalls: unknown = [];
+	let baseObject: Record<string, unknown> = {};
+	if (rawParts) {
+		try {
+			baseObject = JSON.parse(rawParts) as Record<string, unknown>;
+			if (Array.isArray(baseObject.solarToolCalls)) {
+				solarToolCalls = baseObject.solarToolCalls;
+			}
+		} catch {
+			// fallback
+		}
+	}
+
+	return JSON.stringify({
+		...baseObject,
+		role: "assistant",
+		content: combinedContent,
+		solarToolCalls,
+	});
+}
+
 function extractToolCalls(parts: string | null) {
 	if (!parts) return [];
 	try {
@@ -599,15 +643,37 @@ const conversationRouter = router({
 				attachmentsByMessage.set(a.messageId, list);
 			}
 
+			const assistantMessageIds = messages
+				.filter((m) => m.role === "assistant")
+				.map((m) => m.id);
+
+			const steps = assistantMessageIds.length
+				? await db
+						.selectFrom("generation_step")
+						.select(["messageId", "data", "sequence"])
+						.where("messageId", "in", assistantMessageIds)
+						.orderBy("sequence", "asc")
+						.execute()
+				: [];
+
+			const stepsByMessage = new Map<string, typeof steps>();
+			for (const step of steps) {
+				const list = stepsByMessage.get(step.messageId) ?? [];
+				list.push(step);
+				stepsByMessage.set(step.messageId, list);
+			}
+
 			return messages.map((m) => {
-				const reasoning = extractReasoning(m.parts);
-				const toolCalls = extractToolCalls(m.parts);
-				const skillInvocation = parseSkillInvocation(m.parts);
+				const messageSteps = stepsByMessage.get(m.id);
+				const parts = reconstructPartsFromSteps(m.parts, messageSteps);
+				const reasoning = extractReasoning(parts);
+				const toolCalls = extractToolCalls(parts);
+				const skillInvocation = parseSkillInvocation(parts);
 				return {
 					id: m.id,
 					role: m.role,
 					text: m.text,
-					parts: m.parts,
+					parts,
 					status: m.status,
 					createdAt: m.createdAt,
 					reasoning,

@@ -406,8 +406,8 @@ describe("parseTimelineItems", () => {
 		);
 
 		expect(items).toEqual([
-			{ kind: "toolCalls", id: "tools-fallback", calls: toolCalls },
 			{ kind: "reasoning", id: "reasoning-fallback", text: "Global reasoning" },
+			{ kind: "toolCalls", id: "tools-unplaced-all", calls: toolCalls },
 			{ kind: "text", id: "text-fallback", text: "Main output" },
 		]);
 	});
