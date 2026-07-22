@@ -3,7 +3,7 @@ import {
 	type SyntaxHighlighterProps,
 } from "@assistant-ui/react-markdown";
 import { useAuiState } from "@assistant-ui/react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Globe } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import {
@@ -14,6 +14,7 @@ import remarkGfm from "remark-gfm";
 import { type ComponentProps, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTRPC } from "../trpc";
+import { useAirgapMode } from "../authProviders";
 
 type Citation = {
 	title: string;
@@ -112,6 +113,17 @@ export function removeCitationBlocks(text: string) {
 }
 
 function SourceFavicon({ citation }: { citation: Citation }) {
+	const airgap = useAirgapMode();
+	if (airgap) {
+		return (
+			<span
+				className="solar-source-favicon"
+				title={citation.domain ?? citation.title}
+			>
+				<Globe size={12} className="opacity-70" />
+			</span>
+		);
+	}
 	const initial = (citation.domain ?? citation.title)[0]?.toUpperCase();
 	return (
 		<span

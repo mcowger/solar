@@ -2517,9 +2517,12 @@ export const appRouter = router({
 
 	me: publicProcedure.query(({ ctx }) => ({ user: ctx.user })),
 
-	/** Which optional auth providers are configured on this deployment. */
+	/** Which optional auth providers and deployment modes are configured. */
 	authProviders: publicProcedure.query(() => ({
-		google: Boolean(config.googleClientId && config.googleClientSecret),
+		google: Boolean(
+			!config.airgapMode && config.googleClientId && config.googleClientSecret,
+		),
+		airgap: config.airgapMode,
 	})),
 
 	conversation: conversationRouter,

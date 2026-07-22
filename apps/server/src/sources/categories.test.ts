@@ -6,9 +6,17 @@ import type { Database } from "../db/schema";
 import { up } from "../db/migrations/016_source_categories";
 
 let radarCalls = 0;
+let testAirgapMode = false;
+
+const testConfig = {
+	cloudflareRadarApiToken: "test-token",
+	get airgapMode() {
+		return testAirgapMode;
+	},
+};
 
 mock.module("../config", () => ({
-	config: { cloudflareRadarApiToken: "test-token" },
+	config: testConfig,
 }));
 
 const { LOCAL_SOURCE_CATEGORIES, SourceCategoryResolver, sourceDomain } =
@@ -21,6 +29,7 @@ let db: Kysely<Database>;
 
 beforeEach(async () => {
 	radarCalls = 0;
+	testAirgapMode = false;
 	sqlite = new BunDatabase(":memory:");
 	db = new Kysely<Database>({
 		dialect: new BunSqliteDialect({ database: sqlite }),
@@ -99,5 +108,15 @@ describe("source categories", () => {
 			{ domain: "espn.com", category: "News" },
 		]);
 		expect(radarCalls).toBe(0);
+	});
+
+	test("bypasses Cloudflare Radar requests when airgap mode is active", async () => {
+		testAirgapMode = true;
+		const resolver = new SourceCategoryResolver(db);
+		const url = "https://uncached-domain.com/article";
+
+		const result = await resolver.resolve([url]);
+		expect(radarCalls).toBe(0);
+		expect(result).toEqual([]);
 	});
 });

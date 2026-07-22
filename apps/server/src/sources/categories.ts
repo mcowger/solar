@@ -48,7 +48,7 @@ export function sourceDomain(url: string) {
 }
 
 async function fetchCloudflareCategory(domain: string) {
-	if (!config.cloudflareRadarApiToken) return undefined;
+	if (config.airgapMode || !config.cloudflareRadarApiToken) return undefined;
 
 	try {
 		const response = await fetch(

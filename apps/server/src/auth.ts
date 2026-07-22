@@ -34,7 +34,7 @@ export const auth = betterAuth({
 	trustedOrigins:
 		process.env.NODE_ENV !== "production" ? ["*"] : [config.authBaseURL],
 	emailAndPassword: { enabled: true },
-	...(config.googleClientId && config.googleClientSecret
+	...(!config.airgapMode && config.googleClientId && config.googleClientSecret
 		? {
 				socialProviders: {
 					google: {

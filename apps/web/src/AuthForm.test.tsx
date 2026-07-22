@@ -26,6 +26,7 @@ mock.module("./ThemeToggle", () => ({ ThemeToggle: () => null }));
 let googleEnabled = true;
 mock.module("./authProviders", () => ({
 	useGoogleAuthEnabled: () => googleEnabled,
+	useAirgapMode: () => false,
 }));
 
 const { AuthForm } = await import("./AuthForm");

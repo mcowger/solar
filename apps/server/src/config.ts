@@ -5,6 +5,12 @@ const authBaseURL =
 		? "https://solar.home.cowger.us"
 		: `http://localhost:${process.env.PORT ?? 3000}`);
 
+function isTruthy(value?: string): boolean {
+	if (!value) return false;
+	const normalized = value.trim().toLowerCase();
+	return ["1", "true", "yes", "on"].includes(normalized);
+}
+
 export const config = {
 	port: Number(process.env.PORT ?? 3000),
 	dbPath: process.env.DATABASE_PATH ?? "solar.db",
@@ -19,5 +25,8 @@ export const config = {
 		.split(",")
 		.map((domain) => domain.trim().toLowerCase())
 		.filter(Boolean),
+	airgapMode: isTruthy(
+		process.env.SOLAR_AIRGAP_MODE ?? process.env.AIRGAP_MODE,
+	),
 	attachmentsDataDir: process.env.SOLAR_ATTACHMENTS_DIR ?? "data/attachments",
 } as const;

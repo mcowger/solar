@@ -1,3 +1,4 @@
+import { config } from "../config";
 import type { UserLocation } from "./builtins";
 
 const NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse";
@@ -30,7 +31,11 @@ export async function reverseGeocode(
 	location: UserLocation | undefined,
 	fetcher: Fetcher = fetch,
 ): Promise<UserLocation | undefined> {
-	if (location?.latitude === undefined || location.longitude === undefined)
+	if (
+		config.airgapMode ||
+		location?.latitude === undefined ||
+		location.longitude === undefined
+	)
 		return location;
 	try {
 		const url = new URL(NOMINATIM_REVERSE_URL);
