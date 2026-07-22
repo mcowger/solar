@@ -217,6 +217,7 @@ policy; task-model and large-paste settings; and aggregated token usage.
 | `BETTER_AUTH_SECRET` | Required signing secret; use 32+ random characters |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Optional Google OAuth credentials |
 | `CLOUDFLARE_RADAR_API_TOKEN` | Optional Cloudflare Radar token for source categories |
+| `SOLAR_AIRGAP_MODE` / `AIRGAP_MODE` | Set to `1`/`true`/`yes`/`on` to block outbound network calls |
 | `DATABASE_PATH` | SQLite file path |
 | `SOLAR_ATTACHMENTS_DIR` | Local attachment storage directory |
 | `PORT` / `PASEO_PORT` | Listening port / managed dev-server override |
@@ -225,6 +226,12 @@ policy; task-model and large-paste settings; and aggregated token usage.
 Provider keys, enabled models, presets, context policies, and MCP servers are
 managed from the authenticated UI. See `.env.example` for the complete runtime
 surface.
+
+When `SOLAR_AIRGAP_MODE` (or `AIRGAP_MODE`) is active (`1`, `true`, `yes`, or `on`):
+- **Geocoding** is disabled (browser GPS coordinates are kept, but no reverse-geocoding calls are made to OpenStreetMap Nominatim).
+- **Domain classification** uses local DB cache and bundled registries only, skipping Cloudflare Radar API lookups.
+- **Google OAuth** is disabled and hidden from sign-in options.
+- **Citation favicons** are replaced with inline SVG placeholders, suppressing remote favicon fetches in the browser.
 
 Source-category badges use a bundled registry of 300+ news domains derived from
 [Wikidata's CC0](https://www.wikidata.org/wiki/Wikidata:Data_access) news-media
