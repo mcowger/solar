@@ -11,6 +11,7 @@ import {
 	PanelLeft,
 	Plus,
 	Settings2,
+	Sparkles,
 	Workflow,
 } from "lucide-react";
 import { signOut, useSession } from "../auth";
@@ -122,6 +123,26 @@ function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
 	const qc = useQueryClient();
 	const [copied, setCopied] = useState(false);
 
+	const contextQuery = useQuery(
+		trpc.conversation.contextState.queryOptions({ conversationId }),
+	);
+
+	const compactMutation = useMutation(
+		trpc.conversation.compact.mutationOptions({
+			onSuccess: () => {
+				qc.invalidateQueries({
+					queryKey: trpc.conversation.contextState.queryKey({ conversationId }),
+				});
+				qc.invalidateQueries({
+					queryKey: trpc.conversation.metrics.queryKey({ conversationId }),
+				});
+				qc.invalidateQueries({
+					queryKey: trpc.conversation.messages.queryKey({ conversationId }),
+				});
+			},
+		}),
+	);
+
 	const displayModeQuery = useQuery(
 		trpc.conversation.getDisplayMode.queryOptions({ conversationId }),
 	);
@@ -139,6 +160,8 @@ function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
 	);
 
 	const defaultMode = displayModeQuery.data?.defaultDisplayMode ?? "compact";
+	const isCompacting =
+		contextQuery.data?.state === "running" || compactMutation.isPending;
 
 	async function copyChatId() {
 		await navigator.clipboard.writeText(conversationId);
@@ -157,6 +180,26 @@ function ConversationInfoMenu({ conversationId }: { conversationId: string }) {
 			</div>
 			<div className="dropdown-content z-20 mt-1 w-72 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg space-y-2">
 				<ContextMetrics conversationId={conversationId} />
+				<div className="border-t border-base-300 pt-2 px-2 space-y-1">
+					<button
+						type="button"
+						className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200 disabled:opacity-50"
+						disabled={isCompacting}
+						onClick={() => compactMutation.mutate({ conversationId })}
+					>
+						{isCompacting ? (
+							<span className="loading loading-spinner loading-xs" />
+						) : (
+							<Sparkles size={15} />
+						)}
+						<span>Compact context now</span>
+					</button>
+					{compactMutation.error && (
+						<p className="px-2 text-xs text-error">
+							{compactMutation.error.message}
+						</p>
+					)}
+				</div>
 				<div className="border-t border-base-300 pt-2 px-2 space-y-1">
 					<div className="text-xs font-semibold uppercase text-base-content/60">
 						Default Display Mode

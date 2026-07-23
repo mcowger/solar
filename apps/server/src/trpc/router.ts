@@ -38,6 +38,7 @@ import {
 } from "../chat/catalog";
 import type { TrpcContext } from "./context";
 import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
+import { contextRuntime, ContextCompactionError } from "../context/runtime";
 import { testMcpServer } from "../chat/mcp";
 import { ContextRepository } from "../context/repository";
 import {
@@ -441,6 +442,51 @@ const conversationRouter = router({
 				compactionAtTokens: policy.softTriggerTokens,
 				costMicros: totals.costMicros,
 			};
+		}),
+
+	compact: protectedProcedure
+		.input(z.object({ conversationId: z.string() }))
+		.mutation(async ({ ctx, input }) => {
+			await assertOwnsConversation(ctx.user.id, input.conversationId);
+			const conversation = await db
+				.selectFrom("conversation")
+				.select([
+					"provider",
+					"endpointId",
+					"modelId",
+					"modelApi",
+					"systemPrompt",
+				])
+				.where("id", "=", input.conversationId)
+				.executeTakeFirstOrThrow();
+
+			const selection = await resolveSelection(
+				{
+					provider: conversation.provider ?? undefined,
+					endpointId: conversation.endpointId ?? undefined,
+					modelId: conversation.modelId ?? undefined,
+					api: conversation.modelApi ?? undefined,
+				},
+				ctx.user.id,
+				ctx.user.role === "admin",
+			);
+
+			try {
+				await contextRuntime.compactManual(
+					input.conversationId,
+					selection,
+					conversation.systemPrompt,
+				);
+				return { success: true };
+			} catch (error) {
+				if (error instanceof ContextCompactionError) {
+					throw new TRPCError({
+						code: "BAD_REQUEST",
+						message: error.message,
+					});
+				}
+				throw error;
+			}
 		}),
 
 	setModel: protectedProcedure

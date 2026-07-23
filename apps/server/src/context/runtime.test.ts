@@ -429,4 +429,70 @@ describe("runtime context planning", () => {
 		expect(result.messageIds).toEqual(new Set(["u1"]));
 		expect(state().retainedMessageBoundaryId).toBe("u1");
 	});
+
+	test("compactManual compacts prior turns when manually requested", async () => {
+		const { runtime, state } = runtimeFixture([
+			{
+				id: "u1",
+				role: "user",
+				content: [{ kind: "text", text: "first turn" }],
+			},
+			{
+				id: "a1",
+				role: "assistant",
+				content: [{ kind: "text", text: "first response" }],
+			},
+			{
+				id: "u2",
+				role: "user",
+				content: [{ kind: "text", text: "second turn" }],
+			},
+		]);
+
+		await runtime.compactManual("conversation", selection);
+
+		expect(state().summary).toBeTruthy();
+		expect(state().retainedMessageBoundaryId).toBe("u2");
+	});
+
+	test("compactManual throws error when no compactable records exist", async () => {
+		const { runtime } = runtimeFixture([
+			{
+				id: "u1",
+				role: "user",
+				content: [{ kind: "text", text: "single turn" }],
+			},
+		]);
+
+		await expect(
+			runtime.compactManual("conversation", selection),
+		).rejects.toThrow("No compactable history available");
+	});
+
+	test("compactManual throws error when compaction is already running", async () => {
+		const { runtime } = runtimeFixture(
+			[
+				{
+					id: "u1",
+					role: "user",
+					content: [{ kind: "text", text: "turn 1" }],
+				},
+				{
+					id: "a1",
+					role: "assistant",
+					content: [{ kind: "text", text: "response 1" }],
+				},
+				{
+					id: "u2",
+					role: "user",
+					content: [{ kind: "text", text: "turn 2" }],
+				},
+			],
+			{ running: true },
+		);
+
+		await expect(
+			runtime.compactManual("conversation", selection),
+		).rejects.toThrow("Context compaction is already in progress");
+	});
 });

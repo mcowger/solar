@@ -414,6 +414,78 @@ export class ContextRuntime {
 			);
 	}
 
+	async compactManual(
+		conversationId: string,
+		selection: ModelSelection,
+		systemPrompt?: string | null,
+		attachmentSummary = this.attachmentSummary,
+	): Promise<void> {
+		const state = await this.repository.ensureState(conversationId);
+		if (state.jobStatus === "running") {
+			throw new ContextCompactionError(
+				"Context compaction is already in progress",
+			);
+		}
+		const resolved =
+			selection.provider === "mock" ? undefined : await resolveModel(selection);
+		const policy = await this.repository.resolvePolicy({
+			provider: policyProvider(selection),
+			modelId: selection.modelId,
+			modelFamily: modelFamily(selection),
+			contextWindowTokens: resolved?.model.contextWindow ?? MOCK_CONTEXT_WINDOW,
+			override: resolved?.contextPolicy,
+		});
+		const records = await this.repository.contextRecords(
+			conversationId,
+			selection,
+			systemPrompt,
+			attachmentSummary,
+		);
+		const summary = state.summary
+			? {
+					id: "rolling-summary",
+					role: "summary" as const,
+					content: [{ kind: "text" as const, text: state.summary }],
+				}
+			: undefined;
+
+		let plan = assembleContext(records, {
+			inputLimit: policy.targetTokens,
+			summary,
+			firstTurnAttachmentTokens: policy.maxPinnedAttachmentTokens,
+		});
+
+		if (!plan.compactionRecords.length) {
+			plan = assembleContext(records, {
+				inputLimit: 1,
+				summary,
+				firstTurnAttachmentTokens: policy.maxPinnedAttachmentTokens,
+			});
+		}
+
+		if (!plan.compactionRecords.length) {
+			throw new ContextCompactionError("No compactable history available");
+		}
+
+		await this.compact(
+			conversationId,
+			selection,
+			records,
+			state,
+			policy,
+			plan.compactionRecords,
+			plan.omittedRecordIds,
+			estimateRecordsTokens(records),
+		);
+
+		const refreshed = await this.repository.ensureState(conversationId);
+		if (refreshed.jobStatus === "failed") {
+			throw new ContextCompactionError(
+				`Context compaction failed: ${refreshed.jobError ?? "unknown error"}`,
+			);
+		}
+	}
+
 	private async compact(
 		conversationId: string,
 		selection: ModelSelection,

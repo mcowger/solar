@@ -125,4 +125,14 @@ describe("context management metadata", () => {
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
 		ownedConversation = true;
 	});
+
+	test("rejects compact for a conversation the user does not own", async () => {
+		ownedConversation = false;
+		const caller = appRouter.createCaller({ user: { id: "user" } } as never);
+
+		await expect(
+			caller.conversation.compact({ conversationId: "conversation" }),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
+		ownedConversation = true;
+	});
 });
