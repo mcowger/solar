@@ -6,5 +6,5 @@ pre-commit:
   commands:
     format:
       glob: "*.{ts,tsx,jsx}"
-      run: bunx biome format --write --colors=off --reporter=concise --no-errors-on-unmatched {staged_files}
+      run: command -v paseo >/dev/null 2>&1 && paseo script start format || bunx biome format --write --colors=off --reporter=concise --no-errors-on-unmatched {staged_files}
       stage_fixed: true

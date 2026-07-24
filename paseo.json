@@ -4,7 +4,8 @@
       "portScript": "scripts/port-allocator.sh"
     },
     "setup": [
-      "bunx skills experimental_install",
+      "command -v mise >/dev/null 2>&1 && mise trust || true",
+      "command -v mise >/dev/null 2>&1 && mise install || true",
       "bun install"
     ],
     "teardown": "bun run solar dev stop && rm -f apps/server/solar.db apps/server/solar.db-shm apps/server/solar.db-wal"
@@ -15,30 +16,45 @@
       "command": "bun run solar dev start --foreground"
     },
     "typecheck": {
-      "command": "bun run typecheck"
+      "command": "tsc -p apps/server/tsconfig.json && tsc -p apps/web/tsconfig.json && tsc -p packages/shared/tsconfig.json && tsc -p tsconfig.e2e.json"
     },
     "build": {
-      "command": "bun run build"
+      "command": "bun run --cwd apps/web build"
     },
-    "staging:deploy": {
-      "command": "bun run deploy:staging"
+    "format": {
+      "command": "biome format --write ."
+    },
+    "format:check": {
+      "command": "biome format ."
+    },
+    "deploy:staging": {
+      "command": "bun run scripts/deploy-staging.ts"
     },
     "migrate": {
-      "command": "bun run migrate"
+      "command": "bun run --cwd apps/server migrate"
     },
     "migrate:auth": {
-      "command": "bun run migrate:auth"
+      "command": "bun run --cwd apps/server migrate:auth"
     },
     "codegen": {
-      "command": "bun run codegen"
+      "command": "bun run --cwd apps/server codegen"
+    },
+    "test": {
+      "command": "bun test --isolate apps/server/src && bun run --cwd apps/web test"
     }
   },
   "metadataGeneration": {
+    "agentTitle": {
+      "instructions": "Choose a concise 2-5 word title. Use plain ASCII only. No emojis, smart quotes, dashes, or other Unicode characters. Prefer short, descriptive noun phrases or imperative phrases."
+    },
+    "branchName": {
+      "instructions": "Use the format <type>/<scope>-<short-desc>. Keep it lowercase ASCII with hyphens only in the short description. Use a concise scope and description. Examples: feat/auth-session-refresh, fix/websocket-host-check, chore/ci-node-upgrade."
+    },
     "commitMessage": {
-      "instructions": "Write a Conventional Commit message for the provided changes.\n\nOutput only the commit message—no preamble, explanation, Markdown fences, or commentary.\n\nRequired format:\n\n<type>(<scope>): <concise imperative summary>\n\n<body>\n\nRules:\n- Use a valid Conventional Commit type: feat, fix, refactor, chore, docs, test, build, ci, perf, or style.\n- Always include a specific scope.\n- Keep the title under 72 characters. Use imperative mood and describe the user-visible or primary change.\n- Include a blank line after the title.\n- The body is required and must contain 2–5 bullet points.\n- Each bullet must describe a concrete final change, not a vague summary or restatement of the title.\n- Cover, where applicable:\n  - behavior added, changed, or fixed;\n  - important implementation details;\n  - persistence, configuration, API, or data-model changes;\n  - migration/compatibility implications;\n  - tests added or updated.\n- Do not invent changes not supported by the input.\n- Do not use generic phrases such as “update logic,” “improve handling,” “misc fixes,” or “persist settings” without stating what specifically changed.\n- Do not mention the process of making the change (for example, “implemented,” “worked on,” or “this commit”).\n- If only one meaningful change exists, still provide at least two bullets: one for the behavior and one for the implementation or affected area.\n\nExample:\n\nfeat(chat): add per-model generation defaults\n\n- Allow each chat model to define its own default generation parameters.\n- Save model-specific defaults with persisted chat settings.\n- Restore the matching defaults when loading an existing conversation.\n- Preserve existing global defaults for models without an override.\n\nYou MUST include sufficient detail for a future review to understand the scope of the changes.   "
+      "instructions": "Follow Conventional Commits. Describe only the final state of the codebase, not the steps taken to get there. Do not mention implementation process, exploration, refactors that were discarded, or debugging work unless they are part of the shipped result."
     },
     "pullRequest": {
-      "instructions": "Write a pull request title and description for the final changes.\n\nFormat:\n- First line: a concise, imperative PR title that summarizes the primary user-facing or technical outcome.\n- Blank line.\n- Body: a detailed Markdown description of the completed work.\n\nRequirements:\n- Explain what changed, why it changed, and how the relevant behavior, data flow, configuration, UI, or APIs now work.\n- Enumerate meaningful implementation details, including related refactors, persistence/migration behavior, defaults, fallbacks, compatibility considerations, and error handling when applicable.\n- Describe the resulting impact on users or developers.\n- Use clear paragraphs and Markdown bullet lists where helpful.\n- Base the description only on the provided changes; do not invent rationale, behavior, or validation.\n- Do not include a “Testing”, “Tests”, “Validation”, checklist, or similarly named section.\n- Do not mention that no tests were run.\n- Avoid vague statements such as “various improvements” or “updated files.”"
+      "instructions": "Describe the final state of the change for another engineer. Do not describe the implementation journey, debugging process, or discarded approaches. Do not include a Testing section, checklist, marketing language, hype, or sales framing. Keep it factual, technical, and concise."
     }
   }
 }
