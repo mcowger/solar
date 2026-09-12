@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Type, type Tool } from "@earendil-works/pi-ai";
 import { db } from "../db";
+import { logger } from "../logger";
 
 export interface ResolvedTool {
 	tool: Tool;
@@ -55,6 +56,69 @@ async function withClient<T>(
 	}
 }
 
+type DiscoveredCapabilities = {
+	tools: Awaited<ReturnType<Client["listTools"]>>;
+	prompts: Awaited<ReturnType<Client["listPrompts"]>> | null;
+	resources: Awaited<ReturnType<Client["listResources"]>> | null;
+};
+
+async function optionalCapability<T>(options: {
+	server: ServerRow;
+	conversationId?: string;
+	name: "prompts" | "resources";
+	load: () => Promise<T>;
+}): Promise<T | null> {
+	try {
+		return await options.load();
+	} catch (error) {
+		logger
+			.withError(error)
+			.withMetadata({
+				mcpServer: options.server.name,
+				...(options.conversationId
+					? { conversationId: options.conversationId }
+					: {}),
+				capability: options.name,
+			})
+			.warn("MCP optional capability discovery failed");
+		return null;
+	}
+}
+
+async function discoverCapabilitiesWithClient(
+	server: ServerRow,
+	client: Client,
+	conversationId?: string,
+): Promise<DiscoveredCapabilities> {
+	// Tool discovery is required. Prompts and resources are optional MCP
+	// capabilities and must not prevent valid tools from being registered.
+	const tools = await client.listTools();
+	const [prompts, resources] = await Promise.all([
+		optionalCapability({
+			server,
+			conversationId,
+			name: "prompts",
+			load: () => client.listPrompts(),
+		}),
+		optionalCapability({
+			server,
+			conversationId,
+			name: "resources",
+			load: () => client.listResources(),
+		}),
+	]);
+	return { tools, prompts, resources };
+}
+
+async function discoverCapabilities(
+	server: ServerRow,
+	conversationId?: string,
+): Promise<DiscoveredCapabilities> {
+	return withClient(server, (client) =>
+		discoverCapabilitiesWithClient(server, client, conversationId),
+	);
+}
+
 export async function testMcpServer(
 	url: string,
 	headers: Record<string, string>,
@@ -64,22 +128,21 @@ export async function testMcpServer(
 	prompts: number;
 	resources: number;
 }> {
-	return withClient(
-		{ id: "test", name: "test", url, headers: JSON.stringify(headers) },
-		async (client) => {
-			const [tools, prompts, resources] = await Promise.all([
-				client.listTools(),
-				client.listPrompts(),
-				client.listResources(),
-			]);
-			return {
-				name: client.getServerVersion()?.name,
-				tools: tools.tools.length,
-				prompts: prompts.prompts.length,
-				resources: resources.resources.length,
-			};
-		},
-	);
+	const server = {
+		id: "test",
+		name: "test",
+		url,
+		headers: JSON.stringify(headers),
+	};
+	return withClient(server, async (client) => {
+		const discovered = await discoverCapabilitiesWithClient(server, client);
+		return {
+			name: client.getServerVersion()?.name,
+			tools: discovered.tools.tools.length,
+			prompts: discovered.prompts?.prompts.length ?? 0,
+			resources: discovered.resources?.resources.length ?? 0,
+		};
+	});
 }
 
 /**
@@ -152,14 +215,8 @@ export async function resolveMcpTools(
 	const result: ResolvedTool[] = [];
 	for (const server of active) {
 		try {
-			const discovered = await withClient(server, async (client) =>
-				Promise.all([
-					client.listTools(),
-					client.listPrompts(),
-					client.listResources(),
-				]),
-			);
-			for (const remote of discovered[0].tools) {
+			const discovered = await discoverCapabilities(server, conversationId);
+			for (const remote of discovered.tools.tools) {
 				result.push({
 					tool: {
 						name: toolName(server.id, remote.name),
@@ -181,78 +238,92 @@ export async function resolveMcpTools(
 						}),
 				});
 			}
-			result.push({
-				tool: {
-					name: toolName(server.id, "list_prompts"),
-					description: `[${server.name}] List available MCP prompts`,
-					parameters: Type.Object({}),
-				},
-				serverName: server.name,
-				remoteName: "list_prompts",
-				execute: async () => ({
-					content: asText(
-						await withClient(server, (client) => client.listPrompts()),
-					),
-					isError: false,
-				}),
-			});
-			result.push({
-				tool: {
-					name: toolName(server.id, "get_prompt"),
-					description: `[${server.name}] Get an MCP prompt by name`,
-					parameters: Type.Object({
-						name: Type.String(),
-						arguments: Type.Optional(Type.Record(Type.String(), Type.String())),
+			if (discovered.prompts) {
+				result.push({
+					tool: {
+						name: toolName(server.id, "list_prompts"),
+						description: `[${server.name}] List available MCP prompts`,
+						parameters: Type.Object({}),
+					},
+					serverName: server.name,
+					remoteName: "list_prompts",
+					execute: async () => ({
+						content: asText(
+							await withClient(server, (client) => client.listPrompts()),
+						),
+						isError: false,
 					}),
-				},
-				serverName: server.name,
-				remoteName: "get_prompt",
-				execute: async (args) => ({
-					content: asText(
-						await withClient(server, (client) =>
-							client.getPrompt({
-								name: String(args.name),
-								arguments: args.arguments as Record<string, string> | undefined,
-							}),
+				});
+				result.push({
+					tool: {
+						name: toolName(server.id, "get_prompt"),
+						description: `[${server.name}] Get an MCP prompt by name`,
+						parameters: Type.Object({
+							name: Type.String(),
+							arguments: Type.Optional(
+								Type.Record(Type.String(), Type.String()),
+							),
+						}),
+					},
+					serverName: server.name,
+					remoteName: "get_prompt",
+					execute: async (args) => ({
+						content: asText(
+							await withClient(server, (client) =>
+								client.getPrompt({
+									name: String(args.name),
+									arguments: args.arguments as
+										| Record<string, string>
+										| undefined,
+								}),
+							),
 						),
-					),
-					isError: false,
-				}),
-			});
-			result.push({
-				tool: {
-					name: toolName(server.id, "list_resources"),
-					description: `[${server.name}] List available MCP resources`,
-					parameters: Type.Object({}),
-				},
-				serverName: server.name,
-				remoteName: "list_resources",
-				execute: async () => ({
-					content: asText(
-						await withClient(server, (client) => client.listResources()),
-					),
-					isError: false,
-				}),
-			});
-			result.push({
-				tool: {
-					name: toolName(server.id, "read_resource"),
-					description: `[${server.name}] Read an MCP resource by URI`,
-					parameters: Type.Object({ uri: Type.String() }),
-				},
-				serverName: server.name,
-				remoteName: "read_resource",
-				execute: async (args) => ({
-					content: asText(
-						await withClient(server, (client) =>
-							client.readResource({ uri: String(args.uri) }),
+						isError: false,
+					}),
+				});
+			}
+			if (discovered.resources) {
+				result.push({
+					tool: {
+						name: toolName(server.id, "list_resources"),
+						description: `[${server.name}] List available MCP resources`,
+						parameters: Type.Object({}),
+					},
+					serverName: server.name,
+					remoteName: "list_resources",
+					execute: async () => ({
+						content: asText(
+							await withClient(server, (client) => client.listResources()),
 						),
-					),
-					isError: false,
-				}),
-			});
-		} catch {
-			// An unavailable server must not prevent unrelated servers or chat from working.
+						isError: false,
+					}),
+				});
+				result.push({
+					tool: {
+						name: toolName(server.id, "read_resource"),
+						description: `[${server.name}] Read an MCP resource by URI`,
+						parameters: Type.Object({ uri: Type.String() }),
+					},
+					serverName: server.name,
+					remoteName: "read_resource",
+					execute: async (args) => ({
+						content: asText(
+							await withClient(server, (client) =>
+								client.readResource({ uri: String(args.uri) }),
+							),
+						),
+						isError: false,
+					}),
+				});
+			}
+		} catch (error) {
+			logger
+				.withError(error)
+				.withMetadata({
+					conversationId,
+					mcpServer: server.name,
+				})
+				.warn("MCP tool discovery failed");
 		}
 	}
 	return result;

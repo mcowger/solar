@@ -76,6 +76,29 @@ const db = {
 			},
 		};
 	},
+	updateTable(table: string) {
+		return {
+			set(values: Record<string, unknown>) {
+				return {
+					where(_column: string, _operator: string, provider: string) {
+						return {
+							execute: async () => {
+								if (table !== "provider_config") return;
+								const config = state.providerConfigs.find(
+									(candidate) => candidate.provider === provider,
+								);
+								if (!config) return;
+								if (typeof values.enabledModels === "string")
+									config.enabledModels = JSON.parse(values.enabledModels);
+								if (typeof values.imageModels === "string")
+									config.imageModels = JSON.parse(values.imageModels);
+							},
+						};
+					},
+				};
+			},
+		};
+	},
 };
 
 mock.module("../db", () => ({ db }));
@@ -518,6 +541,62 @@ describe("catalog model policy", () => {
 					vision: true,
 				},
 			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("imports a discovered model through a different configured API endpoint", async () => {
+		configureModels({
+			provider: "plexus",
+			apiKey: "test-key",
+			baseUrl: null,
+			endpoints: [
+				{
+					id: "responses",
+					label: "Responses",
+					baseUrl: "https://plexus.example/v1",
+					api: "openai-responses",
+				},
+				{
+					id: "gemini",
+					label: "Gemini",
+					baseUrl: "https://plexus.example",
+					api: "google-generative-ai",
+				},
+			],
+			enabledModels: [],
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							{
+								id: "gemini-3.8-flash",
+								name: "Gemini 3.8 Flash",
+								architecture: { output_modalities: ["text"] },
+							},
+						],
+					}),
+				),
+		) as unknown as typeof fetch;
+		try {
+			await catalog.importProviderModels("plexus", "responses", [
+				{
+					id: "gemini-3.8-flash",
+					api: "google-generative-ai",
+					visibility: "public",
+				},
+			]);
+			expect(state.providerConfigs[0]?.enabledModels).toContainEqual(
+				expect.objectContaining({
+					id: "gemini-3.8-flash",
+					endpointId: "gemini",
+					api: "google-generative-ai",
+				}),
+			);
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

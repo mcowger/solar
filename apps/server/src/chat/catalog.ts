@@ -1060,8 +1060,7 @@ export async function importProviderModels(
 	const imported = imports.map((selection) => {
 		const model = discovered.find((candidate) => candidate.id === selection.id);
 		const endpoint = config.endpoints.find(
-			(candidate) =>
-				candidate.id === endpointId && candidate.api === selection.api,
+			(candidate) => candidate.api === selection.api,
 		);
 		if (!model || !endpoint)
 			throw new Error(`Model "${selection.id}" cannot use ${selection.api}`);
