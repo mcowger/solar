@@ -182,9 +182,22 @@ export interface PiTurnMetrics {
 
 interface PumpResult {
 	metrics: PiTurnMetrics | null;
+	/** Set when the stall watchdog ended the turn (see recordTurnError). */
+	stallError: string | null;
 }
 
-function pumpGeneration(
+/**
+ * What a turn ended by the stall watchdog reports. The abort itself surfaces
+ * from pi as "Request was aborted", which reads as if the user or the gateway
+ * cancelled. Models that think or buffer tool input without streaming can go
+ * quiet this long legitimately, hence the pointer to the setting.
+ */
+function stallErrorText(): string {
+	const seconds = Math.round(piConfig.stallTimeoutMs / 1000);
+	return `The model sent nothing for ${seconds}s, so Solar stopped waiting. Raise SOLAR_PI_STALL_TIMEOUT_MS if replies legitimately take longer.`;
+}
+
+export function pumpGeneration(
 	generation: PiGeneration,
 	client: RpcClient,
 	options: PumpOptions,
@@ -203,6 +216,7 @@ function pumpGeneration(
 		let stopRequested = false;
 		let abortGrace: ReturnType<typeof setTimeout> | null = null;
 		let settled = false;
+		let stalled = false;
 		let stallTimer: ReturnType<typeof setInterval>;
 
 		// Streaming metrics (UI display). Turn scope: startedAt is fixed here at
@@ -237,7 +251,10 @@ function pumpGeneration(
 			} else {
 				piGenerations.emit(generation, {
 					type: "error",
-					errorText: errorText ?? "generation failed",
+					// After a stall, whatever pi reports is the watchdog's own abort.
+					errorText: stalled
+						? stallErrorText()
+						: (errorText ?? "generation failed"),
 				});
 				piGenerations.finish(generation, "error");
 			}
@@ -246,7 +263,10 @@ function pumpGeneration(
 				session.generating = false;
 				session.lastActivityAt = Date.now();
 			}
-			resolve({ metrics: resolveMetrics(metrics, ok) });
+			resolve({
+				metrics: resolveMetrics(metrics, ok),
+				stallError: stalled ? stallErrorText() : null,
+			});
 		};
 
 		function resolveMetrics(
@@ -290,6 +310,7 @@ function pumpGeneration(
 			() => {
 				if (Date.now() - lastActivity < piConfig.stallTimeoutMs) return;
 				lastActivity = Date.now();
+				stalled = true;
 				logger
 					.withMetadata({
 						conversationId: generation.conversationId,
@@ -300,11 +321,14 @@ function pumpGeneration(
 					.abort()
 					.catch(() => {})
 					.finally(() => {
+						// pi answers the abort command only once it is idle, so it has
+						// usually settled already; its process is then fine to reuse.
+						if (settled) return;
 						abortGrace = setTimeout(() => {
 							void piSessionManager
 								.drop(generation.conversationId)
 								.catch(() => {});
-							finish(false, "generation stalled and was aborted");
+							finish(false);
 						}, piConfig.abortGraceMs);
 					});
 			},
@@ -389,7 +413,8 @@ function pumpGeneration(
 						isError: event.isError,
 					});
 				} else if (event.type === "agent_settled") {
-					finish(true);
+					// A stalled turn settles too (pi saved it as aborted): not a success.
+					finish(!stalled);
 				}
 				// agent_end(willRetry=true) stays running; auto_retry_* events only
 				// reset the stall watchdog. agent_settled is the terminal signal.
@@ -459,6 +484,9 @@ function generate(
 			conversationId: input.conversationId,
 			userText,
 		});
+		if (result.stallError) {
+			await recordTurnError(input.conversationId, result.stallError);
+		}
 		if (generation.status === "done") {
 			await recordTurnMetrics(input.conversationId, userText, result.metrics);
 			const userEntryId = await findLatestUserEntryId(
@@ -766,14 +794,7 @@ async function recordTurnMetrics(
 	if (!file) return;
 	try {
 		const manager = SessionManager.open(file, piSessionDir(conversationId));
-		const assistant = manager
-			.getBranch()
-			.filter(
-				(e): e is SessionMessageEntry =>
-					e.type === "message" &&
-					(e as SessionMessageEntry).message.role === "assistant",
-			)
-			.at(-1);
+		const assistant = latestAssistantEntry(manager);
 		manager.appendCustomEntry(`solar-turn-metrics`, {
 			assistantEntryId: assistant?.id ?? null,
 			...metrics,
@@ -784,6 +805,51 @@ async function recordTurnMetrics(
 			.withMetadata({ conversationId })
 			.warn("failed to persist pi turn metrics");
 	}
+}
+
+/**
+ * Persist why the stall watchdog ended the turn, as a custom entry on the
+ * assistant message pi saved for it. pi records that message as "Request was
+ * aborted", which is what a reload would otherwise show; turns.ts prefers
+ * this entry's text.
+ */
+async function recordTurnError(
+	conversationId: string,
+	errorMessage: string,
+): Promise<void> {
+	const file = piSessionFile(conversationId);
+	if (!file) return;
+	try {
+		const manager = SessionManager.open(file, piSessionDir(conversationId));
+		const assistant = latestAssistantEntry(manager);
+		// A pi process killed before it saved the aborted message leaves an
+		// earlier turn's reply last; that one did not fail.
+		const stopReason = (assistant?.message as { stopReason?: string })
+			?.stopReason;
+		if (!assistant || stopReason !== "aborted") return;
+		manager.appendCustomEntry(`solar-turn-error`, {
+			assistantEntryId: assistant.id,
+			errorMessage,
+		});
+	} catch (error) {
+		logger
+			.withError(error)
+			.withMetadata({ conversationId })
+			.warn("failed to persist pi turn error");
+	}
+}
+
+function latestAssistantEntry(
+	manager: SessionManager,
+): SessionMessageEntry | undefined {
+	return manager
+		.getBranch()
+		.filter(
+			(e): e is SessionMessageEntry =>
+				e.type === "message" &&
+				(e as SessionMessageEntry).message.role === "assistant",
+		)
+		.at(-1);
 }
 
 async function touchConversation(conversationId: string): Promise<void> {

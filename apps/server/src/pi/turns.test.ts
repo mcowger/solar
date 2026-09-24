@@ -93,3 +93,31 @@ describe("loadPiMessages compaction marker", () => {
 		expect(piLatestCompaction(CONV)?.revision).toBe(1);
 	});
 });
+
+describe("loadPiMessages stall errors", () => {
+	test("shows Solar's stall reason, not pi's 'Request was aborted'", async () => {
+		const conv = "conv-stall-reload";
+		const sessionDir = piSessionDir(conv);
+		mkdirSync(sessionDir, { recursive: true });
+		const cwdDir = join(dir, "cwd", conv);
+		mkdirSync(cwdDir, { recursive: true });
+		const manager = SessionManager.create(cwdDir, sessionDir);
+		manager.appendMessage(userMsg("build the homepage"));
+		const aborted = manager.appendMessage({
+			...assistantMsg(""),
+			content: [],
+			stopReason: "aborted",
+			errorMessage: "Request was aborted",
+		} as MessageParam);
+		manager.appendCustomEntry("solar-turn-error", {
+			assistantEntryId: aborted,
+			errorMessage: "The model sent nothing for 90s",
+		});
+
+		const rows = await loadPiMessages("user-1", conv);
+		expect(rows.map((row) => row.text)).toEqual([
+			"build the homepage",
+			"**Error:** The model sent nothing for 90s",
+		]);
+	});
+});
