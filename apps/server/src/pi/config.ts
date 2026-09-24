@@ -10,6 +10,7 @@ const DEFAULT_STARTUP_TIMEOUT_MS = 15_000;
 const DEFAULT_STALL_TIMEOUT_MS = 90_000;
 const DEFAULT_ABORT_GRACE_MS = 5_000;
 const DEFAULT_MAX_PROCESSES = 8;
+const BRIDGE_TIMEOUT_HEADROOM_MS = 15_000;
 
 function positiveIntEnv(name: string, fallback: number): number {
 	const raw = process.env[name];
@@ -52,6 +53,12 @@ export const piConfig = {
 		"SOLAR_PI_ABORT_GRACE_MS",
 		DEFAULT_ABORT_GRACE_MS,
 	),
+	/** How long the pi child's bridge waits on Solar for one tool call: Solar's
+	 * own MCP timeout plus headroom, so the MCP call ends (and reports why)
+	 * before the bridge gives up on it. */
+	get bridgeTimeoutMs(): number {
+		return config.mcpToolTimeoutMs + BRIDGE_TIMEOUT_HEADROOM_MS;
+	},
 } as const;
 
 // NOTE: pi's own RpcClient hardcodes `spawn("node", cliPath)`. Solar does not

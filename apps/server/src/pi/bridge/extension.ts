@@ -20,13 +20,19 @@ import { Type } from "typebox";
 
 const BRIDGE_URL = process.env.SOLAR_PI_BRIDGE_URL;
 const BRIDGE_TOKEN = process.env.SOLAR_PI_BRIDGE_TOKEN;
+// Solar's MCP tool timeout plus headroom (piConfig.bridgeTimeoutMs); 120s when
+// spawned by a Solar that does not pass it.
+const BRIDGE_TIMEOUT_MS =
+	Number(process.env.SOLAR_PI_BRIDGE_TIMEOUT_MS) > 0
+		? Number(process.env.SOLAR_PI_BRIDGE_TIMEOUT_MS)
+		: 120_000;
 
 async function bridge(path: string, init?: RequestInit): Promise<unknown> {
 	if (!BRIDGE_URL || !BRIDGE_TOKEN) {
 		throw new Error("solar pi bridge env not configured");
 	}
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), 120_000);
+	const timer = setTimeout(() => controller.abort(), BRIDGE_TIMEOUT_MS);
 	try {
 		const response = await fetch(`${BRIDGE_URL}${path}`, {
 			...init,

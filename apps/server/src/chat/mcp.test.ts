@@ -7,6 +7,7 @@ const state = {
 	resources: { resources: [] as Array<Record<string, unknown>> },
 	promptError: null as Error | null,
 	resourceError: null as Error | null,
+	requestOptions: [] as Array<{ method: string; options: unknown }>,
 };
 
 const query = {
@@ -62,6 +63,21 @@ class FakeClient {
 	getServerVersion() {
 		return { name: "fake-mcp" };
 	}
+
+	async callTool(_params: unknown, _schema: unknown, options?: unknown) {
+		state.requestOptions.push({ method: "callTool", options });
+		return { content: [{ type: "text", text: "ok" }] };
+	}
+
+	async getPrompt(_params: unknown, options?: unknown) {
+		state.requestOptions.push({ method: "getPrompt", options });
+		return { messages: [] };
+	}
+
+	async readResource(_params: unknown, options?: unknown) {
+		state.requestOptions.push({ method: "readResource", options });
+		return { contents: [] };
+	}
 }
 
 mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
@@ -72,6 +88,7 @@ mock.module("@modelcontextprotocol/sdk/client/streamableHttp.js", () => ({
 }));
 
 const { resolveMcpTools, testMcpServer } = await import("./mcp");
+const { config } = await import("../config");
 
 beforeEach(() => {
 	state.rows = [
@@ -97,6 +114,7 @@ beforeEach(() => {
 	state.resources = { resources: [] };
 	state.promptError = null;
 	state.resourceError = null;
+	state.requestOptions = [];
 	logger.warn.mockClear();
 });
 
@@ -138,5 +156,37 @@ describe("MCP capability discovery", () => {
 			prompts: 0,
 			resources: 0,
 		});
+	});
+});
+
+describe("MCP request timeout", () => {
+	const settable = config as { mcpToolTimeoutMs: number };
+	const saved = settable.mcpToolTimeoutMs;
+
+	test("defaults to the MCP SDK's own 60s", () => {
+		expect(saved).toBe(60_000);
+	});
+
+	test("tool calls, prompts and resource reads use the configured timeout", async () => {
+		settable.mcpToolTimeoutMs = 180_000;
+		try {
+			state.prompts = { prompts: [{ name: "research" }] };
+			state.resources = { resources: [{ uri: "resource://guide" }] };
+			const tools = await resolveMcpTools("user-1", "conversation-1");
+			const run = (name: string, args: Record<string, unknown>) =>
+				tools.find((tool) => tool.tool.name === name)!.execute(args);
+
+			await run("search", {});
+			await run("get_prompt", { name: "research" });
+			await run("read_resource", { uri: "resource://guide" });
+
+			expect(state.requestOptions).toEqual([
+				{ method: "callTool", options: { timeout: 180_000 } },
+				{ method: "getPrompt", options: { timeout: 180_000 } },
+				{ method: "readResource", options: { timeout: 180_000 } },
+			]);
+		} finally {
+			settable.mcpToolTimeoutMs = saved;
+		}
 	});
 });
