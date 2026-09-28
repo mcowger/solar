@@ -12,7 +12,6 @@ import { migrateAuth } from "./db/migrate-auth";
 import { migrateToLatest } from "./db/migrate";
 import { seedDevUser } from "./db/seed-dev";
 import { attachmentRoutes } from "./chat/attachmentRoutes";
-import { MAX_ATTACHMENT_BYTES } from "./chat/attachments";
 import { imageRoutes } from "./images/routes";
 import { imageGenerationService } from "./images/service";
 import { chatRoutes } from "./chat/routes";
@@ -24,9 +23,10 @@ import { appRouter } from "./trpc/router";
 import { traceJsonBody } from "./requestTracing";
 
 const isProduction = process.env.NODE_ENV === "production";
-const MAX_MULTIPART_OVERHEAD_BYTES = 1024 * 1024;
-const MAX_ATTACHMENT_REQUEST_BYTES =
-	MAX_ATTACHMENT_BYTES + MAX_MULTIPART_OVERHEAD_BYTES;
+// Global Bun.serve body cap. Must cover attachment uploads (16 MiB file +
+// multipart overhead) and pi bridge provider payloads (which carry base64
+// history images) posted to /internal/pi-bridge/inject-documents.
+const MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024;
 // Production serves the bundled web assets.
 const index = isProduction
 	? undefined
@@ -304,7 +304,7 @@ async function dispatchAppRequest(request: Request): Promise<Response> {
 // the "/*" HTML catch-all and delegate to Hono.
 const server = Bun.serve({
 	port: config.port,
-	maxRequestBodySize: MAX_ATTACHMENT_REQUEST_BYTES,
+	maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
 	routes: {
 		"/trpc/*": dispatchAppRequest,
 		"/api/auth/*": dispatchAppRequest,

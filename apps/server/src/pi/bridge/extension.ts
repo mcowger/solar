@@ -15,6 +15,10 @@
 // - context: before every provider call, expand <solar-attachments> markers
 //   into real (model-capability-aware) content parts for that request only —
 //   attachment bytes are never persisted into the pi session JSONL.
+// - before_provider_request: native document attachments expand to a
+//   [[solar-document:<id>]] placeholder in `context` (pi message content can't
+//   carry document parts); Solar swaps the placeholders for provider-native
+//   document blocks in the final request payload.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 
@@ -209,5 +213,23 @@ export default async function solarBridgeExtension(pi: ExtensionAPI) {
 				: message;
 		});
 		return { messages };
+	});
+
+	// pi swallows handler errors and treats `undefined` as "leave the payload
+	// alone", so failures here degrade to the model seeing the placeholder text.
+	pi.on("before_provider_request", async (event) => {
+		if (!JSON.stringify(event.payload).includes("[[solar-document:")) return;
+		try {
+			const { payload } = (await bridge(
+				"/internal/pi-bridge/inject-documents",
+				{
+					method: "POST",
+					body: JSON.stringify({ payload: event.payload }),
+				},
+			)) as { payload: unknown };
+			return payload;
+		} catch (error) {
+			console.error("[solar-pi-bridge] document injection failed:", error);
+		}
 	});
 }
