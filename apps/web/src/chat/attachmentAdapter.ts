@@ -3,6 +3,12 @@ import type {
 	CompleteAttachment,
 	PendingAttachment,
 } from "@assistant-ui/react";
+import { uploadWithProgress } from "../uploadWithProgress";
+
+interface UploadedAttachment {
+	id: string;
+	kind: "image" | "text";
+}
 
 /**
  * Uploads immediately in `add()` (POST /api/attachments — Mirage-backed disk
@@ -90,6 +96,10 @@ export function buildAttachmentAccept(
 
 export class SolarAttachmentAdapter implements AttachmentAdapter {
 	public readonly accept: string;
+	// The composer needs a stable attachment id from the first progress update,
+	// but the server assigns the real id only once the upload finishes. Local id
+	// -> in-flight/finished upload; send() swaps in the server id.
+	private readonly uploads = new Map<string, Promise<UploadedAttachment>>();
 
 	constructor(
 		allowImages: boolean,
@@ -103,22 +113,73 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
 		);
 	}
 
-	public async add({ file }: { file: File }): Promise<PendingAttachment> {
-		const form = new FormData();
-		form.append("file", file);
-		const res = await fetch("/api/attachments", { method: "POST", body: form });
-		if (!res.ok) {
-			const body = await res.json().catch(() => ({}));
-			throw new Error(body.error ?? "Upload failed");
-		}
-		const meta = (await res.json()) as { id: string; kind: "image" | "text" };
-
-		return {
-			id: meta.id,
-			type: meta.kind === "image" ? "image" : "document",
+	public async *add({
+		file,
+	}: {
+		file: File;
+	}): AsyncGenerator<PendingAttachment, void> {
+		const localId = crypto.randomUUID();
+		const base = {
+			id: localId,
+			type: file.type.startsWith("image/") ? "image" : "document",
 			name: file.name,
 			contentType: file.type,
 			file,
+		} as const;
+
+		let latest = 0;
+		let done = false;
+		let wake: (() => void) | undefined;
+		const signal = () => {
+			wake?.();
+			wake = undefined;
+		};
+		const form = new FormData();
+		form.append("file", file);
+		const upload = uploadWithProgress<UploadedAttachment>(
+			"/api/attachments",
+			form,
+			(percent) => {
+				latest = percent;
+				signal();
+			},
+		).finally(() => {
+			done = true;
+			signal();
+		});
+		this.uploads.set(localId, upload);
+		// Failures surface via the await below (or send()); avoid an unhandled
+		// rejection on the stored promise if nobody else awaits it.
+		upload.catch(() => {});
+
+		let reported = 0;
+		yield {
+			...base,
+			status: { type: "running", reason: "uploading", progress: 0 },
+		};
+		while (true) {
+			if (latest !== reported) {
+				reported = latest;
+				yield {
+					...base,
+					status: { type: "running", reason: "uploading", progress: reported },
+				};
+				continue;
+			}
+			if (done) break;
+			await new Promise<void>((resolve) => {
+				wake = resolve;
+			});
+		}
+
+		const meta = await upload;
+		yield {
+			...base,
+			type: meta.kind === "image" ? "image" : "document",
+			// Lets the composer chip show the stored image once upload finishes.
+			...(meta.kind === "image" && {
+				content: [{ type: "image", image: `/api/attachments/${meta.id}` }],
+			}),
 			status: { type: "requires-action", reason: "composer-send" },
 		};
 	}
@@ -126,6 +187,11 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
 	public async send(
 		attachment: PendingAttachment,
 	): Promise<CompleteAttachment> {
+		const pending = this.uploads.get(attachment.id);
+		if (!pending) throw new Error("Attachment upload failed");
+		// Waits for an in-flight upload; throws if it failed.
+		const meta = await pending;
+		this.uploads.delete(attachment.id);
 		const content =
 			attachment.type === "image"
 				? [
@@ -142,11 +208,22 @@ export class SolarAttachmentAdapter implements AttachmentAdapter {
 								: await readAsText(attachment.file),
 						},
 					];
-		return { ...attachment, status: { type: "complete" }, content };
+		return {
+			...attachment,
+			id: meta.id,
+			status: { type: "complete" },
+			content,
+		};
 	}
 
 	public async remove(attachment: { id: string }): Promise<void> {
-		await fetch(`/api/attachments/${attachment.id}`, { method: "DELETE" });
+		const uploaded = await this.uploads
+			.get(attachment.id)
+			?.catch(() => undefined);
+		this.uploads.delete(attachment.id);
+		if (uploaded) {
+			await fetch(`/api/attachments/${uploaded.id}`, { method: "DELETE" });
+		}
 	}
 }
 

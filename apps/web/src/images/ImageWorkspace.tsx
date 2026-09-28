@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTRPC } from "../trpc";
 import { newId } from "../id";
+import { uploadWithProgress } from "../uploadWithProgress";
 import {
 	getImageTrpc,
 	imageUrl,
@@ -92,6 +93,7 @@ export function ImageWorkspace({
 	const [resolution, setResolution] = useState(DEFAULT_RESOLUTION);
 	const [error, setError] = useState<string>();
 	const [uploading, setUploading] = useState(false);
+	const [uploadProgress, setUploadProgress] = useState(0);
 	const [localAsset, setLocalAsset] = useState<ImageAsset>();
 	const [localAttempt, setLocalAttempt] = useState<ImageAttempt>();
 	const [previewUrl, setPreviewUrl] = useState<string>();
@@ -209,6 +211,7 @@ export function ImageWorkspace({
 		}
 		setError(undefined);
 		setUploading(true);
+		setUploadProgress(0);
 		const nextPreview = URL.createObjectURL(file);
 		setPreviewUrl((previous) => {
 			if (previous) URL.revokeObjectURL(previous);
@@ -218,19 +221,13 @@ export function ImageWorkspace({
 			const id = await ensureWorkspace(file.name.replace(/\.[^.]+$/, ""));
 			const body = new FormData();
 			body.append("file", file);
-			const response = await fetch(
+			const result = await uploadWithProgress<
+				ImageAsset | { asset?: ImageAsset; variant?: ImageAsset }
+			>(
 				`/api/images/${encodeURIComponent(id)}/upload`,
-				{ method: "POST", body },
+				body,
+				setUploadProgress,
 			);
-			if (!response.ok) {
-				const result = (await response.json().catch(() => null)) as {
-					error?: string;
-				} | null;
-				throw new Error(result?.error ?? "Upload failed.");
-			}
-			const result = (await response.json()) as
-				| ImageAsset
-				| { asset?: ImageAsset; variant?: ImageAsset };
 			const uploaded =
 				("asset" in result ? result.asset : undefined) ??
 				("variant" in result ? result.variant : undefined) ??
@@ -501,8 +498,14 @@ export function ImageWorkspace({
 								/>
 								{uploading && (
 									<div className="mt-2 flex items-center gap-2 text-xs text-base-content/60">
-										<span className="loading loading-spinner loading-xs" />{" "}
-										Uploading reference…
+										<progress
+											className="progress progress-primary flex-1"
+											value={uploadProgress}
+											max={100}
+										/>
+										<span className="tabular-nums">
+											Uploading reference… {uploadProgress}%
+										</span>
 									</div>
 								)}
 							</div>
