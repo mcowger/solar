@@ -649,6 +649,17 @@
   white-space: nowrap;
 }
 
+.solar-attachment-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.solar-attachment-failed {
+  color: var(--color-error, #c00);
+}
+
 .solar-attachment-remove {
   border: none;
   background: transparent;

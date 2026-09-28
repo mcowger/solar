@@ -307,7 +307,15 @@ export function getAttachmentImageSource(
 function AttachmentChip({ removable }: { removable?: boolean }) {
 	const attachment = useAuiState((s) => s.attachment);
 	if (!attachment) return null;
-	const imageSource = getAttachmentImageSource(attachment);
+	const uploadProgress =
+		attachment.status.type === "running"
+			? attachment.status.progress
+			: undefined;
+	const failed = attachment.status.type === "incomplete";
+	const imageSource =
+		uploadProgress === undefined && !failed
+			? getAttachmentImageSource(attachment)
+			: undefined;
 	const downloadHref =
 		!removable && attachment.id
 			? `/api/attachments/${attachment.id}`
@@ -329,6 +337,17 @@ function AttachmentChip({ removable }: { removable?: boolean }) {
 			<span className="solar-attachment-name">
 				<AttachmentPrimitive.Name />
 			</span>
+			{uploadProgress !== undefined && (
+				<span className="solar-attachment-progress">
+					<progress
+						className="progress progress-primary w-16"
+						value={uploadProgress}
+						max={100}
+					/>
+					{uploadProgress}%
+				</span>
+			)}
+			{failed && <span className="solar-attachment-failed">Upload failed</span>}
 			{removable && (
 				<AttachmentPrimitive.Remove
 					className="solar-attachment-remove"
