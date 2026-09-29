@@ -110,5 +110,7 @@ export function buildFrpcArgs(options: FrpcProxyOptions): string[] {
 		String(options.localPort),
 		"--sd",
 		options.subdomain,
+		"--host-header-rewrite",
+		"localhost",
 	];
 }

@@ -67,6 +67,8 @@ describe("frpc helpers", () => {
 			"3456",
 			"--sd",
 			"solar-worktree",
+			"--host-header-rewrite",
+			"localhost",
 		]);
 	});
 
