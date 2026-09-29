@@ -2,7 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { writeXlsx } from "openjsxl";
 
 const files = new Map<string, Uint8Array>();
-const v2AttachmentRows = new Map<
+const attachmentRows = new Map<
 	string,
 	{ storageKey: string; userId: string }
 >();
@@ -17,8 +17,8 @@ function selectQuery(table: string) {
 			return query;
 		},
 		execute: async () => {
-			if (table !== "v2_attachment") return [];
-			return [...v2AttachmentRows.values()].filter((row) =>
+			if (table !== "attachment") return [];
+			return [...attachmentRows.values()].filter((row) =>
 				where.every(([column, value]) =>
 					column === "userId" ? row.userId === value : true,
 				),
@@ -57,7 +57,7 @@ const attachments = await import("./attachments");
 
 afterEach(() => {
 	files.clear();
-	v2AttachmentRows.clear();
+	attachmentRows.clear();
 });
 
 describe("attachments", () => {
@@ -166,10 +166,10 @@ describe("attachments", () => {
 		expect(files.has("/user-1/remove")).toBe(false);
 	});
 
-	test("frees every v2 attachment file owned by a user", async () => {
-		v2AttachmentRows.set("a1", { storageKey: "user-1/a1", userId: "user-1" });
-		v2AttachmentRows.set("a2", { storageKey: "user-1/a2", userId: "user-1" });
-		v2AttachmentRows.set("a3", { storageKey: "user-2/a3", userId: "user-2" });
+	test("frees every attachment file owned by a user", async () => {
+		attachmentRows.set("a1", { storageKey: "user-1/a1", userId: "user-1" });
+		attachmentRows.set("a2", { storageKey: "user-1/a2", userId: "user-1" });
+		attachmentRows.set("a3", { storageKey: "user-2/a3", userId: "user-2" });
 		files.set("/user-1/a1", new Uint8Array([1]));
 		files.set("/user-1/a2", new Uint8Array([2]));
 		files.set("/user-2/a3", new Uint8Array([3]));

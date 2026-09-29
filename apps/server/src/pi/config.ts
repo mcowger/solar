@@ -18,16 +18,8 @@ function positiveIntEnv(name: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+/** Chat engine is always pi — the session JSONL is canonical. */
 export const piConfig = {
-	/** Chat engine: pi by default — chat-v2 is the legacy fallback allowed only
-	 * via an explicit SOLAR_CHAT_ENGINE=chat-v2 opt-out. Read dynamically so
-	 * tests can flip it per file without module-cache pain. */
-	get enabled(): boolean {
-		const raw = process.env.SOLAR_CHAT_ENGINE;
-		if (!raw) return true;
-		return raw.trim().toLowerCase() !== "chat-v2";
-	},
-
 	/** Root of pi's agent state (auth.json, models.json, sessions/). */
 	agentDir: resolve(
 		process.env.SOLAR_PI_AGENT_DIR ?? join(dataRoot(), "pi-agent"),

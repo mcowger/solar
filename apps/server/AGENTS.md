@@ -21,12 +21,10 @@ Fresh DB automatically seeds `admin@solar.local` / `password` + Dev API key (pri
   authentication state and should be treated as sensitive.
 
 ## Chat & Generation
-- **Engine**: chat runs on the pi engine (`src/pi/`): one `pi --mode rpc` child process per actively-generating conversation; session JSONL under `${SOLAR_PI_AGENT_DIR}/sessions/<conversationId>` is canonical. There is no chat-v2 generation engine — surviving chat-v2 modules (`chat-v2/db/repository.ts` + siblings) are the migration/export archive layer only.
+- **Engine**: chat runs on the pi engine (`src/pi/`): one `pi --mode rpc` child process per actively-generating conversation; session JSONL under `${SOLAR_PI_AGENT_DIR}/sessions/<conversationId>` is canonical. Conversation metadata (ownership, folders/tags, attachments, settings) lives in the `conversation`/`folder`/`tag`/`attachment` tables via `src/conversations/repository.ts`.
 - **Decoupled execution**: generation streaming is owned by the pi child process; SSE disconnect does not cancel generation; use `POST /api/chat/stop` (pi `abort`).
 - **Tools/MCP/skills**: resolved server-side and injected into the pi child via `pi/bridge/extension.ts` + the loopback `/internal/pi-bridge/*` endpoints.
-- **Legacy import**: Use the root `scripts/import-chat-v2-to-pi.ts` script to
-  pre-warm archived chat-v2 conversations. It uses the same
-  `DATABASE_PATH`/`SOLAR_PI_AGENT_DIR` environment as the server.
+- **History backup/restore**: `admin.history.export` / `admin.history.import` (via `bun run solar history …`) move pi-native bundles; the bundle format is versioned in `src/history/bundle.ts`.
 
 ## Tests
 - **Isolation required**: ALWAYS run via `bun run test:server` (uses `--isolate`). Bare `bun test` leaks `mock.module` across files.

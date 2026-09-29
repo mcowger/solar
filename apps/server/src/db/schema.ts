@@ -9,22 +9,6 @@
  */
 import type { Generated } from "kysely";
 import type { Apikey } from "./types.generated";
-import type {
-	V2AttachmentTable,
-	V2ContextCompactionJobTable,
-	V2ContextCompactionTable,
-	V2ConversationMcpServerTable,
-	V2ConversationMessageTable,
-	V2ConversationTable,
-	V2ConversationTagTable,
-	V2ConversationTurnTable,
-	V2FolderTable,
-	V2GenerationEventTable,
-	V2GenerationTable,
-	V2MessageAttachmentTable,
-	V2TagTable,
-	V2VoiceTurnTable,
-} from "../chat-v2/db/schema";
 
 export interface AppMetaTable {
 	key: string;
@@ -32,6 +16,11 @@ export interface AppMetaTable {
 	updatedAt: Generated<string>;
 }
 
+/**
+ * Live conversation metadata. Transcript history lives in pi session JSONL
+ * under ${SOLAR_PI_AGENT_DIR}; this row is identity, ownership, model
+ * selection, and UI settings only.
+ */
 export interface ConversationTable {
 	id: string;
 	/** FK -> Better Auth `user.id` (same solar.db). */
@@ -39,22 +28,70 @@ export interface ConversationTable {
 	title: string;
 	/** FK -> `folder.id`; null = unfiled. */
 	folderId: string | null;
-	/** Per-conversation model selection (M3); null = resolve default at send time. */
+	/** Per-conversation model selection; null = resolve default at send time. */
 	provider: string | null;
 	endpointId: string | null;
 	modelId: string | null;
 	modelApi: string | null;
-	/** Generation params snapshotted from the preset chosen at conversation start. */
 	systemPrompt: string | null;
-	presetReasoningEffort: string | null;
 	reasoningEffort: string | null;
 	reasoningSummary: Generated<number>;
 	verbosity: string | null;
-	presetVerbosity: string | null;
 	displayMode: string | null;
 	autoExecuteTools: Generated<number>;
 	createdAt: Generated<string>;
 	updatedAt: Generated<string>;
+}
+
+export interface FolderTable {
+	id: string;
+	userId: string;
+	name: string;
+	createdAt: Generated<string>;
+}
+
+export interface TagTable {
+	id: string;
+	userId: string;
+	name: string;
+	createdAt: Generated<string>;
+}
+
+export interface ConversationTagTable {
+	conversationId: string;
+	tagId: string;
+}
+
+/** Uploaded file metadata; bytes live on disk via Mirage (see chat/attachments). */
+export interface AttachmentTable {
+	id: string;
+	userId: string;
+	storageKey: string;
+	filename: string;
+	mimeType: string;
+	kind: string;
+	byteSize: number;
+	sha256: string;
+	width: number | null;
+	height: number | null;
+	pageCount: number | null;
+	createdAt: Generated<string>;
+}
+
+/**
+ * Attachment ↔ pi session entry linkage. `messageId` is a pi session entry
+ * id (plain text, no FK — session files are not SQL rows).
+ */
+export interface MessageAttachmentTable {
+	messageId: string;
+	attachmentId: string;
+	ordinal: number;
+}
+
+export interface ConversationMcpServerTable {
+	conversationId: string;
+	serverId: string;
+	enabled: Generated<number>;
 }
 
 export interface McpServerTable {
@@ -72,12 +109,6 @@ export interface McpServerTable {
 
 export interface UserMcpServerPreferenceTable {
 	userId: string;
-	serverId: string;
-	enabled: Generated<number>;
-}
-
-export interface ConversationMcpServerTable {
-	conversationId: string;
 	serverId: string;
 	enabled: Generated<number>;
 }
@@ -101,6 +132,9 @@ export interface PresetTable {
 	createdAt: Generated<string>;
 }
 
+/** Uploaded file kind: image, text, or document. */
+export type AttachmentKind = "image" | "text" | "document";
+
 /** Admin-owned, global provider credentials + model allowlist (M3). */
 export interface ProviderConfigTable {
 	/** Provider id, e.g. "openai" | "anthropic" | "openrouter". */
@@ -116,66 +150,6 @@ export interface ProviderConfigTable {
 	updatedAt: Generated<string>;
 }
 
-export interface FolderTable {
-	id: string;
-	userId: string;
-	name: string;
-	createdAt: Generated<string>;
-}
-
-export interface TagTable {
-	id: string;
-	userId: string;
-	name: string;
-	createdAt: Generated<string>;
-}
-
-export interface ConversationTagTable {
-	conversationId: string;
-	tagId: string;
-}
-
-export type MessageRole = "user" | "assistant";
-export type MessageStatus = "complete" | "generating" | "error";
-
-export interface MessageTable {
-	id: string;
-	conversationId: string;
-	role: MessageRole;
-	/** Plain text, for search and quick reconstruction. */
-	text: string;
-	/** pi-native message parts as JSON (full fidelity on reload). */
-	parts: string | null;
-	status: MessageStatus;
-	model: string | null;
-	inputTokens: number | null;
-	outputTokens: number | null;
-	createdAt: Generated<string>;
-}
-
-export type AttachmentKind = "image" | "text" | "document";
-
-/**
- * Uploaded file (M3): stored on disk via Mirage, never locally parsed. Rows are
- * created on upload (`messageId` null) and linked to the message they're sent
- * with; unlinked rows are orphaned uploads pending removal or send.
- */
-export interface AttachmentTable {
-	id: string;
-	userId: string;
-	messageId: string | null;
-	filename: string;
-	mimeType: string;
-	kind: AttachmentKind;
-	byteSize: number;
-	width: number | null;
-	height: number | null;
-	pageCount: number | null;
-	extractedTextChars: number | null;
-	storageKey: string;
-	createdAt: Generated<string>;
-}
-
 /** Per-user preferences (M3): personal default model and preset. */
 export interface UserSettingTable {
 	userId: string;
@@ -186,62 +160,6 @@ export interface UserSettingTable {
 	defaultPresetId: string | null;
 	defaultDisplayMode: string | null;
 	updatedAt: Generated<string>;
-}
-
-export type ContextJobStatus = "idle" | "queued" | "running" | "failed";
-
-/** Mutable working-memory artifact for one canonical conversation. */
-export interface ConversationContextStateTable {
-	conversationId: string;
-	/** Incremented when the transcript changes; background work must match it. */
-	revision: Generated<number>;
-	summary: string | null;
-	summaryRevision: number | null;
-	/** First raw message retained after the active rolling summary. */
-	retainedMessageBoundaryId: string | null;
-	jobStatus: Generated<ContextJobStatus>;
-	jobId: string | null;
-	jobAttempt: Generated<number>;
-	jobError: string | null;
-	jobUpdatedAt: string | null;
-	createdAt: Generated<string>;
-	updatedAt: Generated<string>;
-}
-
-/** Opaque pi-native intermediate steps for a visible assistant message. */
-export interface GenerationStepTable {
-	messageId: string;
-	sequence: number;
-	data: string;
-	createdAt: Generated<string>;
-}
-
-export type ProviderCallPurpose = "chat" | "tool_loop" | "title" | "compaction";
-
-/** Per-provider-call accounting. Deliberately contains no prompt or response content. */
-export interface ProviderCallTelemetryTable {
-	id: string;
-	conversationId: string | null;
-	messageId: string | null;
-	provider: string;
-	api: string;
-	modelId: string;
-	purpose: ProviderCallPurpose;
-	inputTokens: number | null;
-	outputTokens: number | null;
-	cacheReadTokens: number | null;
-	cacheWriteTokens: number | null;
-	estimatedCostMicros: number | null;
-	latencyMs: number | null;
-	contextPolicySource: string | null;
-	contextPolicyEnabled: number | null;
-	/** JSON snapshot of numeric context-policy settings; never prompt content. */
-	contextPolicyState: string | null;
-	overflowed: Generated<number>;
-	retryAttempt: Generated<number>;
-	compactionTokensBefore: number | null;
-	compactionTokensAfter: number | null;
-	createdAt: Generated<string>;
 }
 
 /** Cached domain categories from Cloudflare Radar. A null category is a cached miss. */
@@ -344,7 +262,6 @@ export interface Database {
 	app_meta: AppMetaTable;
 	user_setting: UserSettingTable;
 	conversation: ConversationTable;
-	message: MessageTable;
 	folder: FolderTable;
 	tag: TagTable;
 	conversation_tag: ConversationTagTable;
@@ -354,27 +271,11 @@ export interface Database {
 	mcp_server: McpServerTable;
 	user_mcp_server_preference: UserMcpServerPreferenceTable;
 	conversation_mcp_server: ConversationMcpServerTable;
-	conversation_context_state: ConversationContextStateTable;
-	generation_step: GenerationStepTable;
-	provider_call_telemetry: ProviderCallTelemetryTable;
+	message_attachment: MessageAttachmentTable;
 	source_category: SourceCategoryTable;
 	skill: SkillTable;
 	impersonation_session: ImpersonationSessionTable;
 	image_workspace: ImageWorkspaceTable;
 	image_asset: ImageAssetTable;
 	image_attempt: ImageAttemptTable;
-	v2_conversation: V2ConversationTable;
-	v2_folder: V2FolderTable;
-	v2_tag: V2TagTable;
-	v2_conversation_tag: V2ConversationTagTable;
-	v2_conversation_turn: V2ConversationTurnTable;
-	v2_conversation_message: V2ConversationMessageTable;
-	v2_attachment: V2AttachmentTable;
-	v2_message_attachment: V2MessageAttachmentTable;
-	v2_generation: V2GenerationTable;
-	v2_generation_event: V2GenerationEventTable;
-	v2_voice_turn: V2VoiceTurnTable;
-	v2_context_compaction: V2ContextCompactionTable;
-	v2_context_compaction_job: V2ContextCompactionJobTable;
-	v2_conversation_mcp_server: V2ConversationMcpServerTable;
 }

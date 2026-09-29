@@ -38,8 +38,8 @@ mock.module("../../chat/catalog", () => ({
 	}),
 }));
 mock.module("../../chat/tools", () => ({ toolProvider: {} }));
-mock.module("../../chat-v2/db/repository", () => ({
-	chatV2Repository: {
+mock.module("../../conversations/repository", () => ({
+	conversationRepository: {
 		getConversation: async () => ({
 			provider: "Plexus",
 			endpointId: "endpoint",

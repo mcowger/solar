@@ -302,7 +302,7 @@ function describeAvailable(models: PiModel[]) {
 }
 
 // ---------------------------------------------------------------------------
-// Model capability reads — from pi's models.json (0.84 grounded data), not
+// Model capability reads — from pi's models.json (0.99 grounded data), not
 // Solar's pinned pi-ai catalog snapshot.
 
 const THINKING_LEVELS = [
@@ -327,7 +327,6 @@ function readPiModelEntry(selection: {
 	endpointId: string;
 	modelId: string;
 }): PiModelJsonEntry | null {
-	if (!piConfig.enabled) return null;
 	const path = join(piConfig.agentDir, "models.json");
 	if (!existsSync(path)) return null;
 	try {

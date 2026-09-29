@@ -1,4 +1,4 @@
-import type { ImagesModel } from "@earendil-works/pi-ai";
+import type { ImageModel } from "@earendil-works/pi-ai";
 import {
 	listAvailableImageModels,
 	resolveImageModel,
@@ -58,9 +58,10 @@ export interface ImageGenerationServiceDependencies {
 	listAvailableImageModels?: typeof listAvailableImageModels;
 }
 
-const DEFAULT_MOCK_MODEL: ImagesModel<"openrouter-images"> = {
+const DEFAULT_MOCK_MODEL: ImageModel<"openrouter-images"> = {
 	id: "mock-image",
 	name: "Solar mock image",
+	type: "image",
 	api: "openrouter-images",
 	provider: "openrouter",
 	baseUrl: "",
@@ -295,7 +296,7 @@ export class ImageGenerationService {
 		modelId: string,
 		input: StartGenerationInput,
 	): Promise<{
-		model: ImagesModel<"openrouter-images">;
+		model: ImageModel<"openrouter-images">;
 		modelId: string;
 		descriptor: ImageModelDescriptor | null;
 		selection: ModelSelection;
@@ -360,7 +361,7 @@ export class ImageGenerationService {
 	private async runAttempt(
 		userId: string,
 		attempt: ImageAttemptRecord,
-		model: ImagesModel<"openrouter-images">,
+		model: ImageModel<"openrouter-images">,
 		apiKey: string,
 	): Promise<void> {
 		const claimed = await this.repository.claimAttempt(userId, attempt.id);

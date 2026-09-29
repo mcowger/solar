@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { createV2TestDatabase } from "../chat-v2/db/fixtures";
+import { createTestDatabase } from "../conversations/fixtures";
 
 const USER_ID = "context-user";
-const database = await createV2TestDatabase();
+const database = await createTestDatabase();
 database.seedUser(USER_ID);
 
 mock.module("../db", () => ({ db: database.db, sqlite: database.sqlite }));
@@ -33,11 +33,10 @@ mock.module("../logger", () => ({
 	getLogLevel: () => "info",
 	setLogLevel: () => {},
 }));
-mock.module("../pi/migration", () => ({
+mock.module("../pi/sessions", () => ({
 	attachmentMarker: (ids: string[]) =>
 		`<solar-attachments ids="${ids.join(",")}"/>`,
 	isPiSessionReady: (conversationId: string) => conversationId === "pi-backed",
-	importConversation: async () => null,
 	piSessionFile: () => null,
 }));
 mock.module("../chat/catalog", () => ({
@@ -95,7 +94,7 @@ mock.module("../chat/catalog", () => ({
 }));
 
 const { appRouter } = await import("./router");
-const { chatV2Repository } = await import("../chat-v2/db/repository");
+const { conversationRepository } = await import("../conversations/repository");
 const { DEFAULT_CONTEXT_GLOBAL_SETTINGS, parseContextGlobalSettings } =
 	await import("../context/settings");
 
@@ -141,11 +140,11 @@ describe("context management metadata", () => {
 	});
 
 	test("keeps pi-backed conversations when creating a new chat", async () => {
-		await chatV2Repository.createConversation(USER_ID, {
+		await conversationRepository.createConversation(USER_ID, {
 			id: "pi-backed",
 			title: "Persisted chat",
 		});
-		await chatV2Repository.createConversation(USER_ID, {
+		await conversationRepository.createConversation(USER_ID, {
 			id: "empty-draft",
 			title: "Empty draft",
 		});
@@ -157,14 +156,17 @@ describe("context management metadata", () => {
 			"pi-backed",
 		);
 		await expect(
-			chatV2Repository.getConversation(USER_ID, "empty-draft"),
+			conversationRepository.getConversation(USER_ID, "empty-draft"),
 		).rejects.toThrow();
 	});
 
 	test("returns idle context status for a conversation with no pi session", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "Chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "Chat",
+			},
+		);
 		const caller = appRouter.createCaller({ user: { id: USER_ID } } as never);
 
 		await expect(
@@ -179,9 +181,12 @@ describe("context management metadata", () => {
 	});
 
 	test("rejects context status for a conversation the user does not own", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "Chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "Chat",
+			},
+		);
 		const caller = appRouter.createCaller({
 			user: { id: "someone-else" },
 		} as never);
@@ -192,9 +197,12 @@ describe("context management metadata", () => {
 	});
 
 	test("rejects compact for a conversation the user does not own", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "Chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "Chat",
+			},
+		);
 		const caller = appRouter.createCaller({
 			user: { id: "someone-else" },
 		} as never);

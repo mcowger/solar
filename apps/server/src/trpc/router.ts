@@ -58,10 +58,16 @@ import {
 } from "../chat/pasteSettings";
 import { SourceCategoryResolver } from "../sources/categories";
 import { parseSkill } from "../chat/skills";
-import { chatV2Repository } from "../chat-v2/db/repository";
+import { conversationRepository } from "../conversations/repository";
 import { piCompact, piDeleteConversation } from "../pi/engine";
-import { importConversation, isPiSessionReady } from "../pi/migration";
-import { buildPiExportBundle } from "../pi/export";
+import { isPiSessionReady } from "../pi/sessions";
+import { buildHistoryBundle } from "../history/export";
+import {
+	executeHistoryImport,
+	HistoryImportValidationError,
+	planHistoryImport,
+} from "../history/import";
+import { HISTORY_BUNDLE_FORMAT, type HistoryBundle } from "../history/bundle";
 import { piModelCapabilities, syncPiModelConfig } from "../pi/models";
 import {
 	loadPiMessages,
@@ -70,14 +76,6 @@ import {
 	piConversationUsage,
 	piLatestCompaction,
 } from "../pi/turns";
-import {
-	ChatV2ExportService,
-	type ChatV2ExportBundle,
-} from "../chat-v2/export";
-import {
-	ChatV2ImportService,
-	ChatV2ImportValidationError,
-} from "../chat-v2/import";
 import {
 	ImageNotFoundError,
 	ImageWorkspaceBusyError,
@@ -108,9 +106,9 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
 const conversationRouter = router({
 	list: protectedProcedure.query(async ({ ctx }) => {
 		const [conversations, tags] = await Promise.all([
-			chatV2Repository.listConversations(ctx.user.id),
+			conversationRepository.listConversations(ctx.user.id),
 			db
-				.selectFrom("v2_tag")
+				.selectFrom("tag")
 				.select(["id", "name"])
 				.where("userId", "=", ctx.user.id)
 				.execute(),
@@ -144,15 +142,18 @@ const conversationRouter = router({
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const persistedConversationIds = (
-				await chatV2Repository.listConversations(ctx.user.id)
-			)
-				.filter((conversation) => isPiSessionReady(conversation.id))
-				.map((conversation) => conversation.id);
-			await chatV2Repository.deleteAbandonedConversations(
+			// Discard abandoned drafts (metadata rows with no pi session) so
+			// they never accumulate.
+			const conversations = await conversationRepository.listConversations(
 				ctx.user.id,
-				persistedConversationIds,
 			);
+			for (const conversation of conversations) {
+				if (!isPiSessionReady(conversation.id)) {
+					await conversationRepository
+						.deleteConversation(ctx.user.id, conversation.id)
+						.catch(() => {});
+				}
+			}
 			const presetId =
 				input.presetId ?? (await getUserDefaultPreset(ctx.user.id));
 			// Snapshot the preset (model + system prompt + reasoning params) onto the
@@ -209,7 +210,7 @@ const conversationRouter = router({
 				}
 			}
 			const defaultDisplayMode = await getUserDefaultDisplayMode(ctx.user.id);
-			const conversation = await chatV2Repository.createConversation(
+			const conversation = await conversationRepository.createConversation(
 				ctx.user.id,
 				{
 					title: input.title ?? "New conversation",
@@ -227,7 +228,7 @@ const conversationRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.renameConversation(
+				await conversationRepository.renameConversation(
 					ctx.user.id,
 					input.id,
 					input.title,
@@ -244,7 +245,7 @@ const conversationRouter = router({
 				if (isPiSessionReady(input.id)) {
 					await piDeleteConversation(input.id);
 				}
-				await chatV2Repository.deleteConversation(ctx.user.id, input.id);
+				await conversationRepository.deleteConversation(ctx.user.id, input.id);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
@@ -254,7 +255,7 @@ const conversationRouter = router({
 		.input(z.object({ conversationId: z.string() }))
 		.query(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.getConversation(
+				await conversationRepository.getConversation(
 					ctx.user.id,
 					input.conversationId,
 				);
@@ -289,7 +290,7 @@ const conversationRouter = router({
 		.query(async ({ ctx, input }) => {
 			const conversation = await (async () => {
 				try {
-					return await chatV2Repository.getConversation(
+					return await conversationRepository.getConversation(
 						ctx.user.id,
 						input.conversationId,
 					);
@@ -312,8 +313,8 @@ const conversationRouter = router({
 					? undefined
 					: await resolveModel(selection);
 			const contextWindowTokens = resolved?.model.contextWindow ?? 128_000;
-			// Usage comes from the session file's own usage blocks (plan: Usage &
-			// cost accounting); provider_call_telemetry is retired with chat-v2.
+			// Usage comes from the session file's own usage blocks; there is no
+			// server-side telemetry table.
 			const usage = piConversationUsage(input.conversationId);
 			return {
 				contextTokens: usage.lastConversationTokens,
@@ -327,7 +328,7 @@ const conversationRouter = router({
 		.input(z.object({ conversationId: z.string() }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.getConversation(
+				await conversationRepository.getConversation(
 					ctx.user.id,
 					input.conversationId,
 				);
@@ -335,20 +336,12 @@ const conversationRouter = router({
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
 			// pi compacts in its own process (auto or on demand); the session file
-			// is the only recording of it. A conversation that has migrated needs
-			// the pi session file; if we get here with only archived chat-v2 rows,
-			// migrate first so manual compaction always targets the live engine.
+			// is the only recording of it.
 			if (!isPiSessionReady(input.conversationId)) {
-				const migrated = await importConversation(
-					ctx.user.id,
-					input.conversationId,
-				).catch(() => null);
-				if (!migrated) {
-					throw new TRPCError({
-						code: "BAD_REQUEST",
-						message: "Conversation cannot be compacted (migration failed)",
-					});
-				}
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "Conversation has no pi session to compact",
+				});
 			}
 			await piCompact({
 				userId: ctx.user.id,
@@ -384,12 +377,16 @@ const conversationRouter = router({
 					message: "model unavailable",
 				});
 			try {
-				await chatV2Repository.setConversationModel(ctx.user.id, input.id, {
-					provider: input.provider,
-					endpointId: input.endpointId,
-					modelId: input.modelId,
-					modelApi: input.api,
-				});
+				await conversationRepository.setConversationModel(
+					ctx.user.id,
+					input.id,
+					{
+						provider: input.provider,
+						endpointId: input.endpointId,
+						modelId: input.modelId,
+						modelApi: input.api,
+					},
+				);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
@@ -409,7 +406,10 @@ const conversationRouter = router({
 		.mutation(async ({ ctx, input }) => {
 			const conversation = await (async () => {
 				try {
-					return await chatV2Repository.getConversation(ctx.user.id, input.id);
+					return await conversationRepository.getConversation(
+						ctx.user.id,
+						input.id,
+					);
 				} catch {
 					throw new TRPCError({ code: "NOT_FOUND" });
 				}
@@ -445,7 +445,7 @@ const conversationRouter = router({
 					message: "verbosity unavailable",
 				});
 			}
-			await chatV2Repository.setConversationGenerationSettings(
+			await conversationRepository.setConversationGenerationSettings(
 				ctx.user.id,
 				input.id,
 				{
@@ -459,7 +459,7 @@ const conversationRouter = router({
 		.input(z.object({ id: z.string(), folderId: z.string().nullable() }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.setConversationFolder(
+				await conversationRepository.setConversationFolder(
 					ctx.user.id,
 					input.id,
 					input.folderId,
@@ -473,7 +473,7 @@ const conversationRouter = router({
 		.input(z.object({ id: z.string(), tagIds: z.array(z.string()) }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.setConversationTags(
+				await conversationRepository.setConversationTags(
 					ctx.user.id,
 					input.id,
 					input.tagIds,
@@ -486,48 +486,18 @@ const conversationRouter = router({
 	search: protectedProcedure
 		.input(z.object({ query: z.string().trim().min(1) }))
 		.query(async ({ ctx, input }) => {
-			const conversations = await chatV2Repository.listConversations(
+			const conversations = await conversationRepository.listConversations(
 				ctx.user.id,
 			);
 			const needle = input.query.toLocaleLowerCase();
 			const matchedIds = new Set<string>();
-			// 1. Migrated conversations: scan the pi session files directly.
+			// Scan the pi session files directly.
 			for (const conversation of conversations) {
 				if (
 					isPiSessionReady(conversation.id) &&
 					piConversationMatchesQuery(conversation.id, input.query)
 				) {
 					matchedIds.add(conversation.id);
-				}
-			}
-			// 2. Still-unmigrated conversations (archived chat-v2 data): plain
-			//    ILIKE over the frozen canonical table.
-			const unmigrated = conversations.filter(
-				(conversation) => !isPiSessionReady(conversation.id),
-			);
-			for (const conversation of unmigrated) {
-				if (matchedIds.has(conversation.id)) continue;
-				const rows = await chatV2Repository.listCanonicalMessages(
-					ctx.user.id,
-					conversation.id,
-				);
-				for (const record of rows) {
-					const text =
-						typeof record.message.content === "string"
-							? record.message.content
-							: (
-									record.message.content as Array<{
-										type?: string;
-										text?: string;
-									}>
-								)
-									.filter((part) => part.type === "text")
-									.map((part) => part.text ?? "")
-									.join("\n");
-					if (text.toLocaleLowerCase().includes(needle)) {
-						matchedIds.add(conversation.id);
-						break;
-					}
 				}
 			}
 			return conversations
@@ -543,18 +513,14 @@ const conversationRouter = router({
 		.input(z.object({ conversationId: z.string() }))
 		.query(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.getConversation(
+				await conversationRepository.getConversation(
 					ctx.user.id,
 					input.conversationId,
 				);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
-			// Lazily migrate archived chat-v2 conversations on first open so the
-			// transcript is always served from the pi session file.
-			if (!isPiSessionReady(input.conversationId)) {
-				await importConversation(ctx.user.id, input.conversationId);
-			}
+			// Transcript is always served from the pi session file.
 			return loadPiMessages(ctx.user.id, input.conversationId);
 		}),
 
@@ -565,7 +531,7 @@ const conversationRouter = router({
 			const rawDisplayMode = await (async () => {
 				try {
 					return (
-						await chatV2Repository.getConversation(
+						await conversationRepository.getConversation(
 							ctx.user.id,
 							input.conversationId,
 						)
@@ -593,7 +559,7 @@ const conversationRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.setConversationDisplayMode(
+				await conversationRepository.setConversationDisplayMode(
 					ctx.user.id,
 					input.conversationId,
 					input.displayMode,
@@ -884,7 +850,9 @@ const adminRouter = router({
 		chatIds: adminProcedure
 			.input(z.object({ userId: z.string() }))
 			.query(async ({ input }) => {
-				const chats = await chatV2Repository.listConversations(input.userId);
+				const chats = await conversationRepository.listConversations(
+					input.userId,
+				);
 				return chats.map((chat) => chat.id);
 			}),
 
@@ -892,10 +860,7 @@ const adminRouter = router({
 			.input(z.object({ chatId: z.string(), userId: z.string() }))
 			.query(async ({ input }) => {
 				try {
-					return new ChatV2ExportService(db, chatV2Repository).build(
-						input.userId,
-						input.chatId,
-					);
+					return await buildHistoryBundle(input.userId, input.chatId);
 				} catch {
 					throw new TRPCError({ code: "NOT_FOUND" });
 				}
@@ -908,23 +873,23 @@ const adminRouter = router({
 				z.object({ userId: z.string(), conversationId: z.string().optional() }),
 			)
 			.query(async ({ input }) => {
-				const service = new ChatV2ExportService(db, chatV2Repository);
-				// Migrated conversations export from the pi session file; archived
-				// chat-v2 conversations from their frozen canonical rows.
+				// Conversations export from the pi session file; metadata-only
+				// conversations (no session yet) are skipped.
 				const buildOne = (conversationId: string) =>
-					isPiSessionReady(conversationId)
-						? buildPiExportBundle(input.userId, conversationId)
-						: service.build(input.userId, conversationId);
+					buildHistoryBundle(input.userId, conversationId);
 				if (input.conversationId) return buildOne(input.conversationId);
-				const conversations = await chatV2Repository.listConversations(
+				const conversations = await conversationRepository.listConversations(
 					input.userId,
 				);
+				const ready = conversations.filter((conversation) =>
+					isPiSessionReady(conversation.id),
+				);
 				return {
-					format: "solar-chat-v2-history-bundle" as const,
+					format: HISTORY_BUNDLE_FORMAT,
 					exportedAt: new Date().toISOString(),
 					userId: input.userId,
 					conversations: await Promise.all(
-						conversations.map((conversation) => buildOne(conversation.id)),
+						ready.map((conversation) => buildOne(conversation.id)),
 					),
 				};
 			}),
@@ -938,27 +903,26 @@ const adminRouter = router({
 				}),
 			)
 			.mutation(async ({ input }) => {
-				const importer = new ChatV2ImportService(db);
 				try {
 					const history = input.history as {
 						format?: string;
-						conversations?: ChatV2ExportBundle[];
-					} & ChatV2ExportBundle;
+						conversations?: HistoryBundle[];
+					} & HistoryBundle;
 					const bundles =
-						history.format === "solar-chat-v2-history-bundle"
+						history.format === HISTORY_BUNDLE_FORMAT
 							? (history.conversations ?? [])
 							: [history];
 					const results = [];
 					for (const bundle of bundles) {
-						const plan = await importer.plan(bundle, input.userId, {
+						const plan = await planHistoryImport(bundle, input.userId, {
 							remap: input.remap,
 						});
-						const result = await importer.execute(plan);
-						results.push({ ...result, ...plan.willCreate });
+						const result = await executeHistoryImport(plan);
+						results.push(result);
 					}
 					return bundles.length === 1 ? results[0] : { conversations: results };
 				} catch (error) {
-					if (error instanceof ChatV2ImportValidationError)
+					if (error instanceof HistoryImportValidationError)
 						throw new TRPCError({
 							code: "BAD_REQUEST",
 							message: error.message,
@@ -1392,9 +1356,8 @@ const adminRouter = router({
 			sqlite.query("DELETE FROM user WHERE id = ?").run(input.userId);
 		}),
 
-	// Usage is derived from pi session files (plan: Usage & cost accounting);
-	// archived chat-v2 conversations have no pi file and are skipped until
-	// touched (per-conversation lazy migration).
+	// Usage is derived from pi session files; conversations without a pi
+	// session file have no usage to report.
 	usage: adminProcedure.query(async () => {
 		// Better Auth's user table lives outside the typed app schema.
 		const userRows = sqlite
@@ -1402,7 +1365,7 @@ const adminRouter = router({
 			.all() as Array<{ userId: string; name: string; email: string }>;
 		const usersById = new Map(userRows.map((row) => [row.userId, row]));
 		const conversations = await db
-			.selectFrom("v2_conversation")
+			.selectFrom("conversation")
 			.select(["id", "userId", "provider", "modelId"])
 			.execute();
 		const buckets = new Map<
@@ -1446,8 +1409,8 @@ const adminRouter = router({
 	}),
 });
 
-/** Model capabilities for request time: pi's models.json (0.84 data) is
- * authoritative when the model is provisioned; falls back to the legacy
+/** Model capabilities for request time: pi's models.json is
+ * authoritative when the model is provisioned; falls back to the
  * derivation only for provisioning-time lookups against not-yet-enabled
  * models (admin catalog browsing). */
 async function effectiveModelCapabilities(selection: {
@@ -1511,7 +1474,7 @@ const modelRouter = router({
 		.query(async ({ ctx, input }) => {
 			const convo = await (async () => {
 				try {
-					const record = await chatV2Repository.getConversation(
+					const record = await conversationRepository.getConversation(
 						ctx.user.id,
 						input.conversationId,
 					);
@@ -2007,14 +1970,15 @@ const mcpRouter = router({
 		.query(async ({ ctx, input }) => {
 			const [conversation, bindings, servers] = await (async () => {
 				try {
-					const conv = await chatV2Repository.getConversation(
+					const conv = await conversationRepository.getConversation(
 						ctx.user.id,
 						input.conversationId,
 					);
-					const bindingRows = await chatV2Repository.listConversationMcpServers(
-						ctx.user.id,
-						input.conversationId,
-					);
+					const bindingRows =
+						await conversationRepository.listConversationMcpServers(
+							ctx.user.id,
+							input.conversationId,
+						);
 					const serverRows = await db
 						.selectFrom("mcp_server")
 						.leftJoin("user_mcp_server_preference", (join) =>
@@ -2073,7 +2037,7 @@ const mcpRouter = router({
 			if (server.userId !== null && server.userId !== ctx.user.id)
 				throw new TRPCError({ code: "FORBIDDEN" });
 			try {
-				await chatV2Repository.setConversationMcpServer(
+				await conversationRepository.setConversationMcpServer(
 					ctx.user.id,
 					input.conversationId,
 					input.serverId,
@@ -2088,7 +2052,7 @@ const mcpRouter = router({
 		.input(z.object({ conversationId: z.string(), enabled: z.boolean() }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.setConversationAutoExecuteTools(
+				await conversationRepository.setConversationAutoExecuteTools(
 					ctx.user.id,
 					input.conversationId,
 					input.enabled,
@@ -2101,13 +2065,13 @@ const mcpRouter = router({
 
 const folderRouter = router({
 	list: protectedProcedure.query(async ({ ctx }) => {
-		return chatV2Repository.listFolders(ctx.user.id);
+		return conversationRepository.listFolders(ctx.user.id);
 	}),
 
 	create: protectedProcedure
 		.input(z.object({ name: z.string().trim().min(1).max(100) }))
 		.mutation(async ({ ctx, input }) => {
-			const folder = await chatV2Repository.createFolder(ctx.user.id, {
+			const folder = await conversationRepository.createFolder(ctx.user.id, {
 				name: input.name,
 			});
 			return { id: folder.id };
@@ -2119,7 +2083,11 @@ const folderRouter = router({
 		)
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.renameFolder(ctx.user.id, input.id, input.name);
+				await conversationRepository.renameFolder(
+					ctx.user.id,
+					input.id,
+					input.name,
+				);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
@@ -2129,7 +2097,7 @@ const folderRouter = router({
 		.input(z.object({ id: z.string() }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.deleteFolder(ctx.user.id, input.id);
+				await conversationRepository.deleteFolder(ctx.user.id, input.id);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}
@@ -2138,19 +2106,19 @@ const folderRouter = router({
 
 const tagRouter = router({
 	list: protectedProcedure.query(async ({ ctx }) => {
-		return chatV2Repository.listTags(ctx.user.id);
+		return conversationRepository.listTags(ctx.user.id);
 	}),
 
 	create: protectedProcedure
 		.input(z.object({ name: z.string().trim().min(1).max(50) }))
 		.mutation(async ({ ctx, input }) => {
 			// Reuse an existing tag of the same name (unique per user).
-			const existing = await chatV2Repository.findTagByName(
+			const existing = await conversationRepository.findTagByName(
 				ctx.user.id,
 				input.name,
 			);
 			if (existing) return { id: existing.id };
-			const tag = await chatV2Repository.createTag(ctx.user.id, {
+			const tag = await conversationRepository.createTag(ctx.user.id, {
 				name: input.name,
 			});
 			return { id: tag.id };
@@ -2160,7 +2128,7 @@ const tagRouter = router({
 		.input(z.object({ id: z.string() }))
 		.mutation(async ({ ctx, input }) => {
 			try {
-				await chatV2Repository.deleteTag(ctx.user.id, input.id);
+				await conversationRepository.deleteTag(ctx.user.id, input.id);
 			} catch {
 				throw new TRPCError({ code: "NOT_FOUND" });
 			}

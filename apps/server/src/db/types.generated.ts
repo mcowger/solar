@@ -61,14 +61,13 @@ export interface AppMeta {
 export interface Attachment {
 	byteSize: number;
 	createdAt: Generated<string>;
-	extractedTextChars: number | null;
 	filename: string;
 	height: number | null;
 	id: string | null;
 	kind: string;
-	messageId: string | null;
 	mimeType: string;
 	pageCount: number | null;
+	sha256: string;
 	storageKey: string;
 	userId: string;
 	width: number | null;
@@ -83,8 +82,6 @@ export interface Conversation {
 	id: string | null;
 	modelApi: string | null;
 	modelId: string | null;
-	presetReasoningEffort: string | null;
-	presetVerbosity: string | null;
 	provider: string | null;
 	reasoningEffort: string | null;
 	reasoningSummary: Generated<number>;
@@ -93,21 +90,6 @@ export interface Conversation {
 	updatedAt: Generated<string>;
 	userId: string;
 	verbosity: string | null;
-}
-
-export interface ConversationContextState {
-	conversationId: string | null;
-	createdAt: Generated<string>;
-	jobAttempt: Generated<number>;
-	jobError: string | null;
-	jobId: string | null;
-	jobStatus: Generated<string>;
-	jobUpdatedAt: string | null;
-	retainedMessageBoundaryId: string | null;
-	revision: Generated<number>;
-	summary: string | null;
-	summaryRevision: number | null;
-	updatedAt: Generated<string>;
 }
 
 export interface ConversationMcpServer {
@@ -128,13 +110,6 @@ export interface Folder {
 	userId: string;
 }
 
-export interface GenerationStep {
-	createdAt: Generated<string>;
-	data: string;
-	messageId: string;
-	sequence: number;
-}
-
 export interface ImageAsset {
 	byteSize: number;
 	createdAt: Generated<string>;
@@ -152,24 +127,24 @@ export interface ImageAsset {
 }
 
 export interface ImageAttempt {
+	api: string;
 	aspectRatio: string | null;
 	costMicros: number | null;
 	createdAt: Generated<string>;
+	endpointId: string;
 	errorMessage: string | null;
 	finishedAt: string | null;
 	id: string | null;
 	modelId: string;
 	prompt: string;
 	provider: string;
-	endpointId: string;
-	api: string;
 	requestKey: string;
 	resolution: string | null;
 	resultAssetId: string | null;
 	retryOfAttemptId: string | null;
 	sourceAssetId: string | null;
 	startedAt: string | null;
-	status: string;
+	status: Generated<string>;
 	usageJson: string | null;
 	userId: string;
 	workspaceId: string;
@@ -186,6 +161,13 @@ export interface ImageWorkspace {
 	userId: string;
 }
 
+export interface ImpersonationSession {
+	adminSessionId: string | null;
+	expiresAt: number;
+	targetUserId: string;
+	updatedAt: number;
+}
+
 export interface McpServer {
 	createdAt: string;
 	enabled: Generated<number>;
@@ -197,17 +179,10 @@ export interface McpServer {
 	userId: string | null;
 }
 
-export interface Message {
-	conversationId: string;
-	createdAt: Generated<string>;
-	id: string | null;
-	inputTokens: number | null;
-	model: string | null;
-	outputTokens: number | null;
-	parts: string | null;
-	role: string;
-	status: Generated<string>;
-	text: Generated<string>;
+export interface MessageAttachment {
+	attachmentId: string;
+	messageId: string;
+	ordinal: number;
 }
 
 export interface Preset {
@@ -224,30 +199,6 @@ export interface Preset {
 	systemPrompt: string | null;
 	userId: string;
 	verbosity: string | null;
-}
-
-export interface ProviderCallTelemetry {
-	api: string;
-	cacheReadTokens: number | null;
-	cacheWriteTokens: number | null;
-	compactionTokensAfter: number | null;
-	compactionTokensBefore: number | null;
-	contextPolicyEnabled: number | null;
-	contextPolicySource: string | null;
-	contextPolicyState: string | null;
-	conversationId: string | null;
-	createdAt: Generated<string>;
-	estimatedCostMicros: number | null;
-	id: string | null;
-	inputTokens: number | null;
-	latencyMs: number | null;
-	messageId: string | null;
-	modelId: string;
-	outputTokens: number | null;
-	overflowed: Generated<number>;
-	provider: string;
-	purpose: string;
-	retryAttempt: Generated<number>;
 }
 
 export interface ProviderConfig {
@@ -340,18 +291,16 @@ export interface DB {
 	app_meta: AppMeta;
 	attachment: Attachment;
 	conversation: Conversation;
-	conversation_context_state: ConversationContextState;
 	conversation_mcp_server: ConversationMcpServer;
 	conversation_tag: ConversationTag;
 	folder: Folder;
-	generation_step: GenerationStep;
 	image_asset: ImageAsset;
 	image_attempt: ImageAttempt;
 	image_workspace: ImageWorkspace;
+	impersonation_session: ImpersonationSession;
 	mcp_server: McpServer;
-	message: Message;
+	message_attachment: MessageAttachment;
 	preset: Preset;
-	provider_call_telemetry: ProviderCallTelemetry;
 	provider_config: ProviderConfig;
 	session: Session;
 	skill: Skill;

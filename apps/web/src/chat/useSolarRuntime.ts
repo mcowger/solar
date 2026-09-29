@@ -182,7 +182,7 @@ export function useSolarRuntime(
 		[queryClient, trpc.conversation.list, upsertAssistant],
 	);
 
-	// The stale-turn force-stop control was a chat-v2 artifact (a streaming
+	// The stale-turn force-stop control was a legacy artifact (a streaming
 	// placeholder row left behind by a crashed process). Under pi there is no
 	// placeholder — the session file only records completed state — so the
 	// state cannot be entered from history anymore and the control is gone.

@@ -305,20 +305,31 @@ token" or "Add to userinfo" enabled, and request whichever scope carries it via
 Sign-ins are PKCE-protected, and when the provider's discovery document
 advertises a JWKS endpoint the ID token's signature and nonce are verified too.
 
-## Migrating legacy chat history
+## Backing up and restoring chat history
 
-Pi session JSONL is the canonical conversation history. Existing chat-v2 rows
-can be imported ahead of first use with the optional bulk pre-warm script:
+Pi session JSONL is the canonical conversation history. Back up SQLite, attachments, and the complete pi agent directory together. To move conversations between instances, export a pi-native history bundle:
 
 ```sh
-bun run scripts/import-chat-v2-to-pi.ts --dry-run
-bun run scripts/import-chat-v2-to-pi.ts
+bun run solar history export --user admin@solar.local --output history.json
+bun run solar history import --user admin@solar.local --input history.json
 ```
 
-Run it with the same `DATABASE_PATH` and `SOLAR_PI_AGENT_DIR` as the server.
-Back up SQLite, attachments, and the complete pi agent directory before an
-import; the normal chat path also imports legacy conversations lazily when they
-are first opened or continued.
+Run with the same `DATABASE_PATH` and `SOLAR_PI_AGENT_DIR` as the server.
+
+> **Pre-029 one-shot:** instances upgrading from a build older than the
+> migration-window cleanup must backfill pi sessions from the archive tables
+> *before* first booting the new build (029 drops those tables). Stop the
+> server, back up, then run:
+>
+> ```sh
+> DATABASE_PATH=/data/solar.db SOLAR_PI_AGENT_DIR=/data/pi-agent \
+>   bun apps/server/scripts/import-archive-to-pi.ts --dry-run
+> DATABASE_PATH=/data/solar.db SOLAR_PI_AGENT_DIR=/data/pi-agent \
+>   bun apps/server/scripts/import-archive-to-pi.ts
+> ```
+>
+> The script is idempotent (skips conversations that already have sessions)
+> and exits 0 with nothing to do once 029 has applied.
 
 ## Deployment
 

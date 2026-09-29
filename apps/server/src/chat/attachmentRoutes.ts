@@ -6,8 +6,7 @@ import {
 	readAttachmentBytes,
 	saveAttachmentFile,
 } from "./attachments";
-import { AttachmentService } from "../chat-v2/attachments";
-import { chatV2Repository } from "../chat-v2/db/repository";
+import { conversationRepository } from "../conversations/repository";
 
 export const attachmentRoutes = new Hono();
 
@@ -36,7 +35,7 @@ attachmentRoutes.post("/", async (c) => {
 			mimeType: file.type || "application/octet-stream",
 			bytes,
 		});
-		await new AttachmentService(chatV2Repository).create(userId, attachment);
+		await conversationRepository.createAttachment(userId, attachment);
 		return c.json({
 			id: attachment.id,
 			kind: attachment.kind,
@@ -57,9 +56,11 @@ attachmentRoutes.get("/:id", async (c) => {
 	const userId = await requireUserId(c.req.raw);
 	if (!userId) return c.json({ error: "unauthorized" }, 401);
 
-	let attachment: Awaited<ReturnType<typeof chatV2Repository.getAttachment>>;
+	let attachment: Awaited<
+		ReturnType<typeof conversationRepository.getAttachment>
+	>;
 	try {
-		attachment = await chatV2Repository.getAttachment(
+		attachment = await conversationRepository.getAttachment(
 			userId,
 			c.req.param("id"),
 		);
@@ -77,7 +78,7 @@ attachmentRoutes.delete("/:id", async (c) => {
 	const userId = await requireUserId(c.req.raw);
 	if (!userId) return c.json({ error: "unauthorized" }, 401);
 
-	const result = await chatV2Repository.removeOrphanAttachment(
+	const result = await conversationRepository.removeOrphanAttachment(
 		userId,
 		c.req.param("id"),
 	);

@@ -9,11 +9,11 @@ import {
 	type SessionMessageEntry,
 } from "@earendil-works/pi-coding-agent";
 import { describeToolNames } from "../chat/mcp";
-import { chatV2Repository } from "../chat-v2/db/repository";
+import { conversationRepository } from "../conversations/repository";
 import { logger } from "../logger";
 import { piSessionDir } from "./config";
 import { piGenerations } from "./generation";
-import { piSessionFile } from "./migration";
+import { piSessionFile } from "./sessions";
 
 // ---------------------------------------------------------------------------
 // Session access
@@ -357,7 +357,7 @@ async function attachmentsForEntry(userId: string, rawText: string) {
 	if (ids.length === 0) return [];
 	const rows = [];
 	for (const id of ids) {
-		const attachment = await chatV2Repository
+		const attachment = await conversationRepository
 			.getAttachment(userId, id)
 			.catch(() => null);
 		if (attachment) {
@@ -537,17 +537,14 @@ export function piOwnsUserEntry(conversationId: string, entryId: string) {
 
 /**
  * Locate the (conversation, role) owning a pi entry id across a user's
- * migrated conversations. Chat-v2 resolves message ids through indexed SQL
- * tables; pi sessions are per-conversation files, so this is a scan — bounded
- * by the user's conversation count and only hit on edit/regenerate. Revisit
- * with a narrow index table if profiling shows it hot (plan: caches only
- * after measurement).
+ * conversations. Pi sessions are per-conversation files, so this is a scan —
+ * bounded by the user's conversation count and only hit on edit/regenerate.
  */
 export async function piFindEntryOwner(
 	userId: string,
 	entryId: string,
 ): Promise<{ conversationId: string; role: "user" | "assistant" } | null> {
-	const conversations = await chatV2Repository.listConversations(userId);
+	const conversations = await conversationRepository.listConversations(userId);
 	for (const conversation of conversations) {
 		if (!piSessionFile(conversation.id)) continue;
 		if (piOwnsAssistantEntry(conversation.id, entryId)) {

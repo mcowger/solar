@@ -15,9 +15,9 @@
 	},
 	"dependencies": {
 		"@better-auth/api-key": "1.7.2",
-		"@earendil-works/pi-agent-core": "0.85.1",
-		"@earendil-works/pi-ai": "0.85.1",
-		"@earendil-works/pi-coding-agent": "0.85.1",
+		"@earendil-works/pi-agent-core": "0.99.0",
+		"@earendil-works/pi-ai": "0.99.0",
+		"@earendil-works/pi-coding-agent": "0.99.0",
 		"@hono/trpc-server": "^0.3.4",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@solar/shared": "workspace:*",

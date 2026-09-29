@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { ImagesModel } from "@earendil-works/pi-ai";
+import type { ImageModel } from "@earendil-works/pi-ai";
 import { createImageGenerator } from "./provider";
 
 const model = {
 	id: "openai/gpt-image-1",
 	name: "test image model",
+	type: "image",
 	api: "openrouter-images",
 	provider: "openrouter",
 	baseUrl: "https://example.test/v1",
 	input: ["text", "image"],
 	output: ["image"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-} as ImagesModel<"openrouter-images">;
+} as ImageModel<"openrouter-images">;
 
 type ImageFetch = (
 	input: RequestInfo | URL,

@@ -31,7 +31,7 @@ Status: scope confirmed; implementation not started.
 - Check existing chat imports before upgrading; do not upgrade `pi-coding-agent` unless necessary.
 - Add a mocked adapter test before connecting the feature.
 
-**Compatibility gate:** `generateImages()` and the OpenRouter image API were verified in the locally installed 0.85.1 package. Exact target-version compatibility remains to be checked. Solar currently declares `pi-ai` 0.80.10 and `pi-coding-agent` 0.84.2.
+**Compatibility gate:** Solar now declares `pi-ai` / `pi-coding-agent` / `pi-agent-core` `0.99.0` (unified image-model surface: `ImageModel`, `getModelsOfType("image")`).
 
 ## 2. Add image persistence
 

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { getSolarSession } from "../auth";
-import { chatV2Repository } from "../chat-v2/db/repository";
+import { conversationRepository } from "../conversations/repository";
 import {
 	piEditUserMessage,
 	piRegenerateAssistantTurn,
@@ -89,7 +89,7 @@ async function ownsConversation(
 	conversationId: string,
 ): Promise<boolean> {
 	try {
-		await chatV2Repository.getConversation(userId, conversationId);
+		await conversationRepository.getConversation(userId, conversationId);
 		return true;
 	} catch {
 		return false;

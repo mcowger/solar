@@ -34,7 +34,7 @@ import {
 	skillCatalogContext,
 	skillInvocationContext,
 } from "../chat/skills";
-import { chatV2Repository } from "../chat-v2/db/repository";
+import { conversationRepository } from "../conversations/repository";
 import { db } from "../db";
 import { logger } from "../logger";
 import { peekResolvedTools } from "./bridge/server";
@@ -42,12 +42,7 @@ import { loadProviderConfigs } from "../chat/catalog";
 import { piConfig, piSessionDir } from "./config";
 import { piGenerations, type PiGeneration } from "./generation";
 import { piSessionManager } from "./manager";
-import {
-	attachmentMarker,
-	importConversation,
-	isPiSessionReady,
-	piSessionFile,
-} from "./migration";
+import { attachmentMarker, isPiSessionReady, piSessionFile } from "./sessions";
 import { piProviderId } from "./models";
 
 /** Solar-owned framing; pi's coding-agent default system prompt is never used. */
@@ -73,7 +68,7 @@ export interface PiSendMessageInput extends PiTurnInput {
 // Shared turn plumbing
 
 async function resolveTurn(input: PiTurnInput) {
-	const conversation = await chatV2Repository.getConversation(
+	const conversation = await conversationRepository.getConversation(
 		input.userId,
 		input.conversationId,
 	);
@@ -409,12 +404,8 @@ function pumpGeneration(
 
 export async function piSendMessage(
 	input: PiSendMessageInput,
-	options?: { skipImport?: boolean },
 ): Promise<string> {
 	const { conversation, selection } = await resolveTurn(input);
-	if (!options?.skipImport && !isPiSessionReady(input.conversationId)) {
-		await importConversation(input.userId, input.conversationId);
-	}
 	const isFirstMessage = conversationIsEmpty(input.conversationId);
 
 	const skills = input.skillName ? await listExposedSkills(input.userId) : null;
@@ -467,7 +458,7 @@ function generate(
 			);
 			if (attachmentIds.length && userEntryId) {
 				await db
-					.insertInto("v2_message_attachment")
+					.insertInto("message_attachment")
 					.values(
 						attachmentIds.map((attachmentId, index) => ({
 							messageId: userEntryId,
@@ -548,15 +539,15 @@ export async function piEditUserMessage(input: PiEditInput): Promise<string> {
 	if (!target || target.type !== "message")
 		throw new Error("message not found");
 	// Root-of-tree edits (first message, no parent) restart the conversation:
-	// navigateTree has no "reset to null" target, and chat-v2 discarded
-	// everything after the edited message anyway. skipImport: the conversation
-	// already lives on pi (nothing to import from chat-v2).
+	// navigateTree has no "reset to null" target. The conversation already
+	// lives on pi (its session file exists, otherwise there would be no
+	// target entry to edit).
 	if (target.parentId === null) {
 		await piDeleteConversation(input.conversationId);
-		return piSendMessage(
-			{ ...input, attachmentIds: input.attachmentIds ?? [] },
-			{ skipImport: true },
-		);
+		return piSendMessage({
+			...input,
+			attachmentIds: input.attachmentIds ?? [],
+		});
 	}
 	return piReprompt(
 		input,
@@ -609,10 +600,7 @@ export async function piRegenerateAssistantTurn(
 	if (userEntry.parentId === null) {
 		// Root-prompt regeneration restarts the (single-turn) conversation.
 		await piDeleteConversation(input.conversationId);
-		return piSendMessage(
-			{ ...input, text: rawText, attachmentIds: [] },
-			{ skipImport: true },
-		);
+		return piSendMessage({ ...input, text: rawText, attachmentIds: [] });
 	}
 	return piReprompt(
 		input,
@@ -788,7 +776,7 @@ async function recordTurnMetrics(
 
 async function touchConversation(conversationId: string): Promise<void> {
 	await db
-		.updateTable("v2_conversation")
+		.updateTable("conversation")
 		.set({ updatedAt: new Date().toISOString() })
 		.where("id", "=", conversationId)
 		.execute()

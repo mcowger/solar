@@ -1,7 +1,7 @@
-import type { ImagesApi, ImagesModel, Usage } from "@earendil-works/pi-ai";
+import type { ImageApi, ImageModel, Usage } from "@earendil-works/pi-ai";
 
 export interface ImageProviderRequest {
-	model: ImagesModel<ImagesApi>;
+	model: ImageModel<ImageApi>;
 	apiKey: string;
 	prompt: string;
 	source?: { data: string; mimeType: string };

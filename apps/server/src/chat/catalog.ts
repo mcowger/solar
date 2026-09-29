@@ -1,8 +1,10 @@
 import {
 	createProvider,
 	envApiKeyAuth,
+	normalizeContext,
 	type Api,
-	type ImagesModel,
+	type Context,
+	type ImageModel,
 	type Model,
 	type Provider,
 } from "@earendil-works/pi-ai";
@@ -10,10 +12,7 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import {
-	builtinImagesModels,
-	builtinModels,
-} from "@earendil-works/pi-ai/providers/all";
+import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { db } from "../db";
 import {
 	parseAllowlist,
@@ -86,7 +85,6 @@ const UPSTREAM_API_MAP: Record<string, string> = {
 };
 
 const piModels = builtinModels();
-const piImageModels = builtinImagesModels();
 
 export interface ProviderEndpoint {
 	id: string;
@@ -146,7 +144,7 @@ export interface ImageCatalogModel {
 }
 
 export interface ResolvedImageModel {
-	model: ImagesModel<"openrouter-images">;
+	model: ImageModel<"openrouter-images">;
 	apiKey?: string;
 }
 
@@ -308,8 +306,8 @@ export async function listAvailableModels(
 }
 
 export function listImageCatalogModels(): ImageCatalogModel[] {
-	return piImageModels
-		.getModels("openrouter")
+	return piModels
+		.getModelsOfType("image", "openrouter")
 		.filter((model) => model.output.includes("image"))
 		.map((model) => ({
 			id: model.id,
@@ -322,12 +320,13 @@ export function listImageCatalogModels(): ImageCatalogModel[] {
 function imageModelFromEntry(
 	_provider: string,
 	entry: AllowlistEntry,
-): ImagesModel<"openrouter-images"> | undefined {
+): ImageModel<"openrouter-images"> | undefined {
 	if (entry.api !== "openrouter-images" || !entry.piModel?.trim())
 		return undefined;
-	const known = piImageModels.getModel(
+	const known = piModels.getModelOfType(
+		"image",
 		entry.piProvider ?? "openrouter",
-		entry.piModel as never,
+		entry.piModel,
 	);
 	if (!known || !known.output.includes("image")) return undefined;
 	return {
@@ -336,7 +335,7 @@ function imageModelFromEntry(
 		name: entry.name ?? known.name,
 		...(entry.piOptions ?? {}),
 		...(entry.image?.input === false ? { input: ["text"] } : {}),
-	} as ImagesModel<"openrouter-images">;
+	} as ImageModel<"openrouter-images">;
 }
 
 export async function listAvailableImageModels(
@@ -870,12 +869,13 @@ export interface GenerationParams {
 
 export function streamModel(
 	resolved: ResolvedModel,
-	context: Parameters<Provider<Api>["stream"]>[1],
+	context: Context,
 	signal: AbortSignal,
 	params: GenerationParams = {},
 ) {
 	const apiKey = resolved.apiKey ? { apiKey: resolved.apiKey } : {};
 	const api = resolved.model.api;
+	const transcript = normalizeContext(context);
 	const wantSummary = params.reasoningSummary;
 	const wantVerbosity = params.verbosity && api === "openai-responses";
 	const onPayload =
@@ -903,14 +903,14 @@ export function streamModel(
 				}
 			: undefined;
 	if (params.reasoningEffort) {
-		return resolved.runtimeProvider.streamSimple(resolved.model, context, {
+		return resolved.runtimeProvider.streamSimple(resolved.model, transcript, {
 			signal,
 			reasoning: params.reasoningEffort as never,
 			...(onPayload ? { onPayload } : {}),
 			...apiKey,
 		});
 	}
-	return resolved.runtimeProvider.stream(resolved.model, context, {
+	return resolved.runtimeProvider.stream(resolved.model, transcript, {
 		signal,
 		...(onPayload ? { onPayload } : {}),
 		...apiKey,

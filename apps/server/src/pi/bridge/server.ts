@@ -18,7 +18,7 @@ import {
 import { nativeAttachmentAdapter } from "../../chat/nativeAttachmentAdapters";
 import type { ResolvedTool } from "../../chat/mcp";
 import { toolProvider } from "../../chat/tools";
-import { chatV2Repository } from "../../chat-v2/db/repository";
+import { conversationRepository } from "../../conversations/repository";
 import { logger } from "../../logger";
 import { MOCK } from "../../chat/catalog";
 import { serveMockChatCompletion } from "./mockLlm";
@@ -61,7 +61,7 @@ export function peekResolvedTools(
 }
 
 async function resolveConversationTools(identity: BridgeIdentity) {
-	const conversation = await chatV2Repository.getConversation(
+	const conversation = await conversationRepository.getConversation(
 		identity.userId,
 		identity.conversationId,
 	);
@@ -79,7 +79,7 @@ async function resolveConversationTools(identity: BridgeIdentity) {
 						toolCache.set(identity.conversationId, { at: Date.now(), tools });
 						return tools;
 					});
-	// Mirrors chat/v2Live.ts: without auto-execute, only read_skill is offered.
+	// Without auto-execute, only read_skill is offered.
 	return {
 		conversation,
 		tools: conversation.autoExecuteTools
@@ -133,7 +133,7 @@ async function loadAttachmentRows(
 ): Promise<AttachmentContentRow[]> {
 	const rows: AttachmentContentRow[] = [];
 	for (const id of new Set(ids)) {
-		const attachment = await chatV2Repository
+		const attachment = await conversationRepository
 			.getAttachment(userId, id)
 			.catch(() => null);
 		if (!attachment) continue;
@@ -149,7 +149,9 @@ async function loadAttachmentRows(
 }
 
 async function conversationSelection(
-	conversation: Awaited<ReturnType<typeof chatV2Repository.getConversation>>,
+	conversation: Awaited<
+		ReturnType<typeof conversationRepository.getConversation>
+	>,
 	userId: string,
 ) {
 	return resolveSelection(
@@ -231,7 +233,7 @@ piBridgeRoutes.post("/internal/pi-bridge/inject-documents", async (c) => {
 	);
 	if (ids.length === 0) return c.json({ payload });
 
-	const conversation = await chatV2Repository.getConversation(
+	const conversation = await conversationRepository.getConversation(
 		identity.userId,
 		identity.conversationId,
 	);

@@ -135,7 +135,7 @@ export async function deleteAttachmentFilesForUser(
 	userId: string,
 ): Promise<void> {
 	const rows = await db
-		.selectFrom("v2_attachment")
+		.selectFrom("attachment")
 		.select("storageKey")
 		.where("userId", "=", userId)
 		.execute();

@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mock } from "bun:test";
-import { createV2TestDatabase } from "../chat-v2/db/fixtures";
+import { createTestDatabase } from "../conversations/fixtures";
 
 const USER_ID = "settings-user";
-const database = await createV2TestDatabase();
+const database = await createTestDatabase();
 database.seedUser(USER_ID);
 
 mock.module("../db", () => ({ db: database.db, sqlite: database.sqlite }));
@@ -105,7 +105,7 @@ mock.module("../chat/catalog", () => ({
 }));
 
 const { appRouter } = await import("./router");
-const { chatV2Repository } = await import("../chat-v2/db/repository");
+const { conversationRepository } = await import("../conversations/repository");
 
 function caller() {
 	return appRouter.createCaller({
@@ -113,16 +113,19 @@ function caller() {
 	} as never);
 }
 
-describe("chat-v2 conversation settings wiring", () => {
+describe("conversation settings wiring", () => {
 	afterEach(async () => {
 		await database.reset();
 		database.seedUser(USER_ID);
 	});
 
 	test("model selection persists and reloads for a v2-only conversation", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		const rpc = caller();
 
 		await rpc.conversation.setModel({
@@ -141,9 +144,12 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("reasoning effort and verbosity persist for a v2-only conversation", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		const rpc = caller();
 
 		await rpc.conversation.setGenerationSettings({
@@ -162,9 +168,12 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("display mode persists for a v2-only conversation", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		const rpc = caller();
 
 		await rpc.conversation.setDisplayMode({
@@ -181,9 +190,12 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("MCP server binding and auto-execute persist for a v2-only conversation", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		await database.db
 			.insertInto("mcp_server")
 			.values({
@@ -227,9 +239,12 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("settings procedures reject conversations owned by another user", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		const otherCaller = appRouter.createCaller({
 			user: { id: "someone-else", role: "user" },
 		} as never);
@@ -244,10 +259,13 @@ describe("chat-v2 conversation settings wiring", () => {
 		).rejects.toThrow();
 	});
 
-	test("folder and tag endpoints create, list, assign, and delete against v2 tables", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "New chat",
-		});
+	test("folder and tag endpoints create, list, assign, and delete against conversation tables", async () => {
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "New chat",
+			},
+		);
 		const rpc = caller();
 
 		const folder = await rpc.folder.create({ name: "Work" });
@@ -286,13 +304,16 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("metrics is empty for a conversation without a pi session", async () => {
-		const conversation = await chatV2Repository.createConversation(USER_ID, {
-			title: "Metrics chat",
-			provider: "mock",
-			endpointId: "mock",
-			modelId: "mock",
-			modelApi: "mock",
-		});
+		const conversation = await conversationRepository.createConversation(
+			USER_ID,
+			{
+				title: "Metrics chat",
+				provider: "mock",
+				endpointId: "mock",
+				modelId: "mock",
+				modelApi: "mock",
+			},
+		);
 		const rpc = caller();
 		expect(
 			await rpc.conversation.metrics({ conversationId: conversation.id }),
@@ -300,10 +321,12 @@ describe("chat-v2 conversation settings wiring", () => {
 	});
 
 	test("folder and tag mutations reject ownership across users", async () => {
-		const folder = await chatV2Repository.createFolder(USER_ID, {
+		const folder = await conversationRepository.createFolder(USER_ID, {
 			name: "Mine",
 		});
-		const tag = await chatV2Repository.createTag(USER_ID, { name: "mine" });
+		const tag = await conversationRepository.createTag(USER_ID, {
+			name: "mine",
+		});
 		const otherCaller = appRouter.createCaller({
 			user: { id: "someone-else", role: "user" },
 		} as never);
