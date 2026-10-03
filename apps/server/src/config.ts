@@ -15,6 +15,11 @@ function isTruthy(value?: string): boolean {
 
 export { isTruthy };
 
+function positiveInteger(value: string | undefined, fallback: number): number {
+	const parsed = Number(value);
+	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /** Resolved settings for the optional OpenID Connect provider. */
 export interface OidcConfig {
 	/**
@@ -111,5 +116,13 @@ export const config = {
 		process.env.SOLAR_MAX_TOOL_OUTPUT_CHARS ??
 			process.env.MAX_TOOL_OUTPUT_CHARS ??
 			100_000,
+	),
+	// How long one MCP tool call (or prompt / resource read) may take. The MCP
+	// SDK's own default is 60s, too short for tools that crawl a site or render
+	// a page. Keep it below SOLAR_PI_STALL_TIMEOUT_MS: a running tool sends pi
+	// no events, so the stall watchdog would abort the turn first.
+	mcpToolTimeoutMs: positiveInteger(
+		process.env.SOLAR_MCP_TOOL_TIMEOUT_MS,
+		60_000,
 	),
 } as const;

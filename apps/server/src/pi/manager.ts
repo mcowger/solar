@@ -103,6 +103,7 @@ function scrubbedChildEnv(
 		PI_OFFLINE: "1",
 		SOLAR_PI_BRIDGE_URL: options.bridgeUrl,
 		SOLAR_PI_BRIDGE_TOKEN: bridgeToken,
+		SOLAR_PI_BRIDGE_TIMEOUT_MS: String(piConfig.bridgeTimeoutMs),
 		// RpcClient spawns `node` — we never run node, so redirect that name to
 		// bun via our shim, regardless of what the caller's PATH contains.
 		PATH: `${piNodeShimDir()}${delimiter}${process.env.PATH ?? ""}`,

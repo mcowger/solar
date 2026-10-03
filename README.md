@@ -236,6 +236,7 @@ policy; task-model and large-paste settings; and aggregated token usage.
 | `SOLAR_PI_AGENT_DIR` | Persistent pi agent state and canonical conversation sessions |
 | `SOLAR_PI_CWD_ROOT` | Scratch directories used as pi process working directories |
 | `SOLAR_PI_MAX_PROCESSES` | Maximum concurrently live pi RPC children (default `8`) |
+| `SOLAR_MCP_TOOL_TIMEOUT_MS` | How long one MCP tool call may run (default `60000`); keep it below `SOLAR_PI_STALL_TIMEOUT_MS` |
 | `PORT` | Listening port / managed dev-server override |
 | `FRPC_SERVER_ADDR` / `FRPC_AUTH_TOKEN` | Optional FRP server address and token |
 | `FRPC_SERVER_PORT` | Optional FRP control port; defaults to `7000` |

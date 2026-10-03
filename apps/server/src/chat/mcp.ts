@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Type, type Tool } from "@earendil-works/pi-ai";
+import { config } from "../config";
 import { db } from "../db";
 import { logger } from "../logger";
 
@@ -21,6 +22,9 @@ interface ServerRow {
 }
 
 const CLIENT_INFO = { name: "Solar", version: "0.1.0" };
+
+/** Per-request options for calls a model makes (SOLAR_MCP_TOOL_TIMEOUT_MS). */
+const requestOptions = () => ({ timeout: config.mcpToolTimeoutMs });
 const asText = (value: unknown) => JSON.stringify(value, null, 2);
 
 /** Legacy prefix (`mcp_<serverId>_<remote>`) — kept only to decode historic
@@ -243,10 +247,11 @@ export async function resolveMcpTools(
 					remoteName: remote.name,
 					execute: async (args) =>
 						withClient(server, async (client) => {
-							const response = await client.callTool({
-								name: remote.name,
-								arguments: args,
-							});
+							const response = await client.callTool(
+								{ name: remote.name, arguments: args },
+								undefined,
+								requestOptions(),
+							);
 							return {
 								content: asText(response),
 								isError: "isError" in response && Boolean(response.isError),
@@ -286,12 +291,15 @@ export async function resolveMcpTools(
 					execute: async (args) => ({
 						content: asText(
 							await withClient(server, (client) =>
-								client.getPrompt({
-									name: String(args.name),
-									arguments: args.arguments as
-										| Record<string, string>
-										| undefined,
-								}),
+								client.getPrompt(
+									{
+										name: String(args.name),
+										arguments: args.arguments as
+											| Record<string, string>
+											| undefined,
+									},
+									requestOptions(),
+								),
 							),
 						),
 						isError: false,
@@ -325,7 +333,10 @@ export async function resolveMcpTools(
 					execute: async (args) => ({
 						content: asText(
 							await withClient(server, (client) =>
-								client.readResource({ uri: String(args.uri) }),
+								client.readResource(
+									{ uri: String(args.uri) },
+									requestOptions(),
+								),
 							),
 						),
 						isError: false,
