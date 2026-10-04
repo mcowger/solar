@@ -113,6 +113,25 @@ function endpointModelEntry(
 	const known = findKnownModel(entry, config, builtins);
 	const reasoning = entry.reasoning ?? known?.reasoning ?? false;
 	const windowTokens = entry.contextWindow ?? known?.contextWindow ?? 128_000;
+	// Service-tier default: pi-ai sends the Responses `service_tier` request
+	// param from samplingParams, so the admin's per-model default is baked
+	// into models.json here. Only honored when the provider advertised the
+	// tier in discovery — never assumed from the API type.
+	const piSamplingParams =
+		entry.piOptions?.samplingParams &&
+		typeof entry.piOptions.samplingParams === "object" &&
+		!Array.isArray(entry.piOptions.samplingParams)
+			? (entry.piOptions.samplingParams as Record<string, unknown>)
+			: undefined;
+	const { samplingParams: _piSampling, ...restPiOptions } =
+		entry.piOptions ?? {};
+	const samplingParams = {
+		...(known?.samplingParams ? { ...known.samplingParams } : {}),
+		...(piSamplingParams ?? {}),
+		...(entry.serviceTier && entry.serviceTiers?.includes(entry.serviceTier)
+			? { service_tier: entry.serviceTier }
+			: {}),
+	};
 	return {
 		id: entry.id,
 		name: entry.name ?? known?.name ?? entry.id,
@@ -135,11 +154,9 @@ function endpointModelEntry(
 		contextWindow: windowTokens,
 		maxTokens:
 			entry.maxTokens ?? known?.maxTokens ?? Math.min(windowTokens, 32_768),
-		...(known?.samplingParams
-			? { samplingParams: { ...known.samplingParams } }
-			: {}),
+		...(Object.keys(samplingParams).length ? { samplingParams } : {}),
 		// piOptions carry pi-level overrides (compat shims, params) admins set.
-		...(entry.piOptions ?? {}),
+		...restPiOptions,
 	};
 }
 
@@ -366,7 +383,6 @@ export function piModelCapabilities(selection: {
 		: [];
 	return {
 		reasoningLevels: reasoning,
-		supportsVerbosity: selection.api === "openai-responses",
 		contextWindow: entry.contextWindow,
 		maxTokens: entry.maxTokens,
 	};

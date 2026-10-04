@@ -21,10 +21,11 @@ interface AllowlistEntry {
 		resolutions: string[];
 	};
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-	verbosity?: "low" | "medium" | "high";
+	serviceTiers?: string[];
+	serviceTier?: string;
 	capabilities?: {
 		reasoningLevels: string[];
-		supportsVerbosity: boolean;
+		serviceTiers: string[];
 		contextWindow?: number;
 	} | null;
 	contextWindow?: number;
@@ -98,7 +99,6 @@ const thinkingLevels = [
 	"xhigh",
 	"max",
 ] as const;
-const verbosityLevels = ["low", "medium", "high"] as const;
 
 const contextPolicyFields = [
 	{
@@ -372,26 +372,29 @@ function ModelSettingsModal({
 						</select>
 					</fieldset>
 					<fieldset className="fieldset">
-						<legend className="fieldset-legend">Verbosity</legend>
+						<legend className="fieldset-legend">Service tier</legend>
 						<select
 							className="select w-full"
-							value={model.verbosity ?? ""}
-							disabled={!model.capabilities?.supportsVerbosity}
+							value={model.serviceTier ?? ""}
+							disabled={!model.serviceTiers?.length}
 							onChange={(event) =>
 								onChange({
-									verbosity:
-										(event.target.value as AllowlistEntry["verbosity"]) ||
-										undefined,
+									serviceTier: event.target.value || undefined,
 								})
 							}
 						>
 							<option value="">Provider default</option>
-							{verbosityLevels.map((level) => (
-								<option key={level} value={level}>
-									{level}
+							{model.serviceTiers?.map((tier) => (
+								<option key={tier} value={tier}>
+									{tier}
 								</option>
 							))}
 						</select>
+						<p className="label">
+							{model.serviceTiers?.length
+								? "Sent as the Responses service_tier for this model."
+								: "The provider does not advertise tiers for this model."}
+						</p>
 					</fieldset>
 					<fieldset className="fieldset">
 						<legend className="fieldset-legend">Context window</legend>
@@ -639,7 +642,12 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 	);
 	const [discovery, setDiscovery] = useState<{
 		endpointId: string;
-		models: { id: string; name: string; preferredApi: string | null }[];
+		models: {
+			id: string;
+			name: string;
+			preferredApi: string | null;
+			serviceTiers?: string[];
+		}[];
 	} | null>(null);
 	const [imports, setImports] = useState<
 		Record<string, { api: string; visibility: "public" | "private" }>
@@ -866,6 +874,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 										<th>Import</th>
 										<th>Model</th>
 										<th>Preferred API</th>
+										<th>Service tiers</th>
 										<th>Visibility</th>
 									</tr>
 								</thead>
@@ -926,6 +935,13 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 															</option>
 														))}
 													</select>
+												</td>
+												<td>
+													<span className="text-xs opacity-60">
+														{model.serviceTiers?.length
+															? model.serviceTiers.join(", ")
+															: "—"}
+													</span>
 												</td>
 												<td>
 													<select
@@ -1005,6 +1021,11 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 									{model.reasoningEffort && (
 										<span className="badge badge-sm badge-outline">
 											Thinking: {model.reasoningEffort}
+										</span>
+									)}
+									{model.serviceTier && (
+										<span className="badge badge-sm badge-outline">
+											Tier: {model.serviceTier}
 										</span>
 									)}
 								</div>

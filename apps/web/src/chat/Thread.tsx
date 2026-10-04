@@ -22,7 +22,6 @@ import {
 	FileUp,
 	Image,
 	Plus,
-	Podcast,
 	Repeat2,
 	Scissors,
 	Terminal,
@@ -647,7 +646,6 @@ function SummaryEventMarker({ position }: { position: "before" | "after" }) {
 }
 
 const REASONING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"];
-const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
 
 function SignalMeter({
 	level,
@@ -1203,7 +1201,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 	const settings = useQuery(
 		trpc.model.forConversation.queryOptions({ conversationId }),
 	);
-	const [open, setOpen] = useState<"reasoning" | "verbosity" | null>(null);
+	const [open, setOpen] = useState<"reasoning" | null>(null);
 	const controlsRef = useRef<HTMLDivElement>(null);
 	const update = useMutation(
 		trpc.conversation.setGenerationSettings.mutationOptions({
@@ -1217,9 +1215,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 	);
 	const data = settings.data;
 	const showReasoning = Boolean(data?.reasoningLevels.length);
-	const showVerbosity = Boolean(data?.supportsVerbosity);
 	const reasoningEffort = data?.effectiveReasoningEffort;
-	const verbosity = data?.effectiveVerbosity;
 
 	useEffect(() => {
 		if (!open) return;
@@ -1232,7 +1228,7 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 		return () => document.removeEventListener("pointerdown", dismiss);
 	}, [open]);
 
-	if (!showReasoning && !showVerbosity) return null;
+	if (!showReasoning) return null;
 
 	return (
 		<div ref={controlsRef} style={{ display: "flex", gap: 4 }}>
@@ -1272,46 +1268,6 @@ function GenerationControls({ conversationId }: { conversationId: string }) {
 											id: conversationId,
 											reasoningEffort: level,
 										})
-									}
-									className="solar-generation-menu-item"
-								>
-									{level}
-								</button>
-							))}
-						</div>
-					)}
-				</div>
-			)}
-			{showVerbosity && (
-				<div style={{ position: "relative" }}>
-					<button
-						type="button"
-						onClick={() => setOpen(open === "verbosity" ? null : "verbosity")}
-						className={`solar-tool-toggle${
-							data?.verbosity ? " solar-tool-toggle-active" : ""
-						}`}
-						title={`Answer verbosity: ${verbosity ?? "default"}${data?.verbosity ? "" : " (default)"}`}
-					>
-						<Podcast size={18} />
-						<SignalMeter level={verbosity} levels={VERBOSITY_LEVELS} />
-					</button>
-					{open === "verbosity" && (
-						<div className="solar-generation-menu">
-							<button
-								type="button"
-								onClick={() =>
-									update.mutate({ id: conversationId, verbosity: null })
-								}
-								className="solar-generation-menu-item"
-							>
-								Default
-							</button>
-							{VERBOSITY_LEVELS.map((level) => (
-								<button
-									key={level}
-									type="button"
-									onClick={() =>
-										update.mutate({ id: conversationId, verbosity: level })
 									}
 									className="solar-generation-menu-item"
 								>

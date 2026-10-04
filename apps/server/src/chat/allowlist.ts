@@ -31,10 +31,31 @@ export interface AllowlistEntry {
 	/** Image generation is deliberately separate from chat capabilities. */
 	image?: ImageModelOptions;
 	reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-	verbosity?: "low" | "medium" | "high";
+	/** Tiers the provider advertises for this model (Plexus `/v1/models`
+	 * `service_tiers`). Absent/empty means the model has no tier support and
+	 * no tier control is shown. */
+	serviceTiers?: string[];
+	/** Admin-chosen default tier. Only honored when listed in serviceTiers. */
+	serviceTier?: string;
 	contextWindow?: number;
 	maxTokens?: number;
 	contextPolicy?: ModelContextPolicy;
+}
+
+function parseServiceTiers(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const tiers = [
+		...new Set(
+			value.flatMap((tier) =>
+				typeof tier === "string" &&
+				tier.trim().length > 0 &&
+				tier.trim().length <= 32
+					? [tier.trim()]
+					: [],
+			),
+		),
+	].slice(0, 16);
+	return tiers.length ? tiers : undefined;
 }
 
 function parseImageOptions(value: unknown): ImageModelOptions | undefined {
@@ -98,6 +119,13 @@ export function parseAllowlist(
 				return [];
 			}
 			const contextPolicy = parseContextPolicy(entry.contextPolicy);
+			const parsedServiceTiers = parseServiceTiers(entry.serviceTiers);
+			const parsedServiceTier =
+				typeof entry.serviceTier === "string" &&
+				entry.serviceTier.trim().length > 0 &&
+				entry.serviceTier.trim().length <= 32
+					? entry.serviceTier.trim()
+					: undefined;
 			const image = parseImageOptions(
 				entry.image ??
 					entry.imageCapabilities ??
@@ -140,8 +168,11 @@ export function parseAllowlist(
 									entry.reasoningEffort as AllowlistEntry["reasoningEffort"],
 							}
 						: {}),
-					...(["low", "medium", "high"].includes(entry.verbosity)
-						? { verbosity: entry.verbosity as AllowlistEntry["verbosity"] }
+					...(parsedServiceTiers ? { serviceTiers: parsedServiceTiers } : {}),
+					...(parsedServiceTier &&
+					(!parsedServiceTiers ||
+						parsedServiceTiers.includes(parsedServiceTier))
+						? { serviceTier: parsedServiceTier }
 						: {}),
 					...(typeof entry.contextWindow === "number" &&
 					Number.isInteger(entry.contextWindow) &&

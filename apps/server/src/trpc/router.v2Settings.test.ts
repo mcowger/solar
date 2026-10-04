@@ -78,9 +78,9 @@ mock.module("../chat/catalog", () => ({
 	resolveTaskModelOrFallback: async (selection: unknown) => selection,
 	getModelCapabilities: async () => ({
 		reasoningLevels: ["low", "medium", "high"],
-		supportsVerbosity: true,
+		serviceTiers: [],
 		defaultReasoningEffort: null,
-		defaultVerbosity: null,
+		defaultServiceTier: null,
 	}),
 	documentInputMimeTypes: async () => [],
 	documentInputCapabilities: async () => ({
@@ -143,7 +143,7 @@ describe("conversation settings wiring", () => {
 		expect(effective.modelId).toBe("gpt-5.6");
 	});
 
-	test("reasoning effort and verbosity persist for a v2-only conversation", async () => {
+	test("reasoning effort persists for a v2-only conversation", async () => {
 		const conversation = await conversationRepository.createConversation(
 			USER_ID,
 			{
@@ -155,16 +155,15 @@ describe("conversation settings wiring", () => {
 		await rpc.conversation.setGenerationSettings({
 			id: conversation.id,
 			reasoningEffort: "high",
-			verbosity: "low",
 		});
 
 		const effective = await rpc.model.forConversation({
 			conversationId: conversation.id,
 		});
 		expect(effective.reasoningEffort).toBe("high");
-		expect(effective.verbosity).toBe("low");
 		expect(effective.effectiveReasoningEffort).toBe("high");
-		expect(effective.effectiveVerbosity).toBe("low");
+		expect(effective).not.toHaveProperty("verbosity");
+		expect(effective).not.toHaveProperty("effectiveVerbosity");
 	});
 
 	test("display mode persists for a v2-only conversation", async () => {

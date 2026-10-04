@@ -67,9 +67,9 @@ mock.module("../chat/catalog", () => ({
 	resolveTaskModelOrFallback: async (selection: unknown) => selection,
 	getModelCapabilities: async () => ({
 		reasoningLevels: [],
-		supportsVerbosity: false,
+		serviceTiers: [],
 		defaultReasoningEffort: null,
-		defaultVerbosity: null,
+		defaultServiceTier: null,
 	}),
 	documentInputMimeTypes: async () => [],
 	documentInputCapabilities: async () => ({

@@ -546,6 +546,184 @@ describe("catalog model policy", () => {
 		}
 	});
 
+	test("exposes discovered service tiers (never the API type) as capabilities", async () => {
+		configureModels({
+			provider: "plexus",
+			apiKey: null,
+			baseUrl: null,
+			enabledModels: [
+				{
+					id: "tiered-model",
+					endpointId: "openai-responses",
+					api: "openai-responses",
+					visibility: "public",
+					serviceTiers: ["auto", "flex"],
+					serviceTier: "flex",
+				},
+				{
+					id: "plain-model",
+					endpointId: "openai-responses",
+					api: "openai-responses",
+					visibility: "public",
+				},
+			],
+		});
+		await expect(
+			catalog.getModelCapabilities({
+				provider: "plexus",
+				endpointId: "openai-responses",
+				modelId: "tiered-model",
+				api: "openai-responses",
+			}),
+		).resolves.toEqual({
+			reasoningLevels: [],
+			serviceTiers: ["auto", "flex"],
+			defaultReasoningEffort: null,
+			defaultServiceTier: "flex",
+			contextWindow: 128_000,
+		});
+		// Same Responses API, no advertised tiers: unsupported.
+		await expect(
+			catalog.getModelCapabilities({
+				provider: "plexus",
+				endpointId: "openai-responses",
+				modelId: "plain-model",
+				api: "openai-responses",
+			}),
+		).resolves.toEqual({
+			reasoningLevels: [],
+			serviceTiers: [],
+			defaultReasoningEffort: null,
+			defaultServiceTier: null,
+			contextWindow: 128_000,
+		});
+	});
+
+	test("reads service_tiers discovery metadata without assuming API support", async () => {
+		configureModels({
+			provider: "plexus",
+			apiKey: "test-key",
+			baseUrl: null,
+			endpoints: [
+				{
+					id: "responses",
+					label: "Responses",
+					baseUrl: "https://plexus.example/v1",
+					api: "openai-responses",
+				},
+			],
+			enabledModels: [],
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							{
+								id: "tiered-model",
+								name: "Tiered Model",
+								architecture: { output_modalities: ["text"] },
+								service_tiers: ["auto", "flex", "flex", "", 42],
+							},
+							{
+								id: "plain-model",
+								name: "Plain Model",
+								architecture: { output_modalities: ["text"] },
+							},
+						],
+					}),
+				),
+		) as unknown as typeof fetch;
+		try {
+			expect(
+				await catalog.discoverProviderModels("plexus", "responses"),
+			).toEqual([
+				{
+					id: "tiered-model",
+					name: "Tiered Model",
+					preferredApi: null,
+					reasoning: false,
+					vision: false,
+					serviceTiers: ["auto", "flex"],
+				},
+				{
+					id: "plain-model",
+					name: "Plain Model",
+					preferredApi: null,
+					reasoning: false,
+					vision: false,
+				},
+			]);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("persists discovered tiers on import and preserves a still-valid admin default on refresh", async () => {
+		configureModels({
+			provider: "plexus",
+			apiKey: "test-key",
+			baseUrl: null,
+			endpoints: [
+				{
+					id: "responses",
+					label: "Responses",
+					baseUrl: "https://plexus.example/v1",
+					api: "openai-responses",
+				},
+			],
+			enabledModels: [
+				{
+					id: "tiered-model",
+					endpointId: "responses",
+					api: "openai-responses",
+					visibility: "public",
+					serviceTiers: ["auto", "flex"],
+					serviceTier: "flex",
+				},
+			],
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							{
+								id: "tiered-model",
+								name: "Tiered Model",
+								architecture: { output_modalities: ["text"] },
+								service_tiers: ["auto", "priority"],
+							},
+						],
+					}),
+				),
+		) as unknown as typeof fetch;
+		try {
+			await catalog.importProviderModels("plexus", "responses", [
+				{
+					id: "tiered-model",
+					api: "openai-responses",
+					visibility: "public",
+				},
+			]);
+			// Tiers refresh, but the admin default (flex) is no longer
+			// advertised, so it is dropped rather than kept stale.
+			expect(state.providerConfigs[0]?.enabledModels).toEqual([
+				expect.objectContaining({
+					id: "tiered-model",
+					serviceTiers: ["auto", "priority"],
+				}),
+			]);
+			expect(state.providerConfigs[0]?.enabledModels[0]).not.toHaveProperty(
+				"serviceTier",
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	test("imports a discovered model through a different configured API endpoint", async () => {
 		configureModels({
 			provider: "plexus",

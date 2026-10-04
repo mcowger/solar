@@ -126,6 +126,8 @@ export interface DiscoveredModel {
 	reasoning: boolean;
 	vision: boolean;
 	image?: ImageModelOptions;
+	/** Advertised Responses service tiers (`service_tiers`); absent when unsupported. */
+	serviceTiers?: string[];
 }
 
 export interface ImageModelDescriptor extends ModelSelection {
@@ -415,7 +417,6 @@ export const THINKING_LEVELS = [
 	"xhigh",
 	"max",
 ] as const;
-export const VERBOSITY_LEVELS = ["low", "medium", "high"] as const;
 
 export const DEFAULT_TITLE_PROMPT = `### Task: Generate a concise, 3-5 word title with an emoji summarizing the first user message.
 ### Guidelines:
@@ -691,9 +692,9 @@ export async function getModelCapabilities(selection: ModelSelection) {
 	if (selection.provider === "mock")
 		return {
 			reasoningLevels: [...THINKING_LEVELS],
-			supportsVerbosity: false,
+			serviceTiers: [],
 			defaultReasoningEffort: null,
-			defaultVerbosity: null,
+			defaultServiceTier: null,
 		};
 	const { model } = await resolveModel(selection);
 	const config = (await loadProviderConfigs()).find(
@@ -715,9 +716,9 @@ export async function getModelCapabilities(selection: ModelSelection) {
 		: [];
 	return {
 		reasoningLevels,
-		supportsVerbosity: selection.api === "openai-responses",
+		serviceTiers: entry?.serviceTiers ?? [],
 		defaultReasoningEffort: entry?.reasoningEffort ?? null,
-		defaultVerbosity: entry?.verbosity ?? null,
+		defaultServiceTier: entry?.serviceTier ?? null,
 		contextWindow: model.contextWindow,
 	};
 }
@@ -863,7 +864,6 @@ export interface GenerationParams {
 	systemPrompt?: string;
 	reasoningEffort?: string;
 	reasoningSummary?: boolean;
-	verbosity?: string;
 	documents?: NativeDocumentInput[];
 }
 
@@ -877,23 +877,15 @@ export function streamModel(
 	const api = resolved.model.api;
 	const transcript = normalizeContext(context);
 	const wantSummary = params.reasoningSummary;
-	const wantVerbosity = params.verbosity && api === "openai-responses";
 	const onPayload =
-		wantSummary || wantVerbosity || params.documents?.length
+		wantSummary || params.documents?.length
 			? (payload: unknown) => {
 					const next = payload as Record<string, unknown>;
-					if (api === "openai-responses") {
-						if (wantSummary)
-							next.reasoning = {
-								...(next.reasoning as object),
-								summary: "auto",
-							};
-						if (wantVerbosity)
-							next.text = {
-								...(next.text as object),
-								verbosity: params.verbosity,
-							};
-					}
+					if (api === "openai-responses" && wantSummary)
+						next.reasoning = {
+							...(next.reasoning as object),
+							summary: "auto",
+						};
 					return params.documents?.length
 						? (nativeAttachmentAdapter({ api })?.injectDocuments(
 								next,
@@ -1015,6 +1007,22 @@ export async function discoverProviderModels(
 		const supported = Array.isArray(model.supported_parameters)
 			? model.supported_parameters
 			: [];
+		// Plexus advertises Responses service-tier support as a top-level
+		// `service_tiers` list. No key (or an empty one) means the model has
+		// no tier support — never assume it from the API type.
+		const serviceTiers = Array.isArray(model.service_tiers)
+			? [
+					...new Set(
+						model.service_tiers.flatMap((tier) =>
+							typeof tier === "string" &&
+							tier.trim().length > 0 &&
+							tier.trim().length <= 32
+								? [tier.trim()]
+								: [],
+						),
+					),
+				].slice(0, 16)
+			: [];
 		return [
 			{
 				id: model.id,
@@ -1033,6 +1041,7 @@ export async function discoverProviderModels(
 					: {}),
 				reasoning: supported.includes("reasoning"),
 				vision: input.includes("image"),
+				...(serviceTiers.length ? { serviceTiers } : {}),
 				...(imageEndpoint
 					? {
 							image: {
@@ -1075,6 +1084,7 @@ export async function importProviderModels(
 			...(model.piOptions ? { piOptions: model.piOptions } : {}),
 			reasoning: model.reasoning,
 			vision: model.vision,
+			...(model.serviceTiers ? { serviceTiers: model.serviceTiers } : {}),
 			...(selection.api === "openrouter-images"
 				? {
 						image: model.image ?? {
@@ -1104,7 +1114,19 @@ export async function importProviderModels(
 		...config.enabledModels.filter(
 			(entry) => !chatImports.some((item) => item.id === entry.id),
 		),
-		...chatImports,
+		// Refreshing discovery must not wipe the admin's chosen default tier:
+		// keep it when the newly advertised tiers still include it.
+		...chatImports.map((item) => {
+			const previous = config.enabledModels.find(
+				(entry) => entry.id === item.id,
+			);
+			const keepTier =
+				previous?.serviceTier &&
+				item.serviceTiers?.includes(previous.serviceTier)
+					? { serviceTier: previous.serviceTier }
+					: {};
+			return { ...item, ...keepTier };
+		}),
 	];
 	const imageModels = [
 		...config.imageModels.filter(

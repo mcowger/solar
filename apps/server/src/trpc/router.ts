@@ -166,7 +166,6 @@ const conversationRouter = router({
 				systemPrompt: string | null;
 				reasoningEffort: string | null;
 				reasoningSummary: boolean;
-				verbosity: string | null;
 			} = {
 				provider: null,
 				endpointId: null,
@@ -175,7 +174,6 @@ const conversationRouter = router({
 				systemPrompt: null,
 				reasoningEffort: null,
 				reasoningSummary: false,
-				verbosity: null,
 			};
 			if (presetId) {
 				const preset = await db
@@ -205,7 +203,6 @@ const conversationRouter = router({
 						systemPrompt: preset.systemPrompt,
 						reasoningEffort: preset.reasoningEffort,
 						reasoningSummary: Boolean(preset.reasoningSummary),
-						verbosity: preset.verbosity,
 					};
 				}
 			}
@@ -400,7 +397,6 @@ const conversationRouter = router({
 					.enum(["minimal", "low", "medium", "high", "xhigh", "max"])
 					.nullable()
 					.optional(),
-				verbosity: z.enum(["low", "medium", "high"]).nullable().optional(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
@@ -435,22 +431,11 @@ const conversationRouter = router({
 					message: "reasoning effort unavailable",
 				});
 			}
-			if (
-				input.verbosity !== undefined &&
-				input.verbosity !== null &&
-				!capabilities.supportsVerbosity
-			) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "verbosity unavailable",
-				});
-			}
 			await conversationRepository.setConversationGenerationSettings(
 				ctx.user.id,
 				input.id,
 				{
 					reasoningEffort: input.reasoningEffort,
-					verbosity: input.verbosity,
 				},
 			);
 		}),
@@ -755,7 +740,8 @@ const allowlistEntrySchema = z
 		reasoningEffort: z
 			.enum(["minimal", "low", "medium", "high", "xhigh", "max"])
 			.optional(),
-		verbosity: z.enum(["low", "medium", "high"]).optional(),
+		serviceTiers: z.array(z.string().trim().min(1).max(32)).max(16).optional(),
+		serviceTier: z.string().trim().min(1).max(32).optional(),
 		contextWindow: z.number().int().min(1).max(10_000_000).optional(),
 		contextPolicy: z
 			.object({
@@ -787,6 +773,17 @@ const allowlistEntrySchema = z
 			.optional(),
 	})
 	.superRefine((entry, ctx) => {
+		if (
+			entry.serviceTier &&
+			entry.serviceTiers?.length &&
+			!entry.serviceTiers.includes(entry.serviceTier)
+		) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["serviceTier"],
+				message: "Service tier must be one of the model's advertised tiers",
+			});
+		}
 		if (!entry.contextPolicy) return;
 		const window = entry.contextWindow ?? 10_000_000;
 		if (entry.contextPolicy.outputReserveTokens >= window) {
@@ -1131,6 +1128,9 @@ const adminRouter = router({
 					input.endpointId,
 					input.models,
 				);
+				// Tiers (and any refreshed discovery data) live in provider_config;
+				// regenerate pi's models.json so they take effect without an extra save.
+				await syncPiModelConfig(config.port);
 			} catch (error) {
 				throw new TRPCError({
 					code: "BAD_REQUEST",
@@ -1431,9 +1431,9 @@ async function effectiveModelCapabilities(selection: {
 	if (!piCaps) return getModelCapabilities(selection);
 	return {
 		reasoningLevels: piCaps.reasoningLevels,
-		supportsVerbosity: piCaps.supportsVerbosity,
+		serviceTiers: entry?.serviceTiers ?? [],
 		defaultReasoningEffort: entry?.reasoningEffort ?? null,
-		defaultVerbosity: entry?.verbosity ?? null,
+		defaultServiceTier: entry?.serviceTier ?? null,
 		contextWindow: piCaps.contextWindow ?? 128_000,
 	};
 }
@@ -1485,8 +1485,6 @@ const modelRouter = router({
 						modelApi: record.modelApi,
 						reasoningEffort: record.reasoningEffort,
 						presetReasoningEffort: null as string | null,
-						verbosity: record.verbosity,
-						presetVerbosity: null as string | null,
 					};
 				} catch {
 					throw new TRPCError({ code: "NOT_FOUND" });
@@ -1522,10 +1520,6 @@ const modelRouter = router({
 				convo?.reasoningEffort ??
 				convo?.presetReasoningEffort ??
 				capabilities.defaultReasoningEffort;
-			const effectiveVerbosity =
-				convo?.verbosity ??
-				convo?.presetVerbosity ??
-				capabilities.defaultVerbosity;
 			return {
 				...(descriptor ?? {
 					...selection,
@@ -1538,10 +1532,7 @@ const modelRouter = router({
 				documentMimeTypes,
 				reasoningEffort: convo?.reasoningEffort ?? null,
 				presetReasoningEffort: convo?.presetReasoningEffort ?? null,
-				verbosity: convo?.verbosity ?? null,
-				presetVerbosity: convo?.presetVerbosity ?? null,
 				effectiveReasoningEffort,
-				effectiveVerbosity,
 			};
 		}),
 
@@ -1621,7 +1612,6 @@ const presetInputSchema = z.object({
 	systemPrompt: z.string().trim().max(20000).nullish(),
 	reasoningEffort: z.string().nullish(),
 	reasoningSummary: z.boolean().optional(),
-	verbosity: z.string().nullish(),
 });
 
 /** Load a preset and assert the user may edit/delete it (owner or admin). */
@@ -1722,7 +1712,7 @@ const presetRouter = router({
 					systemPrompt: input.systemPrompt ?? null,
 					reasoningEffort: input.reasoningEffort ?? null,
 					reasoningSummary: input.reasoningSummary ? 1 : 0,
-					verbosity: input.verbosity ?? null,
+					verbosity: null,
 				})
 				.execute();
 			return { id };
@@ -1747,7 +1737,6 @@ const presetRouter = router({
 					systemPrompt: input.systemPrompt ?? null,
 					reasoningEffort: input.reasoningEffort ?? null,
 					reasoningSummary: input.reasoningSummary ? 1 : 0,
-					verbosity: input.verbosity ?? null,
 				})
 				.where("id", "=", input.id)
 				.execute();

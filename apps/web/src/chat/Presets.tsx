@@ -22,7 +22,6 @@ const REASONING_LEVELS = [
 	"xhigh",
 	"max",
 ];
-const VERBOSITY_LEVELS = ["", "low", "medium", "high"];
 
 interface PresetForm {
 	id?: string;
@@ -35,7 +34,6 @@ interface PresetForm {
 	systemPrompt: string;
 	reasoningEffort: string;
 	reasoningSummary: boolean;
-	verbosity: string;
 }
 
 function modelKey(m: {
@@ -59,7 +57,6 @@ function emptyForm(models: ModelDescriptor[]): PresetForm {
 		systemPrompt: "",
 		reasoningEffort: "",
 		reasoningSummary: false,
-		verbosity: "",
 	};
 }
 
@@ -83,7 +80,6 @@ function PresetEditor({
 	const showReasoningEffort = model?.reasoning ?? false;
 	const showReasoningSummary =
 		form.api === "openai-responses" || form.api === "anthropic-messages";
-	const showVerbosity = form.api === "openai-responses";
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
@@ -183,22 +179,6 @@ function PresetEditor({
 						<span>Request reasoning summary</span>
 					</label>
 				)}
-				{showVerbosity && (
-					<fieldset className="fieldset gap-2">
-						<legend className="fieldset-legend">Verbosity</legend>
-						<select
-							className="select w-full"
-							value={form.verbosity}
-							onChange={(e) => onChange({ ...form, verbosity: e.target.value })}
-						>
-							{VERBOSITY_LEVELS.map((l) => (
-								<option key={l} value={l}>
-									{l || "(default)"}
-								</option>
-							))}
-						</select>
-					</fieldset>
-				)}
 
 				<fieldset className="fieldset gap-2">
 					<legend className="fieldset-legend">Scope</legend>
@@ -289,7 +269,6 @@ export function Presets({ onClose }: { onClose: () => void }) {
 			systemPrompt: form.systemPrompt || null,
 			reasoningEffort: form.reasoningEffort || null,
 			reasoningSummary: form.reasoningSummary,
-			verbosity: form.verbosity || null,
 		};
 		if (form.id) update.mutate({ id: form.id, ...payload });
 		else create.mutate(payload);
@@ -391,7 +370,6 @@ export function Presets({ onClose }: { onClose: () => void }) {
 												systemPrompt: p.systemPrompt ?? "",
 												reasoningEffort: p.reasoningEffort ?? "",
 												reasoningSummary: p.reasoningSummary,
-												verbosity: p.verbosity ?? "",
 											})
 										}
 									>

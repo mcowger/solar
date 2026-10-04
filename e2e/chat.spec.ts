@@ -84,7 +84,7 @@ test("shows compact provider model rows with per-model settings", async ({
 							documents: true,
 							capabilities: {
 								reasoningLevels: ["low", "medium", "high"],
-								supportsVerbosity: true,
+								serviceTiers: ["auto", "flex"],
 								contextWindow: 600_000,
 							},
 						},
