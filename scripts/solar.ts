@@ -36,7 +36,7 @@ const usage = `Usage:
   bun run solar dev <start|stop|restart|status|logs> [options]
   bun run solar history <list|inspect|export|export-all|import> [options]
 
-History commands use --url (or SOLAR_URL), --api-key (or SOLAR_API_KEY), or --staging.`;
+History commands use --url (or SOLAR_URL) and --api-key (or SOLAR_API_KEY).`;
 
 type TrpcResponse = {
 	result?: { data?: { json?: unknown } | unknown };
@@ -163,7 +163,6 @@ const { values, positionals } = parseArgs({
 		output: { type: "string" },
 		"api-key": { type: "string" },
 		url: { type: "string" },
-		staging: { type: "boolean" },
 		help: { type: "boolean", short: "h" },
 	},
 	allowPositionals: false,
@@ -173,21 +172,16 @@ if (values.help || positionals.length) {
 	console.log(usage);
 	process.exit(values.help ? 0 : 1);
 }
-const isStaging = Boolean(values.staging);
-const defaultUrl = isStaging
-	? (process.env.SOLAR_STAGING_URL ?? "https://solar.home.cowger.us")
-	: (process.env.SOLAR_URL ?? defaultLocalUrl());
+const defaultUrl = process.env.SOLAR_URL ?? defaultLocalUrl();
 const url = (values.url ?? defaultUrl).replace(/\/$/, "");
-const defaultApiKey = isStaging
-	? process.env.SOLAR_STAGING_API_KEY
-	: (process.env.SOLAR_API_KEY ??
-		(url.includes("localhost") || url.includes("127.0.0.1")
-			? defaultLocalApiKey()
-			: undefined) ??
-		process.env.SOLAR_STAGING_API_KEY);
+const defaultApiKey =
+	process.env.SOLAR_API_KEY ??
+	(url.includes("localhost") || url.includes("127.0.0.1")
+		? defaultLocalApiKey()
+		: undefined);
 const apiKey = required(
 	values["api-key"] ?? defaultApiKey,
-	"api-key (or set SOLAR_API_KEY / SOLAR_STAGING_API_KEY)",
+	"api-key (or set SOLAR_API_KEY)",
 );
 
 if (command === "inspect") {

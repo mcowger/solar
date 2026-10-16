@@ -1,12 +1,10 @@
 .env
 .env.openwebui.local
-.staging-history.json
-.staging-history/
-
 .spikes/
 
 node_modules/
 dist/
+__pycache__/
 .agents/skills/*
 .claude/skills/
 !.agents/skills/solar-cli/
