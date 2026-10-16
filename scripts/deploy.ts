@@ -1,36 +1,19 @@
 /**
- * Solar deployment. One script, two targets, configured via
- * SOLAR_<TARGET>_* env vars (staging defaults mirror the historical
- * deploy-staging.ts):
+ * Solar production deployment, configured via SOLAR_PRODUCTION_* env vars.
  *
- *   bun run deploy:staging      # solar-pi:staging-* images, pi-engine build
- *   bun run deploy:production   # solar:production-* images, current prod build
+ *   bun run deploy:production
  *
- * Both targets: build on the target's Docker context, recreate the running
+ * Builds on the target's Docker context, recreates the running
  * compose-managed service, wait for /healthz, export history, prune old tags.
  */
 import { spawnSync } from "node:child_process";
 
-type Target = "production" | "staging";
-
-const TARGET: Target | undefined = Bun.argv[2] as Target | undefined;
-if (TARGET !== "production" && TARGET !== "staging") {
-	console.error("usage: bun run scripts/deploy.ts <staging|production>");
-	process.exit(1);
-}
-
-const PREFIX = TARGET.toUpperCase();
 function env(name: string, fallback?: string): string | undefined {
-	return process.env[`SOLAR_${PREFIX}_${name}`] ?? fallback;
+	return process.env[`SOLAR_PRODUCTION_${name}`] ?? fallback;
 }
 
-const defaults: Record<Target, { imageName: string; tagPrefix: string }> = {
-	// Staging hosts the pi-engine build; production carries the current build.
-	staging: { imageName: "solar-pi", tagPrefix: "staging" },
-	production: { imageName: "solar", tagPrefix: "production" },
-};
-
-const { imageName: defaultImageName, tagPrefix } = defaults[TARGET];
+const tagPrefix = "production";
+const defaultImageName = "solar";
 
 const context = env("DOCKER_CONTEXT") ?? "dolphin";
 const sshHost = env("SSH_HOST") ?? context;
@@ -97,7 +80,7 @@ function sleep(milliseconds: number) {
 	return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-console.log(`Solar ${TARGET} deploy`);
+console.log("Solar production deploy");
 console.log(`  Context: ${context}`);
 console.log(`  SSH host: ${sshHost}`);
 console.log(`  URL: ${deployUrl}`);
@@ -215,7 +198,7 @@ if (!healthy) {
 const apiKey = env("API_KEY");
 if (apiKey) {
 	const historyOutput =
-		env("HISTORY_OUTPUT") ?? `.${TARGET}-history/${timestamp}.json`;
+		env("HISTORY_OUTPUT") ?? `.production-history/${timestamp}.json`;
 	console.log(`\nExporting chat history to ${historyOutput}...`);
 	runCommand(
 		"bun",

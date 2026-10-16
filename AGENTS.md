@@ -6,7 +6,7 @@ Guidance for AI agents working in this repository.
 - `apps/server/AGENTS.md` — Server entrypoint, Kysely/Better Auth DB, chat generation & streaming.
 - `apps/web/AGENTS.md` — Frontend styling, assistant-ui, Bun HMR, web tests.
 - `scripts/solar.ts` — History CLI (`solar history`) and development server CLI.
-- `scripts/deploy.ts` — Staging and production deployment workflow.
+- `scripts/deploy.ts` — Production deployment workflow.
 
 ## Current Constraints (Exploratory Phase)
 Do **not** add unless explicitly requested:
@@ -21,6 +21,10 @@ Do **not** add unless explicitly requested:
   `${SOLAR_PI_AGENT_DIR}/sessions/<conversationId>`; SQLite retains Solar-owned
   metadata, configuration, and attachment records.
 - **Single Process**: Server serves API and React app with HMR (no separate web dev server or Vite).
+
+## Releases
+
+Solar releases use CalVer tags (`YYYY.MM.DD`, optional `.N` same-day counter, no `v` prefix). Each user-visible change belongs in `CHANGELOG.md` under the UTC date heading, grouped under `Added`, `Changed`, or `Fixed`. Release tags run CI, publish a versioned Docker image to GHCR, and create a GitHub release from changelog sections since the previous tag. Use `bun run release:preview` and `bun run release:cut` to preview and cut releases; see `docs/releases.md`.
 
 ## Dev Server & LLM Mocking
 - **Mock LLM (Mandatory)**: Always run dev/tests with `SOLAR_MOCK_LLM=1` to avoid live LLM provider costs:
@@ -43,7 +47,6 @@ Do **not** add unless explicitly requested:
 | `bun run migrate` / `migrate:auth` | App (Kysely) / Better Auth DB migrations |
 | `bun run codegen` | Regenerate `src/db/types.generated.ts` from `solar.db` |
 | `bun run solar history …` | Investigate local or remote server instance |
-| `bun run deploy:staging` | Build and deploy the staging target |
 | `bun run deploy:production` | Build and deploy the production target |
 
 Canonical conversation history is not contained in SQLite alone. Persist and

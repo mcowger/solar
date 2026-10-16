@@ -36,8 +36,9 @@
     "test:e2e": "node ./node_modules/@playwright/test/cli.js test --project=chromium",
     "test:e2e:all": "node ./node_modules/@playwright/test/cli.js test",
     "test:e2e:install": "node ./node_modules/@playwright/test/cli.js install chromium firefox webkit",
-    "deploy:staging": "bun run scripts/deploy.ts staging",
-    "deploy:production": "bun run scripts/deploy.ts production"
+    "deploy:production": "bun run scripts/deploy.ts",
+    "release:preview": "bash scripts/preview-release.sh",
+    "release:cut": "bash scripts/cut-release.sh"
   },
   "dependencies": {
     "@struktoai/mirage-node": "^0.0.3",

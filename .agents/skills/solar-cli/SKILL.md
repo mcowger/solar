@@ -1,12 +1,11 @@
 ---
 name: solar-cli
-description: Manage Solar development servers and investigate local or staging instances with the Solar CLI. Use for dev-server lifecycle, seeded development credentials, server history inspection, or staging investigation.
+description: Manage Solar development servers and investigate local or production instances with the Solar CLI. Use for dev-server lifecycle, seeded development credentials, or server history inspection.
 ---
 
 # Solar CLI operations
 
-Use this skill for Solar development-server lifecycle and existing-server
-investigation. `bun run solar` is not a deployment CLI.
+Use this skill for Solar development-server lifecycle and existing-server investigation. `bun run solar` is not a deployment CLI.
 
 ## Development server
 
@@ -26,61 +25,30 @@ For UI or chat-flow verification, start it with the local model substitute:
 SOLAR_MOCK_LLM=1 bun run solar dev start
 ```
 
-On the first start with an empty development database, migrations run and the
-output includes:
+On the first start with an empty development database, migrations run and the output includes:
 
 ```text
 seeded dev admin account: admin@solar.local / password
 seeded dev API key: <generated key>
 ```
 
-The generated API key persists in that database. Retrieve it from the start
-output or `.dev-server.log`. No seed output means the database already has
-users. Delete `apps/server/solar.db*` only when an intentional local reset is
-requested.
-
-Use the local CLI directly (which auto-discovers the running dev server's
-port and seeded development API key) or pass explicit connection parameters:
-
-```bash
-bun run solar history list
-bun run solar history list --user admin@solar.local
-```
+The generated API key persists in that database. Retrieve it from the start output or `.dev-server.log`. No seed output means the database already has users. Delete `apps/server/solar.db*` only when an intentional local reset is requested.
 
 ## Investigate an existing server
 
-History commands support `list`, `inspect`, `export`, `export-all`, and
-`import`. They require an API key and default to the local running server unless
-`--url`, `SOLAR_URL`, or `--staging` is set. Prefer read-only commands
-(`list`, `inspect`, `export`) for investigation; import only when explicitly requested.
-
-For staging, use the `--staging` convenience flag (which reads `SOLAR_STAGING_URL`
-and `SOLAR_STAGING_API_KEY`) or map them explicitly:
+History commands support `list`, `inspect`, `export`, `export-all`, and `import`. They default to the local running server unless `--url` or `SOLAR_URL` is set. Prefer read-only commands (`list`, `inspect`, `export`) for investigation; import only when explicitly requested.
 
 ```bash
-bun run solar history list --staging --user <user@example.com>
+bun run solar history list
+bun run solar history list --url https://solar.example.com --api-key <key>
 ```
 
-Or via explicit environment variables:
+Use `SOLAR_API_KEY` or `--api-key` for authentication. Never print API keys.
+
+## Production deployment
 
 ```bash
-SOLAR_URL="$SOLAR_STAGING_URL" SOLAR_API_KEY="$SOLAR_STAGING_API_KEY" \
-  bun run solar history list --user <user@example.com>
+bun run deploy:production
 ```
 
-Never substitute development credentials for staging credentials, and do not
-print either API key.
-
-## Staging deployment
-
-Deployment is intentionally separate:
-
-```bash
-bun run deploy:staging
-```
-
-It rebuilds the staging image, recreates the Compose service, waits for health,
-exports history, and prunes old images. It consumes only `SOLAR_STAGING_*`
-configuration, including `SOLAR_STAGING_URL` and `SOLAR_STAGING_API_KEY`.
-Run it only when the task explicitly requests a staging deployment; never use
-it for investigation or verification.
+It builds the production image on its Docker context, recreates the Compose service, waits for health, optionally exports history, and prunes old images. Overrides use `SOLAR_PRODUCTION_*` environment variables. For published release images, see `docs/releases.md`.

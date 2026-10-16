@@ -358,12 +358,11 @@ Run with the same `DATABASE_PATH` and `SOLAR_PI_AGENT_DIR` as the server.
 ## Deployment
 
 ```sh
-bun run deploy:staging
 bun run deploy:production
 ```
 
-Both commands use `scripts/deploy.ts`. Target-specific overrides use
-`SOLAR_STAGING_*` or `SOLAR_PRODUCTION_*` environment variables. Keep the
+The command uses `scripts/deploy.ts`. Overrides use
+`SOLAR_PRODUCTION_*` environment variables. Keep the
 deployment's `/data` volume intact across upgrades: it contains SQLite,
 attachments, and `/data/pi-agent`, including canonical session JSONL.
 
@@ -377,6 +376,10 @@ may still evolve.
 The project deliberately does **not** include RAG/vector search, voice, image
 generation, channels, multi-tenant enterprise SSO (SAML, per-organization
 providers), or horizontal multi-node scaling.
+
+## Releases
+
+See [docs/releases.md](docs/releases.md) for the CalVer release process, Docker image, and GitHub release notes.
 
 ## Development
 
