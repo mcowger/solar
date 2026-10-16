@@ -1,0 +1,28 @@
+{
+  "worktree": {
+    "setup": ["bun run init-worktree"],
+    "teardown": "bun run solar dev stop"
+  },
+  "scripts": {
+    "dev": {
+      "type": "task",
+      "command": "SOLAR_MOCK_LLM=1 bun run solar dev start"
+    },
+    "build": {
+      "type": "command",
+      "command": "bun run build"
+    },
+    "typecheck": {
+      "type": "command",
+      "command": "bun run typecheck"
+    },
+    "test": {
+      "type": "command",
+      "command": "SOLAR_MOCK_LLM=1 bun run test"
+    },
+    "deploy:staging": {
+      "type": "command",
+      "command": "bun run deploy:staging"
+    }
+  }
+}

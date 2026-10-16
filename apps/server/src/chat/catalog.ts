@@ -21,8 +21,10 @@ import {
 	type ImageModelOptions,
 	type ModelContextPolicy,
 	type ModelVisibility,
+	visibleTo,
 } from "./allowlist";
 import type { NativeDocumentInput } from "./attachments";
+import { keepAdminFields } from "./modelSyncMerge";
 import {
 	FALLBACK_DOCUMENT_INPUT,
 	nativeAttachmentAdapter,
@@ -114,12 +116,20 @@ export interface ProviderConfigRow {
 	endpoints: ProviderEndpoint[];
 	enabledModels: AllowlistEntry[];
 	imageModels: AllowlistEntry[];
+	/** When the configuration last changed; the admin form's save version. */
+	updatedAt: string | null;
+	/** Whether the background timer keeps the models in sync. */
+	autoSyncModels: boolean;
+	/** JSON outcome of the last model sync (chat/modelSync.ts). */
+	modelSyncStatus: string | null;
 }
 
 export interface DiscoveredModel {
 	id: string;
 	name: string;
 	preferredApi: string | null;
+	/** Every Solar API the gateway lists for the model (`preferred_api`), preferred first. */
+	supportedApis: string[];
 	piProvider?: string;
 	piModel?: string;
 	piOptions?: Record<string, unknown>;
@@ -237,6 +247,9 @@ export async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
 			"endpoints",
 			"enabledModels",
 			"imageModels",
+			"updatedAt",
+			"autoSyncModels",
+			"modelSyncStatus",
 		])
 		.execute();
 	return rows.map((row) => {
@@ -256,6 +269,9 @@ export async function loadProviderConfigs(): Promise<ProviderConfigRow[]> {
 			]),
 			enabledModels,
 			imageModels: imageModels.length ? imageModels : legacyImageModels,
+			updatedAt: row.updatedAt ?? null,
+			autoSyncModels: Boolean(row.autoSyncModels),
+			modelSyncStatus: row.modelSyncStatus ?? null,
 		};
 	});
 }
@@ -294,7 +310,7 @@ export async function listAvailableModels(
 	const available = configs.flatMap((config) =>
 		config.enabledModels
 			.filter((entry) => !entry.image && entry.api !== "openrouter-images")
-			.filter((entry) => entry.visibility === "public" || isAdmin)
+			.filter((entry) => visibleTo(entry.visibility, isAdmin))
 			.filter((entry) =>
 				config.endpoints.some(
 					(endpoint) =>
@@ -346,7 +362,7 @@ export async function listAvailableImageModels(
 	const configs = await loadProviderConfigs();
 	const available = configs.flatMap((config) =>
 		config.imageModels.flatMap((entry) => {
-			if (entry.visibility !== "public" && !isAdmin) return [];
+			if (!visibleTo(entry.visibility, isAdmin)) return [];
 			const model = imageModelFromEntry(config.provider, entry);
 			if (
 				!model ||
@@ -909,7 +925,7 @@ export function streamModel(
 	});
 }
 
-function modelsUrl(baseUrl: string, api?: string) {
+export function modelsUrl(baseUrl: string, api?: string) {
 	const effective = api
 		? normalizeBaseUrlForApi(api, baseUrl)
 		: baseUrl.trim().replace(/\/+$/, "");
@@ -972,9 +988,25 @@ export async function discoverProviderModels(
 	);
 	if (!config || !endpoint || !endpoint.baseUrl)
 		throw new Error("Provider endpoint is not configured");
-	const response = await fetch(modelsUrl(endpoint.baseUrl, endpoint.api), {
-		headers: config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {},
-	});
+	return fetchEndpointModels(config, endpoint);
+}
+
+/** One endpoint's models from its gateway's `/v1/models`, as Solar sees them. */
+export async function fetchEndpointModels(
+	config: Pick<ProviderConfigRow, "apiKey">,
+	endpoint: ProviderEndpoint,
+	options: { fetchImpl?: typeof fetch; signal?: AbortSignal } = {},
+): Promise<DiscoveredModel[]> {
+	if (!endpoint.baseUrl) throw new Error("Provider endpoint is not configured");
+	const response = await (options.fetchImpl ?? fetch)(
+		modelsUrl(endpoint.baseUrl, endpoint.api),
+		{
+			headers: config.apiKey
+				? { authorization: `Bearer ${config.apiKey}` }
+				: {},
+			...(options.signal ? { signal: options.signal } : {}),
+		},
+	);
 	if (!response.ok)
 		throw new Error(
 			`Model query failed (${response.status} ${response.statusText})`,
@@ -991,13 +1023,18 @@ export async function discoverProviderModels(
 			(imageEndpoint ? !isImageGeneration(model) : !isTextGeneration(model))
 		)
 			return [];
-		const preferred = imageEndpoint
-			? "openrouter-images"
+		const supportedApis = imageEndpoint
+			? ["openrouter-images"]
 			: Array.isArray(model.preferred_api)
-				? (model.preferred_api
-						.map(upstreamApi)
-						.find((api): api is string => api !== null) ?? null)
-				: null;
+				? [
+						...new Set(
+							model.preferred_api
+								.map(upstreamApi)
+								.filter((api): api is string => api !== null),
+						),
+					]
+				: [];
+		const preferred = supportedApis[0] ?? null;
 		const architecture = model.architecture as
 			| { input_modalities?: unknown }
 			| undefined;
@@ -1028,6 +1065,7 @@ export async function discoverProviderModels(
 				id: model.id,
 				name: typeof model.name === "string" ? model.name : model.id,
 				preferredApi: preferred,
+				supportedApis,
 				...(typeof model.pi_provider === "string"
 					? { piProvider: model.pi_provider }
 					: {}),
@@ -1125,7 +1163,10 @@ export async function importProviderModels(
 				item.serviceTiers?.includes(previous.serviceTier)
 					? { serviceTier: previous.serviceTier }
 					: {};
-			return { ...item, ...keepTier };
+			// A re-import refreshes what the gateway reports but keeps what the
+			// admin set (name, context window/policy, documents, effort, …).
+			const refreshed = { ...item, ...keepTier };
+			return previous ? keepAdminFields(previous, refreshed) : refreshed;
 		}),
 	];
 	const imageModels = [

@@ -23,6 +23,7 @@ import {
 	piCwdDir,
 	piSessionDir,
 } from "./config";
+import { piModelConfigRevision } from "./models";
 
 export interface AcquirePiSessionOptions {
 	identity: BridgeIdentity;
@@ -112,12 +113,18 @@ function scrubbedChildEnv(
 	return env;
 }
 
-/** Hash-free identity for spawn-affecting args; reused handles must match it. */
-function spawnSignature(options: AcquirePiSessionOptions): string {
+/**
+ * Identity of everything a spawned process fixes at start; reused handles must
+ * match it. Includes the model config revision because pi reads models.json
+ * only at startup: after a provider change or model sync, the next turn
+ * respawns the process (the session file on disk is the source of truth).
+ */
+export function spawnSignature(options: AcquirePiSessionOptions): string {
 	return JSON.stringify([
 		options.systemPrompt,
 		options.appendSystemPrompt ?? null,
 		options.bridgeUrl,
+		piModelConfigRevision(),
 	]);
 }
 
@@ -228,6 +235,11 @@ export class PiSessionManager {
 			}
 		).process;
 		childProcess?.once?.("exit", () => {
+			// A drop on purpose (respawn after a config change, idle reaping,
+			// shutdown) removes the handle before stopping the child. Its exit is
+			// expected and must not take down the conversation's replacement or
+			// interrupt the generation now running on it.
+			if (this.sessions.get(conversationId) !== session) return;
 			logger
 				.withMetadata({ conversationId })
 				.warn("pi process exited unexpectedly; dropping session handle");

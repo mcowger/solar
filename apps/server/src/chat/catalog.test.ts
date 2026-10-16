@@ -194,7 +194,7 @@ describe("catalog model policy", () => {
 		});
 	});
 
-	test("shows private models only to admins and conservatively describes unknown models", async () => {
+	test("shows private models only to admins, hidden models to nobody, and conservatively describes unknown models", async () => {
 		configureModels({
 			provider: "openai",
 			apiKey: null,
@@ -211,6 +211,12 @@ describe("catalog model policy", () => {
 					endpointId: "openai-completions",
 					api: "openai-completions",
 					visibility: "private",
+				},
+				{
+					id: "hidden-openai",
+					endpointId: "openai-completions",
+					api: "openai-completions",
+					visibility: "hidden",
 				},
 			],
 		});
@@ -534,6 +540,7 @@ describe("catalog model policy", () => {
 					id: "gpt-test",
 					name: "GPT Test",
 					preferredApi: "openai-responses",
+					supportedApis: ["openai-responses"],
 					piProvider: "openai",
 					piModel: "gpt-test",
 					piOptions: { supportsToolSearch: true },
@@ -643,6 +650,7 @@ describe("catalog model policy", () => {
 					id: "tiered-model",
 					name: "Tiered Model",
 					preferredApi: null,
+					supportedApis: [],
 					reasoning: false,
 					vision: false,
 					serviceTiers: ["auto", "flex"],
@@ -651,6 +659,7 @@ describe("catalog model policy", () => {
 					id: "plain-model",
 					name: "Plain Model",
 					preferredApi: null,
+					supportedApis: [],
 					reasoning: false,
 					vision: false,
 				},
@@ -719,6 +728,79 @@ describe("catalog model policy", () => {
 			expect(state.providerConfigs[0]?.enabledModels[0]).not.toHaveProperty(
 				"serviceTier",
 			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("re-importing a model refreshes gateway facts but keeps what the admin set", async () => {
+		const contextPolicy = {
+			enabled: true,
+			softTriggerTokens: 1,
+			targetTokens: 2,
+			hardInputTokens: 3,
+			maxPinnedAttachmentTokens: 4,
+			outputReserveTokens: 5,
+		};
+		configureModels({
+			provider: "plexus",
+			apiKey: "test-key",
+			baseUrl: null,
+			endpoints: [
+				{
+					id: "responses",
+					label: "Responses",
+					baseUrl: "https://plexus.example/v1",
+					api: "openai-responses",
+				},
+			],
+			enabledModels: [
+				{
+					id: "tuned-model",
+					endpointId: "responses",
+					api: "openai-responses",
+					visibility: "private",
+					name: "Admin name",
+					contextWindow: 123_000,
+					maxTokens: 9_000,
+					documents: true,
+					reasoningEffort: "high",
+					contextPolicy,
+					reasoning: false,
+				},
+			],
+		});
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						data: [
+							{
+								id: "tuned-model",
+								name: "Gateway name",
+								architecture: { output_modalities: ["text"] },
+								supported_parameters: ["reasoning"],
+							},
+						],
+					}),
+				),
+		) as unknown as typeof fetch;
+		try {
+			await catalog.importProviderModels("plexus", "responses", [
+				{ id: "tuned-model", api: "openai-responses", visibility: "public" },
+			]);
+			expect(state.providerConfigs[0]?.enabledModels[0]).toMatchObject({
+				id: "tuned-model",
+				visibility: "public",
+				name: "Admin name",
+				contextWindow: 123_000,
+				maxTokens: 9_000,
+				documents: true,
+				reasoningEffort: "high",
+				contextPolicy,
+				reasoning: true,
+			});
 		} finally {
 			globalThis.fetch = originalFetch;
 		}

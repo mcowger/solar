@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Settings2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "../auth";
 import { useTRPC } from "../trpc";
+import { sortModelsByName } from "../chat/sortModels";
 import { newId } from "../id";
 import { copyText } from "../clipboard";
 
@@ -10,7 +11,7 @@ interface AllowlistEntry {
 	id: string;
 	endpointId: string;
 	api: string;
-	visibility: "public" | "private";
+	visibility: Visibility;
 	name?: string;
 	piProvider?: string;
 	piModel?: string;
@@ -55,6 +56,18 @@ interface ImageCatalogModel {
 	output: ("image" | "text")[];
 }
 
+interface ModelSyncStatus {
+	at: string;
+	trigger: "manual" | "timer" | "enable";
+	ok: boolean;
+	added: string[];
+	removed: string[];
+	updated: { id: string; fields: string[] }[];
+	moved: { id: string; from: string; to: string }[];
+	skipped: string[];
+	errors: string[];
+}
+
 interface ProviderForm {
 	provider: string;
 	hasApiKey: boolean;
@@ -63,6 +76,94 @@ interface ProviderForm {
 	imageModels?: AllowlistEntry[];
 	imageCatalogModels?: ImageCatalogModel[];
 	apis: readonly string[];
+	/** Provider version the form was loaded from (sent back on save). */
+	updatedAt?: string | null;
+	autoSyncModels?: boolean;
+	modelSync?: ModelSyncStatus | null;
+	syncing?: boolean;
+	syncAvailable?: boolean;
+}
+
+function syncedAgo(iso: string, now = Date.now()): string {
+	const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
+	if (!Number.isFinite(minutes)) return "";
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes} min ago`;
+	if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} h ago`;
+	return new Date(iso).toLocaleDateString();
+}
+
+type Visibility = "public" | "private" | "hidden";
+
+/** Who can pick a model, as the visibility selects offer it. */
+const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+	{ value: "public", label: "Public — everyone" },
+	{ value: "private", label: "Private — admins only" },
+	{ value: "hidden", label: "Hidden — nobody" },
+];
+
+const VISIBILITY_BADGES: Record<Visibility, [string, string]> = {
+	public: ["Public", "badge-success badge-soft"],
+	private: ["Private", "badge-warning badge-soft"],
+	hidden: ["Hidden", "badge-error badge-soft"],
+};
+
+function ModelSyncStatusLine({ status }: { status: ModelSyncStatus | null }) {
+	if (!status)
+		return <span className="text-sm opacity-70">Not synced yet</span>;
+	const counts = [
+		status.added.length ? `+${status.added.length} added` : "",
+		status.removed.length ? `−${status.removed.length} removed` : "",
+		status.updated.length ? `${status.updated.length} updated` : "",
+		status.moved.length ? `${status.moved.length} moved` : "",
+	].filter(Boolean);
+	const details = [
+		["Added", status.added],
+		["Removed", status.removed],
+		[
+			"Updated",
+			status.updated.map((item) => `${item.id} (${item.fields.join(", ")})`),
+		],
+		[
+			"Moved",
+			status.moved.map((item) => `${item.id}: ${item.from} → ${item.to}`),
+		],
+		["Not added (no image mapping)", status.skipped],
+	] as const;
+	return (
+		<div className="grid min-w-0 gap-1 text-sm">
+			<span className="opacity-70">
+				Last synced {syncedAgo(status.at)}
+				{status.trigger === "timer" ? " (automatic)" : ""}
+				{counts.length ? "" : " · no changes"}
+			</span>
+			{counts.length > 0 && (
+				<details>
+					<summary className="cursor-pointer">{counts.join(" · ")}</summary>
+					<ul className="mt-1 grid gap-1 break-words pl-4 text-xs">
+						{details.map(([label, items]) =>
+							items.length ? (
+								<li key={label}>
+									<span className="font-medium">{label}:</span>{" "}
+									{items.join(", ")}
+								</li>
+							) : null,
+						)}
+					</ul>
+				</details>
+			)}
+			{status.errors.length > 0 && (
+				<div
+					role="alert"
+					className="alert alert-warning alert-soft py-2 text-xs"
+				>
+					<span className="break-words">
+						{status.errors.join(" ")} The previous model list was kept.
+					</span>
+				</div>
+			)}
+		</div>
+	);
 }
 
 interface ModelDescriptor {
@@ -315,24 +416,27 @@ function ModelSettingsModal({
 							))}
 						</select>
 					</fieldset>
-					<label className="flex items-center justify-between gap-4 rounded-box bg-base-200 px-4 py-3">
-						<span>
-							<span className="block font-medium">Visible to all users</span>
-							<span className="block text-sm opacity-60">
-								Allow non-admin users to select this model.
-							</span>
-						</span>
-						<input
-							className="toggle toggle-primary checked:border-primary checked:bg-primary checked:text-primary-content"
-							type="checkbox"
-							checked={model.visibility === "public"}
+					<fieldset className="fieldset">
+						<legend className="fieldset-legend">Who can pick it</legend>
+						<select
+							className="select w-full"
+							aria-label="Who can pick it"
+							value={model.visibility}
 							onChange={(event) =>
-								onChange({
-									visibility: event.target.checked ? "public" : "private",
-								})
+								onChange({ visibility: event.target.value as Visibility })
 							}
-						/>
-					</label>
+						>
+							{VISIBILITY_OPTIONS.map((option) => (
+								<option key={option.value} value={option.value}>
+									{option.label}
+								</option>
+							))}
+						</select>
+						<p className="label whitespace-normal">
+							A hidden model stays in this list, so a model sync does not add it
+							back, but nobody can pick it.
+						</p>
+					</fieldset>
 					<label className="flex items-center justify-between gap-4 rounded-box bg-base-200 px-4 py-3">
 						<span>
 							<span className="block font-medium">Documents</span>
@@ -565,7 +669,7 @@ function TaskModel() {
 						<option value="" disabled>
 							{models.length ? "Select a task model" : "No models configured"}
 						</option>
-						{models.map((model) => (
+						{sortModelsByName(models).map((model) => (
 							<option key={modelKey(model)} value={modelKey(model)}>
 								{model.name} · {model.provider}
 							</option>
@@ -650,10 +754,15 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 		}[];
 	} | null>(null);
 	const [imports, setImports] = useState<
-		Record<string, { api: string; visibility: "public" | "private" }>
+		Record<string, { api: string; visibility: Visibility }>
 	>({});
 	const [settingsIndex, setSettingsIndex] = useState<number | null>(null);
-	useEffect(() => {
+	// The provider version this form edits; a save from an older version is
+	// refused, so a background model sync is never silently undone.
+	const [version, setVersion] = useState(initial.updatedAt ?? null);
+	const [serverChanged, setServerChanged] = useState(false);
+	const hasChangesRef = useRef(false);
+	const resetToServer = () => {
 		setEndpoints(initial.endpoints);
 		setModels(initial.enabledModels);
 		setImageModels(initial.imageModels ?? []);
@@ -664,11 +773,43 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 				imageModels: initial.imageModels ?? [],
 			}),
 		);
-	}, [initial.endpoints, initial.enabledModels, initial.imageModels]);
+		setVersion(initial.updatedAt ?? null);
+		setServerChanged(false);
+	};
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the server copy changes.
+	useEffect(() => {
+		// Unsaved edits are never wiped by a background change (model sync):
+		// say so instead, and let the admin reload.
+		if (hasChangesRef.current) {
+			setServerChanged(true);
+			return;
+		}
+		resetToServer();
+	}, [
+		initial.endpoints,
+		initial.enabledModels,
+		initial.imageModels,
+		initial.updatedAt,
+	]);
+	const invalidateProviders = () => {
+		qc.invalidateQueries({ queryKey: trpc.admin.listProviders.queryKey() });
+		qc.invalidateQueries({ queryKey: trpc.model.available.queryKey() });
+	};
+	const syncModels = useMutation(
+		trpc.admin.syncProviderModels.mutationOptions({
+			onSuccess: invalidateProviders,
+		}),
+	);
+	const setAutoSync = useMutation(
+		trpc.admin.setProviderAutoSync.mutationOptions({
+			onSuccess: invalidateProviders,
+		}),
+	);
 	const save = useMutation(
 		trpc.admin.setProvider.mutationOptions({
-			onSuccess: (_, variables) => {
+			onSuccess: (result, variables) => {
 				setApiKey("");
+				if (result?.updatedAt) setVersion(result.updatedAt);
 				setSavedConfiguration(
 					JSON.stringify({
 						endpoints: variables.endpoints,
@@ -768,11 +909,77 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 	const hasChanges =
 		apiKey.length > 0 ||
 		JSON.stringify({ endpoints, models, imageModels }) !== savedConfiguration;
+	hasChangesRef.current = hasChanges;
+	const syncAvailable = initial.syncAvailable ?? false;
+	const syncing =
+		syncModels.isPending || setAutoSync.isPending || initial.syncing;
+	const conflict = save.error?.data?.code === "CONFLICT";
 
 	return (
 		<section className="card card-border bg-base-100 shadow-sm">
 			<div className="card-body gap-4 p-4 sm:p-5">
 				<h3 className="card-title capitalize">{initial.provider}</h3>
+				<div className="grid min-w-0 gap-2 rounded-box bg-base-200 px-4 py-3">
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+							<input
+								type="checkbox"
+								className="toggle toggle-sm toggle-primary"
+								checked={initial.autoSyncModels ?? false}
+								disabled={!syncAvailable || setAutoSync.isPending}
+								onChange={(event) =>
+									setAutoSync.mutate({
+										provider: initial.provider,
+										enabled: event.target.checked,
+									})
+								}
+							/>
+							Auto-sync models
+						</label>
+						<button
+							type="button"
+							className="btn btn-sm btn-primary btn-outline"
+							disabled={
+								!syncAvailable ||
+								hasChanges ||
+								syncing ||
+								endpoints.length === 0
+							}
+							title={
+								!syncAvailable
+									? "Model sync is off in airgap mode"
+									: hasChanges
+										? "Save or discard your changes first"
+										: "Add new gateway models (as private), refresh what the gateway reports, and remove models it no longer lists"
+							}
+							onClick={() => syncModels.mutate({ provider: initial.provider })}
+						>
+							{syncing ? "Syncing…" : "Sync models"}
+						</button>
+					</div>
+					<ModelSyncStatusLine status={initial.modelSync ?? null} />
+				</div>
+				{serverChanged && (
+					<div
+						role="alert"
+						className="alert alert-info alert-soft py-2 text-sm"
+					>
+						<span>
+							This provider changed on the server (a model sync or another
+							admin) while you were editing.
+						</span>
+						<button
+							type="button"
+							className="btn btn-xs"
+							onClick={() => {
+								save.reset();
+								resetToServer();
+							}}
+						>
+							Reload
+						</button>
+					</div>
+				)}
 				<fieldset className="fieldset grid min-w-0 content-start gap-1">
 					<legend className="fieldset-legend">API key</legend>
 					<input
@@ -953,15 +1160,14 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 																...current,
 																[model.id]: {
 																	api: current[model.id]?.api ?? preferredApi,
-																	visibility: event.target.value as
-																		| "public"
-																		| "private",
+																	visibility: event.target.value as Visibility,
 																},
 															}))
 														}
 													>
 														<option value="public">Public</option>
 														<option value="private">Private</option>
+														<option value="hidden">Hidden</option>
 													</select>
 												</td>
 											</tr>
@@ -1009,9 +1215,9 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 								</div>
 								<div className="hidden items-center gap-1.5 text-xs sm:flex">
 									<span
-										className={`badge badge-sm ${model.visibility === "public" ? "badge-success badge-soft" : "badge-warning badge-soft"}`}
+										className={`badge badge-sm ${VISIBILITY_BADGES[model.visibility][1]}`}
 									>
-										{model.visibility}
+										{VISIBILITY_BADGES[model.visibility][0]}
 									</span>
 									{model.documents && (
 										<span className="badge badge-sm badge-outline">
@@ -1132,7 +1338,9 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 					{(save.isError ||
 						remove.isError ||
 						queryModels.isError ||
-						importModels.isError) && (
+						importModels.isError ||
+						syncModels.isError ||
+						setAutoSync.isError) && (
 						<div
 							role="alert"
 							className="alert alert-error alert-soft py-2 text-sm"
@@ -1140,7 +1348,21 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 							{save.error?.message ??
 								remove.error?.message ??
 								queryModels.error?.message ??
-								importModels.error?.message}
+								importModels.error?.message ??
+								syncModels.error?.message ??
+								setAutoSync.error?.message}
+							{conflict && (
+								<button
+									type="button"
+									className="btn btn-xs"
+									onClick={() => {
+										save.reset();
+										resetToServer();
+									}}
+								>
+									Reload
+								</button>
+							)}
 						</div>
 					)}
 					{!hasChanges && save.isSuccess && (
@@ -1171,6 +1393,7 @@ function ProviderCard({ initial }: { initial: ProviderForm }) {
 								endpoints,
 								enabledModels: models,
 								imageModels,
+								expectedUpdatedAt: version,
 							})
 						}
 						disabled={save.isPending || remove.isPending || !hasChanges}

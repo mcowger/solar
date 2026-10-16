@@ -18,6 +18,12 @@ describe("parseAllowlist", () => {
 						api: "openai-completions",
 						visibility: "unexpected",
 					},
+					{
+						id: "gpt-4o",
+						endpointId: "completions",
+						api: "openai-completions",
+						visibility: "hidden",
+					},
 				]),
 			),
 		).toEqual([
@@ -32,6 +38,12 @@ describe("parseAllowlist", () => {
 				endpointId: "completions",
 				api: "openai-completions",
 				visibility: "public",
+			},
+			{
+				id: "gpt-4o",
+				endpointId: "completions",
+				api: "openai-completions",
+				visibility: "hidden",
 			},
 		]);
 	});

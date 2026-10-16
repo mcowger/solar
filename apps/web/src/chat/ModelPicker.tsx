@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Star } from "lucide-react";
 import { useTRPC } from "../trpc";
+import { sortModelsByName } from "./sortModels";
 
 interface Selection {
 	provider: string;
@@ -87,7 +88,7 @@ export function ModelMenu({ conversationId }: { conversationId: string }) {
 						</span>
 					</li>
 				)}
-				{models.map((m) => {
+				{sortModelsByName(models).map((m) => {
 					const selected = cur && key(m) === key(cur);
 					return (
 						<li key={key(m)}>

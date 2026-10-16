@@ -70,6 +70,13 @@ import {
 import { HISTORY_BUNDLE_FORMAT, type HistoryBundle } from "../history/bundle";
 import { piModelCapabilities, syncPiModelConfig } from "../pi/models";
 import {
+	isProviderSyncing,
+	parseModelSyncStatus,
+	setProviderAutoSync,
+	syncProviderModels as syncModelsWithGateway,
+	withProviderLock,
+} from "../chat/modelSync";
+import {
 	loadPiMessages,
 	piConversationMatchesQuery,
 	piConversationTitle,
@@ -716,7 +723,7 @@ const allowlistEntrySchema = z
 		id: z.string().trim().min(1),
 		endpointId: z.string().trim().min(1),
 		api: z.string().trim().min(1),
-		visibility: z.enum(["public", "private"]).default("public"),
+		visibility: z.enum(["public", "private", "hidden"]).default("public"),
 		name: z.string().trim().optional(),
 		piProvider: z.string().trim().optional(),
 		piModel: z.string().trim().optional(),
@@ -939,10 +946,16 @@ const adminRouter = router({
 
 	listProviders: adminProcedure.query(async () => {
 		const configs = await loadProviderConfigs();
+		const syncAvailable = !config.airgapMode;
 		return Promise.all(
 			configs.map(async (config) => ({
 				provider: config.provider,
 				hasApiKey: Boolean(config.apiKey),
+				updatedAt: config.updatedAt,
+				autoSyncModels: config.autoSyncModels,
+				modelSync: parseModelSyncStatus(config.modelSyncStatus),
+				syncing: isProviderSyncing(config.provider),
+				syncAvailable,
 				endpoints: config.endpoints,
 				enabledModels: await Promise.all(
 					config.enabledModels.map(async (model) => ({
@@ -980,6 +993,8 @@ const adminRouter = router({
 				),
 				enabledModels: z.array(allowlistEntrySchema),
 				imageModels: z.array(allowlistEntrySchema).optional(),
+				/** The provider version the form was loaded from (updatedAt). */
+				expectedUpdatedAt: z.string().nullish(),
 			}),
 		)
 		.mutation(async ({ input }) => {
@@ -1042,50 +1057,117 @@ const adminRouter = router({
 					});
 				}
 			}
-			const existing = await db
-				.selectFrom("provider_config")
-				.select(["apiKey", "imageModels"])
-				.where("provider", "=", input.provider)
-				.executeTakeFirst();
-			const imageModels =
-				input.imageModels !== undefined || legacyImageModels.length > 0
-					? submittedImageModels
-					: parseImageAllowlist(existing?.imageModels);
-			const values = {
-				provider: input.provider,
-				apiKey: input.apiKey || existing?.apiKey || null,
-				baseUrl: null,
-				endpoints: JSON.stringify(input.endpoints),
-				enabledModels: JSON.stringify(submittedChatModels),
-				imageModels: JSON.stringify(imageModels),
-				updatedAt: new Date().toISOString(),
-			};
-			await db
-				.insertInto("provider_config")
-				.values(values)
-				.onConflict((oc) =>
-					oc.column("provider").doUpdateSet({
-						apiKey: values.apiKey,
-						baseUrl: values.baseUrl,
-						endpoints: values.endpoints,
-						enabledModels: values.enabledModels,
-						imageModels: values.imageModels,
-						updatedAt: values.updatedAt,
-					}),
-				)
-				.execute();
-			// pi regenerates models.json/auth.json from provider_config.
-			await syncPiModelConfig(config.port);
+			return withProviderLock(input.provider, async () => {
+				const existing = await db
+					.selectFrom("provider_config")
+					.select(["apiKey", "imageModels", "updatedAt"])
+					.where("provider", "=", input.provider)
+					.executeTakeFirst();
+				// A model sync (or another admin) may have changed the provider since
+				// this form loaded; saving the stale form would undo that silently.
+				if (
+					existing &&
+					input.expectedUpdatedAt &&
+					existing.updatedAt !== input.expectedUpdatedAt
+				) {
+					throw new TRPCError({
+						code: "CONFLICT",
+						message:
+							"This provider's models changed since the form loaded (a model sync or another admin). Reload to see them, then make your changes again.",
+					});
+				}
+				const imageModels =
+					input.imageModels !== undefined || legacyImageModels.length > 0
+						? submittedImageModels
+						: parseImageAllowlist(existing?.imageModels);
+				const values = {
+					provider: input.provider,
+					apiKey: input.apiKey || existing?.apiKey || null,
+					baseUrl: null,
+					endpoints: JSON.stringify(input.endpoints),
+					enabledModels: JSON.stringify(submittedChatModels),
+					imageModels: JSON.stringify(imageModels),
+					updatedAt: new Date().toISOString(),
+				};
+				await db
+					.insertInto("provider_config")
+					.values(values)
+					.onConflict((oc) =>
+						oc.column("provider").doUpdateSet({
+							apiKey: values.apiKey,
+							baseUrl: values.baseUrl,
+							endpoints: values.endpoints,
+							enabledModels: values.enabledModels,
+							imageModels: values.imageModels,
+							updatedAt: values.updatedAt,
+						}),
+					)
+					.execute();
+				// pi regenerates models.json/auth.json from provider_config.
+				await syncPiModelConfig(config.port);
+				return { updatedAt: values.updatedAt };
+			});
 		}),
 
 	deleteProvider: adminProcedure
 		.input(z.object({ provider: z.string().trim().min(1).max(100) }))
 		.mutation(async ({ input }) => {
-			await db
-				.deleteFrom("provider_config")
-				.where("provider", "=", input.provider)
-				.execute();
-			await syncPiModelConfig(config.port);
+			await withProviderLock(input.provider, async () => {
+				await db
+					.deleteFrom("provider_config")
+					.where("provider", "=", input.provider)
+					.execute();
+				await syncPiModelConfig(config.port);
+			});
+		}),
+
+	setProviderAutoSync: adminProcedure
+		.input(
+			z.object({
+				provider: z.string().trim().min(1).max(100),
+				enabled: z.boolean(),
+			}),
+		)
+		.mutation(async ({ input }) => {
+			await setProviderAutoSync(input.provider, input.enabled);
+			if (!input.enabled)
+				return { autoSyncModels: false, status: null, skipped: null };
+			// Switching auto-sync on syncs straight away rather than waiting for
+			// the next timer run.
+			try {
+				const outcome = await syncModelsWithGateway(input.provider, {
+					trigger: "enable",
+				});
+				return {
+					autoSyncModels: true,
+					status: outcome.status,
+					skipped: outcome.skipped ?? null,
+				};
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: error instanceof Error ? error.message : "Model sync failed",
+				});
+			}
+		}),
+
+	syncProviderModels: adminProcedure
+		.input(z.object({ provider: z.string().trim().min(1).max(100) }))
+		.mutation(async ({ input }) => {
+			let outcome: Awaited<ReturnType<typeof syncModelsWithGateway>>;
+			try {
+				outcome = await syncModelsWithGateway(input.provider, {
+					trigger: "manual",
+				});
+			} catch (error) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: error instanceof Error ? error.message : "Model sync failed",
+				});
+			}
+			if (outcome.skipped)
+				throw new TRPCError({ code: "BAD_REQUEST", message: outcome.skipped });
+			return outcome.status;
 		}),
 
 	queryProviderModels: adminProcedure
@@ -1115,7 +1197,7 @@ const adminRouter = router({
 							api: z.enum(
 								ALL_PROVIDER_APIS as unknown as [string, ...string[]],
 							),
-							visibility: z.enum(["public", "private"]),
+							visibility: z.enum(["public", "private", "hidden"]),
 						}),
 					)
 					.min(1),
@@ -1123,10 +1205,8 @@ const adminRouter = router({
 		)
 		.mutation(async ({ input }) => {
 			try {
-				await importProviderModels(
-					input.provider,
-					input.endpointId,
-					input.models,
+				await withProviderLock(input.provider, () =>
+					importProviderModels(input.provider, input.endpointId, input.models),
 				);
 				// Tiers (and any refreshed discovery data) live in provider_config;
 				// regenerate pi's models.json so they take effect without an extra save.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isTruthy, parseOidcConfig } from "./config";
+import { isTruthy, parseModelSyncIntervalMs, parseOidcConfig } from "./config";
 
 describe("environment booleans", () => {
 	test("recognizes explicit chat feature-flag values", () => {
@@ -9,6 +9,17 @@ describe("environment booleans", () => {
 		expect(isTruthy("0")).toBe(false);
 		expect(isTruthy("false")).toBe(false);
 		expect(isTruthy(undefined)).toBe(false);
+	});
+});
+
+describe("model sync interval", () => {
+	test("defaults to hourly, takes minutes, and 0 turns the timer off", () => {
+		expect(parseModelSyncIntervalMs(undefined)).toBe(3_600_000);
+		expect(parseModelSyncIntervalMs("")).toBe(3_600_000);
+		expect(parseModelSyncIntervalMs("15")).toBe(900_000);
+		expect(parseModelSyncIntervalMs("0")).toBe(0);
+		expect(parseModelSyncIntervalMs("-5")).toBe(3_600_000);
+		expect(parseModelSyncIntervalMs("soon")).toBe(3_600_000);
 	});
 });
 

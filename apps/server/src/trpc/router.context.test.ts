@@ -48,6 +48,8 @@ mock.module("../chat/catalog", () => ({
 	listAvailableModels: async () => [],
 	listAvailableImageModels: async () => [],
 	listImageCatalogModels: () => [],
+	fetchEndpointModels: async () => [],
+	modelsUrl: (baseUrl: string) => new URL(`${baseUrl}/models`),
 	resolveImageModel: async () => {
 		throw new Error("resolveImageModel should not be called in this test");
 	},

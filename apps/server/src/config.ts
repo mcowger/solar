@@ -20,6 +20,19 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 	return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+const HOUR_MS = 60 * 60_000;
+
+/**
+ * Minutes between background model syncs (chat/modelSync.ts), as ms. Unset
+ * or invalid means hourly; 0 turns the timer off (the Sync button still works).
+ */
+export function parseModelSyncIntervalMs(value?: string): number {
+	if (value === undefined || value.trim() === "") return HOUR_MS;
+	const minutes = Number(value);
+	if (!Number.isFinite(minutes) || minutes < 0) return HOUR_MS;
+	return Math.round(minutes * 60_000);
+}
+
 /** Resolved settings for the optional OpenID Connect provider. */
 export interface OidcConfig {
 	/**
@@ -112,6 +125,11 @@ export const config = {
 		process.env.SOLAR_AIRGAP_MODE ?? process.env.AIRGAP_MODE,
 	),
 	attachmentsDataDir: process.env.SOLAR_ATTACHMENTS_DIR ?? "data/attachments",
+	// How often providers with auto-sync on refresh their models from the
+	// gateway. Off in airgap mode regardless.
+	modelSyncIntervalMs: parseModelSyncIntervalMs(
+		process.env.SOLAR_MODEL_SYNC_INTERVAL_MINUTES,
+	),
 	maxToolOutputCharacters: Number(
 		process.env.SOLAR_MAX_TOOL_OUTPUT_CHARS ??
 			process.env.MAX_TOOL_OUTPUT_CHARS ??

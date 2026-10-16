@@ -237,6 +237,7 @@ policy; task-model and large-paste settings; and aggregated token usage.
 | `SOLAR_PI_CWD_ROOT` | Scratch directories used as pi process working directories |
 | `SOLAR_PI_MAX_PROCESSES` | Maximum concurrently live pi RPC children (default `8`) |
 | `SOLAR_MCP_TOOL_TIMEOUT_MS` | How long one MCP tool call may run (default `60000`); keep it below `SOLAR_PI_STALL_TIMEOUT_MS` |
+| `SOLAR_MODEL_SYNC_INTERVAL_MINUTES` | Minutes between background model syncs for providers with auto-sync on (default `60`; `0` turns the timer off) |
 | `PORT` | Listening port / managed dev-server override |
 | `FRPC_SERVER_ADDR` / `FRPC_AUTH_TOKEN` | Optional FRP server address and token |
 | `FRPC_SERVER_PORT` | Optional FRP control port; defaults to `7000` |
@@ -247,12 +248,34 @@ Provider keys, enabled models, presets, context policies, and MCP servers are
 managed from the authenticated UI. See `.env.example` for the complete runtime
 surface.
 
+**Model sync.** Each provider card has a **Sync models** button and an
+**Auto-sync models** switch. A sync reads every endpoint's `GET /v1/models`
+(endpoints sharing a URL are read once):
+
+- New gateway models are added as **Private** (admins only). Set a model to
+  **Public** to offer it to everyone, or to **Hidden** to offer it to nobody:
+  a hidden model stays in the list, so a sync keeps it hidden instead of
+  adding it back.
+- What the gateway reports is refreshed: reasoning, vision, service tiers and
+  pi routing. What an admin set is kept: visibility, name, context window and
+  policy, documents, reasoning effort and max tokens.
+- Models the gateway no longer lists are removed. The button removes them at
+  once; the timer waits for a second miss in a row.
+- A failed, empty or implausible reply (one that would remove every model)
+  changes nothing and is shown on the card.
+
+Providers with auto-sync on sync shortly after start, then every
+`SOLAR_MODEL_SYNC_INTERVAL_MINUTES`. A save from a form loaded before a sync is
+refused, so the admin can reload instead of undoing it. Running conversations
+pick up changed models on their next turn. Model sync is off in airgap mode.
+
 When `SOLAR_AIRGAP_MODE` (or `AIRGAP_MODE`) is active (`1`, `true`, `yes`, or `on`):
 - **Geocoding** is disabled (browser GPS coordinates are kept, but no reverse-geocoding calls are made to OpenStreetMap Nominatim).
 - **Domain classification** uses local DB cache and bundled registries only, skipping Cloudflare Radar API lookups.
 - **Google OAuth** is disabled and hidden from sign-in options.
 - **OIDC sign-in stays enabled**: a self-hosted identity provider is the operator's own service, not a third-party call.
 - **Citation favicons** are replaced with inline SVG placeholders, suppressing remote favicon fetches in the browser.
+- **Model sync** with provider gateways is off (no Sync button, no background timer).
 
 Source-category badges use a bundled registry of 300+ news domains derived from
 [Wikidata's CC0](https://www.wikidata.org/wiki/Wikidata:Data_access) news-media

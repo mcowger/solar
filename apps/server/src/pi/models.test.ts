@@ -7,7 +7,8 @@ const dir = mkdtempSync(join(tmpdir(), "solar-pi-models-test-"));
 mkdirSync(join(dir, "pi-agent"), { recursive: true });
 process.env.SOLAR_PI_AGENT_DIR = join(dir, "pi-agent");
 
-const { piModelCapabilities } = await import("./models");
+const { piModelCapabilities, piModelConfigRevision, recordPiModelConfig } =
+	await import("./models");
 
 afterEach(() => {
 	rmSync(join(dir, "pi-agent", "models.json"), { force: true });
@@ -87,5 +88,17 @@ describe("piModelCapabilities", () => {
 				api: "openai-responses",
 			}),
 		).toBeNull();
+	});
+});
+
+describe("piModelConfigRevision", () => {
+	test("changes only when the written model config changes", () => {
+		expect(recordPiModelConfig('{"providers":{}}', "{}")).toBe(true);
+		const first = piModelConfigRevision();
+		expect(first).not.toBe("");
+		expect(recordPiModelConfig('{"providers":{}}', "{}")).toBe(false);
+		expect(piModelConfigRevision()).toBe(first);
+		expect(recordPiModelConfig('{"providers":{"x":{}}}', "{}")).toBe(true);
+		expect(piModelConfigRevision()).not.toBe(first);
 	});
 });

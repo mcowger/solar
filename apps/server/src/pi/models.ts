@@ -7,6 +7,7 @@
  * in-process availability checks) read the same set. Solar never hand-edits
  * those files: they are derived artifacts owned by this module.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ModelRegistry, ModelRuntime } from "@earendil-works/pi-coding-agent";
@@ -250,23 +251,47 @@ export async function syncPiModelConfig(port: number): Promise<void> {
 	ensurePiDirs();
 	const models = { providers: await buildPiModelsJson(port) };
 	const auth = await buildPiAuthJson();
-	writeFileSync(
-		join(piConfig.agentDir, "models.json"),
-		JSON.stringify(models, null, 2),
-	);
-	writeFileSync(
-		join(piConfig.agentDir, "auth.json"),
-		JSON.stringify(auth, null, 2),
-		{
-			mode: 0o600,
-		},
-	);
+	const modelsText = JSON.stringify(models, null, 2);
+	const authText = JSON.stringify(auth, null, 2);
+	writeFileSync(join(piConfig.agentDir, "models.json"), modelsText);
+	writeFileSync(join(piConfig.agentDir, "auth.json"), authText, {
+		mode: 0o600,
+	});
+	recordPiModelConfig(modelsText, authText);
 	logger
 		.withMetadata({
 			providers: Object.keys(auth).length,
 			agentDir: piConfig.agentDir,
 		})
 		.info("pi model config synced");
+}
+
+let modelConfigRevision = "";
+
+/**
+ * Identity of the model config last written. pi reads models.json only when
+ * a process starts, so the session manager respawns a conversation's process
+ * on its next turn once this changes (see spawnSignature in ./manager.ts).
+ */
+export function piModelConfigRevision(): string {
+	return modelConfigRevision;
+}
+
+/** Records the model config just written; returns whether it changed. */
+export function recordPiModelConfig(
+	modelsText: string,
+	authText: string,
+): boolean {
+	const next = createHash("sha256")
+		.update(modelsText)
+		.update("\0")
+		.update(authText)
+		.digest("hex")
+		.slice(0, 16);
+	if (next === modelConfigRevision) return false;
+	modelConfigRevision = next;
+	availableCache = null;
+	return true;
 }
 
 /** Minimal structural shape of a pi Model (avoids coupling to pi-ai versions). */

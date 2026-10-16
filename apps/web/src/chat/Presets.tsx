@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 import { useState } from "react";
 import { useTRPC } from "../trpc";
+import { sortModelsByName } from "./sortModels";
 
 interface ModelDescriptor {
 	provider: string;
@@ -109,7 +110,7 @@ function PresetEditor({
 								});
 						}}
 					>
-						{models.map((m) => (
+						{sortModelsByName(models).map((m) => (
 							<option key={modelKey(m)} value={modelKey(m)}>
 								{m.name}
 							</option>

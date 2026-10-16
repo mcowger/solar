@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import * as path from "node:path";
 import { getLogLevel, logger } from "./logger";
 import { config } from "./config";
+import { startModelSyncScheduler } from "./chat/modelSync";
 import { auth } from "./auth";
 import { OAUTH_CALLBACK_PATH, oauthCallbackPathIsRegistered } from "./oidc";
 import type {} from "./db";
@@ -337,6 +338,13 @@ const server = Bun.serve({
 logger
 	.withMetadata({ url: server.url.toString() })
 	.info("solar server listening");
+
+// Providers with auto-sync on refresh their models from their gateway: first
+// shortly after start, then on the interval. Never in airgap mode.
+const modelSyncScheduler =
+	!config.airgapMode && config.modelSyncIntervalMs > 0
+		? startModelSyncScheduler({ intervalMs: config.modelSyncIntervalMs })
+		: null;
 logger
 	.withMetadata({
 		logLevel: getLogLevel(),
@@ -348,6 +356,7 @@ logger
 // in-flight requests). Stop accepting connections, drain, close the DB, exit.
 const shutdown = async (signal: string) => {
 	logger.withMetadata({ signal }).info("solar server shutting down");
+	modelSyncScheduler?.stop();
 	await imageGenerationService.shutdown();
 	await piSessionManager.shutdown();
 	await server.stop();

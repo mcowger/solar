@@ -1,5 +1,15 @@
 /** One allowlist entry stored in `provider_config.enabledModels`. */
-export type ModelVisibility = "public" | "private";
+/**
+ * Who can pick a model: everyone, admins only ("private"), or nobody
+ * ("hidden": kept in the list, so a model sync does not add it back, but
+ * offered to no one).
+ */
+export type ModelVisibility = "public" | "private" | "hidden";
+
+/** Whether a model with this visibility is offered to this user. */
+export function visibleTo(visibility: ModelVisibility, isAdmin: boolean) {
+	return visibility === "public" || (visibility === "private" && isAdmin);
+}
 
 export interface ModelContextPolicy {
 	enabled: boolean;
@@ -137,7 +147,10 @@ export function parseAllowlist(
 					endpointId:
 						typeof entry.endpointId === "string" ? entry.endpointId : entry.api,
 					api: entry.api,
-					visibility: entry.visibility === "private" ? "private" : "public",
+					visibility:
+						entry.visibility === "private" || entry.visibility === "hidden"
+							? entry.visibility
+							: "public",
 					...(typeof entry.name === "string" ? { name: entry.name } : {}),
 					...(typeof entry.piProvider === "string"
 						? { piProvider: entry.piProvider }

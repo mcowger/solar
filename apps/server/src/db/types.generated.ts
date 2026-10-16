@@ -203,10 +203,12 @@ export interface Preset {
 
 export interface ProviderConfig {
 	apiKey: string | null;
+	autoSyncModels: Generated<number>;
 	baseUrl: string | null;
 	enabledModels: Generated<string>;
 	endpoints: Generated<string>;
 	imageModels: Generated<string>;
+	modelSyncStatus: string | null;
 	provider: string | null;
 	updatedAt: Generated<string>;
 }

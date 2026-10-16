@@ -147,6 +147,10 @@ export interface ProviderConfigTable {
 	enabledModels: Generated<string>;
 	/** JSON array of admin-approved image model descriptors. */
 	imageModels: Generated<string>;
+	/** 1 when the background timer keeps the models in sync with the gateway. */
+	autoSyncModels: Generated<number>;
+	/** JSON outcome of the last model sync (chat/modelSync.ts), or null. */
+	modelSyncStatus: string | null;
 	updatedAt: Generated<string>;
 }
 

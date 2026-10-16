@@ -1,0 +1,327 @@
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Database as BunDatabase } from "bun:sqlite";
+import { Kysely } from "kysely";
+import { BunSqliteDialect } from "kysely-bun-sqlite";
+import type { Database } from "../db/schema";
+import { up as upModelSync } from "../db/migrations/030_provider_model_sync";
+
+const sqlite = new BunDatabase(":memory:");
+const memoryDb = new Kysely<Database>({
+	dialect: new BunSqliteDialect({ database: sqlite }),
+});
+mock.module("../db", () => ({ db: memoryDb, sqlite }));
+
+const {
+	isProviderSyncing,
+	listAutoSyncProviders,
+	setProviderAutoSync,
+	startModelSyncScheduler,
+	syncProviderModels,
+	withProviderLock,
+} = await import("./modelSync");
+
+await memoryDb.schema
+	.createTable("provider_config")
+	.addColumn("provider", "text", (column) => column.primaryKey())
+	.addColumn("apiKey", "text")
+	.addColumn("baseUrl", "text")
+	.addColumn("endpoints", "text", (column) => column.notNull().defaultTo("[]"))
+	.addColumn("enabledModels", "text", (column) =>
+		column.notNull().defaultTo("[]"),
+	)
+	.addColumn("imageModels", "text", (column) =>
+		column.notNull().defaultTo("[]"),
+	)
+	.addColumn("updatedAt", "text", (column) => column.notNull())
+	.execute();
+await upModelSync(memoryDb as unknown as Kysely<unknown>);
+
+const ENDPOINT = {
+	id: "chat",
+	label: "Chat",
+	baseUrl: "https://gw.example/v1",
+	api: "openai-completions",
+};
+const UPDATED_AT = "2026-10-01T00:00:00.000Z";
+
+async function seed(models: { id: string; visibility?: string }[]) {
+	await memoryDb.deleteFrom("provider_config").execute();
+	await memoryDb
+		.insertInto("provider_config")
+		.values({
+			provider: "plexus",
+			apiKey: "key",
+			baseUrl: null,
+			endpoints: JSON.stringify([ENDPOINT]),
+			enabledModels: JSON.stringify(
+				models.map((model) => ({
+					id: model.id,
+					endpointId: "chat",
+					api: "openai-completions",
+					visibility: model.visibility ?? "public",
+				})),
+			),
+			imageModels: "[]",
+			updatedAt: UPDATED_AT,
+		})
+		.execute();
+}
+
+async function row() {
+	const found = await memoryDb
+		.selectFrom("provider_config")
+		.selectAll()
+		.where("provider", "=", "plexus")
+		.executeTakeFirstOrThrow();
+	return {
+		...found,
+		models: JSON.parse(found.enabledModels) as {
+			id: string;
+			visibility: string;
+		}[],
+		status: found.modelSyncStatus ? JSON.parse(found.modelSyncStatus) : null,
+	};
+}
+
+function gateway(ids: string[]) {
+	const calls: string[] = [];
+	const fetchImpl = mock(async (url: URL | string) => {
+		calls.push(String(url));
+		return new Response(
+			JSON.stringify({
+				data: ids.map((id) => ({
+					id,
+					architecture: { output_modalities: ["text"] },
+				})),
+			}),
+		);
+	}) as unknown as typeof fetch;
+	return { fetchImpl, calls };
+}
+
+let changes = 0;
+const onModelsChanged = async () => {
+	changes++;
+};
+
+beforeEach(() => {
+	changes = 0;
+});
+
+describe("syncProviderModels", () => {
+	test("adds, removes and records the outcome, then regenerates pi's model config", async () => {
+		await seed([{ id: "keep" }, { id: "gone" }]);
+		const { fetchImpl, calls } = gateway(["keep", "new-model"]);
+		const outcome = await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		expect(calls).toEqual(["https://gw.example/v1/models"]);
+		const after = await row();
+		expect(after.models.map((model) => model.id)).toEqual([
+			"keep",
+			"new-model",
+		]);
+		expect(after.models[1]?.visibility).toBe("private");
+		expect(after.updatedAt).not.toBe(UPDATED_AT);
+		expect(after.status).toMatchObject({
+			trigger: "manual",
+			ok: true,
+			added: ["new-model"],
+			removed: ["gone"],
+			errors: [],
+		});
+		expect(outcome.status?.ok).toBe(true);
+		expect(changes).toBe(1);
+	});
+
+	test("a gateway error changes no models and records the error", async () => {
+		await seed([{ id: "keep" }]);
+		const fetchImpl = mock(
+			async () =>
+				new Response("bad gateway", { status: 502, statusText: "Bad Gateway" }),
+		) as unknown as typeof fetch;
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		const after = await row();
+		expect(after.models.map((model) => model.id)).toEqual(["keep"]);
+		expect(after.updatedAt).toBe(UPDATED_AT);
+		expect(after.status.ok).toBe(false);
+		expect(after.status.errors[0]).toContain("502");
+		expect(changes).toBe(0);
+	});
+
+	test("an unchanged list writes only the status, not updatedAt", async () => {
+		await seed([{ id: "keep" }]);
+		const { fetchImpl } = gateway(["keep"]);
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		const after = await row();
+		expect(after.updatedAt).toBe(UPDATED_AT);
+		expect(after.status.ok).toBe(true);
+		expect(changes).toBe(0);
+	});
+
+	test("the timer removes a model only on its second miss in a row", async () => {
+		await seed([{ id: "keep" }, { id: "flaky" }]);
+		const { fetchImpl } = gateway(["keep"]);
+		await syncProviderModels("plexus", {
+			trigger: "timer",
+			fetchImpl,
+			onModelsChanged,
+		});
+		let after = await row();
+		expect(after.models.map((model) => model.id)).toEqual(["keep", "flaky"]);
+		expect(after.status.missing).toEqual({ flaky: 1 });
+		await syncProviderModels("plexus", {
+			trigger: "timer",
+			fetchImpl,
+			onModelsChanged,
+		});
+		after = await row();
+		expect(after.models.map((model) => model.id)).toEqual(["keep"]);
+		expect(after.status.removed).toEqual(["flaky"]);
+	});
+
+	test("two syncs at once share one gateway call", async () => {
+		await seed([{ id: "keep" }]);
+		const { fetchImpl, calls } = gateway(["keep", "x"]);
+		const first = syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		expect(isProviderSyncing("plexus")).toBe(true);
+		const second = syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		await Promise.all([first, second]);
+		expect(calls).toHaveLength(1);
+		expect(isProviderSyncing("plexus")).toBe(false);
+	});
+
+	test("an admin save that lands during the fetch wins over the sync's view", async () => {
+		await seed([{ id: "keep" }]);
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const fetchImpl = mock(async () => {
+			await gate;
+			return new Response(
+				JSON.stringify({
+					data: [
+						{ id: "keep", architecture: { output_modalities: ["text"] } },
+						{ id: "saved", architecture: { output_modalities: ["text"] } },
+					],
+				}),
+			);
+		}) as unknown as typeof fetch;
+		const sync = syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		// The admin adds "saved" by hand and makes it public while sync waits.
+		await withProviderLock("plexus", async () => {
+			await memoryDb
+				.updateTable("provider_config")
+				.set({
+					enabledModels: JSON.stringify([
+						{
+							id: "keep",
+							endpointId: "chat",
+							api: "openai-completions",
+							visibility: "public",
+						},
+						{
+							id: "saved",
+							endpointId: "chat",
+							api: "openai-completions",
+							visibility: "public",
+						},
+					]),
+				})
+				.where("provider", "=", "plexus")
+				.execute();
+		});
+		release();
+		await sync;
+		const after = await row();
+		expect(after.models.map((model) => [model.id, model.visibility])).toEqual([
+			["keep", "public"],
+			["saved", "public"],
+		]);
+		expect(after.status.added).toEqual([]);
+	});
+
+	test("does nothing in airgap mode", async () => {
+		await seed([{ id: "keep" }]);
+		const { fetchImpl, calls } = gateway(["other"]);
+		const outcome = await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+			airgapMode: true,
+		});
+		expect(outcome.skipped).toContain("airgap");
+		expect(calls).toHaveLength(0);
+		expect((await row()).status).toBeNull();
+	});
+});
+
+describe("auto-sync setting and scheduler", () => {
+	test("the auto-sync flag lists providers without touching updatedAt", async () => {
+		await seed([{ id: "keep" }]);
+		expect(await listAutoSyncProviders()).toEqual([]);
+		await setProviderAutoSync("plexus", true);
+		expect(await listAutoSyncProviders()).toEqual(["plexus"]);
+		expect((await row()).updatedAt).toBe(UPDATED_AT);
+		await setProviderAutoSync("plexus", false);
+		expect(await listAutoSyncProviders()).toEqual([]);
+	});
+
+	test("the scheduler runs after the first delay, then every interval, until stopped", async () => {
+		let runs = 0;
+		const scheduler = startModelSyncScheduler({
+			intervalMs: 20,
+			initialDelayMs: 5,
+			run: async () => {
+				runs++;
+			},
+		});
+		await new Promise((resolve) => setTimeout(resolve, 70));
+		scheduler.stop();
+		const seen = runs;
+		expect(seen).toBeGreaterThanOrEqual(3);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(runs).toBe(seen);
+	});
+
+	test("the scheduler never overlaps a slow run", async () => {
+		let active = 0;
+		let overlapped = false;
+		const scheduler = startModelSyncScheduler({
+			intervalMs: 5,
+			initialDelayMs: 1,
+			run: async () => {
+				active++;
+				if (active > 1) overlapped = true;
+				await new Promise((resolve) => setTimeout(resolve, 30));
+				active--;
+			},
+		});
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		scheduler.stop();
+		expect(overlapped).toBe(false);
+	});
+});
