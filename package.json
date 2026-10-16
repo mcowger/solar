@@ -31,7 +31,7 @@
     "codegen": " bun run --cwd apps/server codegen",
     "typecheck": "(bun check -p apps/server/tsconfig.json && bun check -p apps/web/tsconfig.json && bun check -p packages/shared/tsconfig.json && bun check -p tsconfig.e2e.json)",
     "test": "bun run --parallel test:server test:web",
-    "test:server": "bun test --parallel apps/server/src",
+    "test:server": "DATABASE_PATH=:memory: bun test --parallel apps/server/src",
     "test:web": "bun run --cwd apps/web test",
     "test:e2e": "node ./node_modules/@playwright/test/cli.js test --project=chromium",
     "test:e2e:all": "node ./node_modules/@playwright/test/cli.js test",
