@@ -10,6 +10,10 @@ previous release.
 
 ## [2026-10-16]
 
+### Added
+
+- Paseo can now run the production deployment command.
+
 ### Changed
 
 - Solar releases now publish a versioned Docker image to GHCR and generate GitHub release notes from this changelog.
