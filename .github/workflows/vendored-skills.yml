@@ -1,0 +1,51 @@
+name: Vendored skills refresh
+
+# Weekly refresh of project skills (see skills-lock.json / .agents/skills).
+# Opens a PR that auto-merges via --auto (waits for CI), so updates land on
+# main without anyone running `skills update` by hand.
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: vendored-skills
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install skills CLI
+        run: npm install -g skills@latest
+
+      - name: Refresh project skills
+        run: skills update -y
+
+      - name: Open auto-merging PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain -- .agents/skills skills-lock.json)" ]; then
+            echo "No skill updates."
+            exit 0
+          fi
+          BRANCH="chore/refresh-vendored-skills"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add .agents/skills skills-lock.json
+          git commit -m "chore: refresh vendored skills"
+          git push -f origin "$BRANCH"
+          PR_URL="$(gh pr create --fill --base main --head "$BRANCH" 2>/dev/null || gh pr view "$BRANCH" --json url -q .url)"
+          gh pr merge --auto --squash "$PR_URL"
