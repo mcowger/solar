@@ -15,7 +15,6 @@
         "agent-browser": "^0.32.2",
         "bun-types": "^1.4.0",
         "lefthook": "^2.1.10",
-        "typescript": "^5.6.3",
       },
     },
     "apps/server": {

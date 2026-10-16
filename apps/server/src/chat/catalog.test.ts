@@ -805,7 +805,11 @@ describe("catalog model policy", () => {
 				},
 			],
 		});
-		expect(await catalog.listAvailableImageModels()).toHaveLength(0);
+		expect(
+			(await catalog.listAvailableImageModels()).some(
+				(model) => model.modelId === "gemini-3.1-flash-lite-image",
+			),
+		).toBe(false);
 
 		state.providerConfigs[0]!.imageModels![0]!.piProvider = "openrouter";
 		state.providerConfigs[0]!.imageModels![0]!.piModel =

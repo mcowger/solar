@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0
+FROM oven/bun:1.4.3
 
 # pi child processes run under bun via the data-dir shim (pi's RpcClient
 # hardcodes a `node` binary name; Solar redirects it to bun). No node install.

@@ -34,7 +34,7 @@ Do **not** add unless explicitly requested:
 ## Core Scripts
 | Command | Action |
 | --- | --- |
-| `bun run typecheck` | Run `tsc` across all workspaces (required before commit) |
+| `bun run typecheck` | Typecheck all workspaces with `bun check` (required before commit) |
 | `bun run test` | Run server and frontend unit tests (`test:server` / `test:web`) |
 | `bun run test:server` | Server unit tests (**MUST** use script; bare `bun test` skips `--isolate`) |
 | `bun run test:e2e` | Run Playwright E2E tests |
