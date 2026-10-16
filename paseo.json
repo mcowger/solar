@@ -19,6 +19,10 @@
     "test": {
       "type": "command",
       "command": "SOLAR_MOCK_LLM=1 bun run test"
+    },
+    "deploy:production": {
+      "type": "command",
+      "command": "bun run deploy:production"
     }
   }
 }
