@@ -28,7 +28,7 @@ interface SidebarProps {
 	onNewImage: () => void;
 	activeImageId: string | undefined;
 	onSelectImage: (id: string) => void;
-	presets: { id: string; name: string }[];
+	presets: { id: string; name: string; modelAvailable: boolean }[];
 	onNewWithPreset: (presetId: string) => void;
 	onManagePresets: () => void;
 	onManageSkills: () => void;
@@ -373,12 +373,25 @@ export function Sidebar({
 										<li key={p.id}>
 											<button
 												type="button"
+												title={
+													p.modelAvailable
+														? p.name
+														: `${p.name} — its model is no longer available`
+												}
+												// Starting from a preset whose model a sync removed is a hard
+												// error, so disable it with a reason instead of a dead entry.
+												disabled={!p.modelAvailable}
 												onClick={() => {
 													onNewWithPreset(p.id);
 													closeMenu();
 												}}
 											>
 												{p.name}
+												{p.modelAvailable ? null : (
+													<span className="text-xs opacity-60">
+														(unavailable)
+													</span>
+												)}
 											</button>
 										</li>
 									))}

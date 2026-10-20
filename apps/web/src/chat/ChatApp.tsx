@@ -13,6 +13,7 @@ import {
 	Settings2,
 	Sparkles,
 	Workflow,
+	X,
 } from "lucide-react";
 import { signOut, useSession } from "../auth";
 import { useTRPC } from "../trpc";
@@ -455,6 +456,11 @@ export function ChatApp() {
 	// A freshly created conversation is a "draft" until its first turn: it isn't
 	// in the (message-filtered) list yet, but must stay selected.
 	const [draftId, setDraftId] = useState<string | undefined>();
+	// A failed create used to be invisible: the click did nothing at all.
+	const [createError, setCreateError] = useState<string | null>(null);
+	// Set when the default preset had to be dropped: the chat works, but it is
+	// not the preset the user expected.
+	const [createNotice, setCreateNotice] = useState<string | null>(null);
 	const [showSettings, setShowSettings] = useState(false);
 	const [showPresets, setShowPresets] = useState(false);
 	const [showSkills, setShowSkills] = useState(false);
@@ -500,13 +506,26 @@ export function ChatApp() {
 	const presets = useQuery(trpc.preset.list.queryOptions());
 	const create = useMutation(
 		trpc.conversation.create.mutationOptions({
-			onSuccess: async ({ id }) => {
+			onSuccess: async ({ id, skippedPreset }) => {
+				setCreateError(null);
+				setCreateNotice(
+					skippedPreset
+						? `The "${skippedPreset.name}" preset is unavailable, so this chat uses the default model.`
+						: null,
+				);
 				setDraftId(id);
 				setActiveId(id);
 				autoCreated.current = false;
 				await qc.invalidateQueries({
 					queryKey: trpc.conversation.list.queryKey(),
 				});
+			},
+			onMutate: () => {
+				setCreateError(null);
+				setCreateNotice(null);
+			},
+			onError: (error) => {
+				setCreateError(error.message);
 			},
 		}),
 	);
@@ -800,7 +819,11 @@ export function ChatApp() {
 						newChat();
 						setDrawerOpen(false);
 					}}
-					presets={presetList.map((p) => ({ id: p.id, name: p.name }))}
+					presets={presetList.map((p) => ({
+						id: p.id,
+						name: p.name,
+						modelAvailable: p.modelAvailable,
+					}))}
 					onNewWithPreset={(presetId) => {
 						newChat(presetId);
 						setDrawerOpen(false);
@@ -825,6 +848,38 @@ export function ChatApp() {
 					onPointerDown={startSidebarResize}
 				/>
 			</div>
+			{createError && (
+				<div className="toast toast-end toast-bottom z-50">
+					<div role="alert" className="alert alert-error">
+						<span className="min-w-0 break-words">
+							Couldn't start a new chat: {createError}
+						</span>
+						<button
+							type="button"
+							className="btn btn-ghost btn-xs btn-circle"
+							onClick={() => setCreateError(null)}
+							aria-label="Dismiss"
+						>
+							<X size={14} />
+						</button>
+					</div>
+				</div>
+			)}
+			{createNotice && !createError && (
+				<div className="toast toast-end toast-bottom z-50">
+					<div role="status" className="alert alert-warning">
+						<span className="min-w-0 break-words">{createNotice}</span>
+						<button
+							type="button"
+							className="btn btn-ghost btn-xs btn-circle"
+							onClick={() => setCreateNotice(null)}
+							aria-label="Dismiss"
+						>
+							<X size={14} />
+						</button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
