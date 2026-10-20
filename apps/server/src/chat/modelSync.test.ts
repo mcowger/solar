@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Database as BunDatabase } from "bun:sqlite";
-import { Kysely } from "kysely";
+import { Kysely, sql } from "kysely";
 import { BunSqliteDialect } from "kysely-bun-sqlite";
 import type { Database } from "../db/schema";
 import { up as upModelSync } from "../db/migrations/030_provider_model_sync";
@@ -14,6 +14,7 @@ mock.module("../db", () => ({ db: memoryDb, sqlite }));
 const {
 	isProviderSyncing,
 	listAutoSyncProviders,
+	parseModelSyncStatus,
 	setProviderAutoSync,
 	startModelSyncScheduler,
 	syncProviderModels,
@@ -36,6 +37,37 @@ await memoryDb.schema
 	.execute();
 await upModelSync(memoryDb as unknown as Kysely<unknown>);
 
+// `findStaleModelReferences` reads these two tables after a sync changes the
+// model list.
+await memoryDb.schema
+	.createTable("preset")
+	.addColumn("id", "text", (column) => column.primaryKey())
+	.addColumn("userId", "text", (column) => column.notNull())
+	.addColumn("name", "text", (column) => column.notNull())
+	.addColumn("scope", "text", (column) =>
+		column.notNull().defaultTo("personal"),
+	)
+	.addColumn("provider", "text", (column) => column.notNull())
+	.addColumn("endpointId", "text")
+	.addColumn("modelId", "text", (column) => column.notNull())
+	.addColumn("modelApi", "text", (column) => column.notNull())
+	.execute();
+await memoryDb.schema
+	.createTable("user_setting")
+	.addColumn("userId", "text", (column) => column.primaryKey())
+	.addColumn("defaultProvider", "text")
+	.addColumn("defaultEndpointId", "text")
+	.addColumn("defaultModelId", "text")
+	.addColumn("defaultApi", "text")
+	.execute();
+// Better Auth owns `user`; the stale-reference report reads its role and email.
+await memoryDb.schema
+	.createTable("user")
+	.addColumn("id", "text", (column) => column.primaryKey())
+	.addColumn("email", "text", (column) => column.notNull())
+	.addColumn("role", "text", (column) => column.notNull().defaultTo("user"))
+	.execute();
+
 const ENDPOINT = {
 	id: "chat",
 	label: "Chat",
@@ -46,6 +78,8 @@ const UPDATED_AT = "2026-10-01T00:00:00.000Z";
 
 async function seed(models: { id: string; visibility?: string }[]) {
 	await memoryDb.deleteFrom("provider_config").execute();
+	await memoryDb.deleteFrom("preset").execute();
+	await memoryDb.deleteFrom("user_setting").execute();
 	await memoryDb
 		.insertInto("provider_config")
 		.values({
@@ -134,6 +168,189 @@ describe("syncProviderModels", () => {
 		});
 		expect(outcome.status?.ok).toBe(true);
 		expect(changes).toBe(1);
+	});
+
+	test("reads an older status row that predates stale references", () => {
+		const legacy = {
+			at: "2026-10-01T00:00:00.000Z",
+			trigger: "manual" as const,
+			ok: true,
+			added: [],
+			removed: [],
+			updated: [],
+			moved: [],
+			skipped: [],
+			errors: [],
+			missing: {},
+			missingImages: {},
+		};
+		expect(parseModelSyncStatus(JSON.stringify(legacy))).toMatchObject({
+			staleReferences: [],
+			staleReferenceTotal: 0,
+		});
+	});
+
+	test("flags presets the sync stranded", async () => {
+		await seed([{ id: "keep" }, { id: "gone" }]);
+		await memoryDb
+			.insertInto("preset")
+			.values({
+				id: "preset-1",
+				userId: "user-1",
+				name: "Legal",
+				provider: "plexus",
+				endpointId: "chat",
+				modelId: "gone",
+				modelApi: "openai-completions",
+			})
+			.execute();
+		await memoryDb
+			.insertInto("preset")
+			.values({
+				id: "preset-2",
+				userId: "user-1",
+				name: "Fine",
+				provider: "plexus",
+				endpointId: "chat",
+				modelId: "keep",
+				modelApi: "openai-completions",
+			})
+			.execute();
+		const { fetchImpl } = gateway(["keep"]);
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		const after = await row();
+		expect(after.status.staleReferences).toEqual([
+			{ kind: "preset", id: "preset-1", label: "Legal", modelId: "gone" },
+		]);
+		expect(after.status.staleReferenceTotal).toBe(1);
+	});
+
+	test("keeps reporting stale references on a later sync that changes nothing", async () => {
+		await seed([{ id: "keep" }, { id: "gone" }]);
+		await memoryDb
+			.insertInto("preset")
+			.values({
+				id: "preset-1",
+				userId: "user-1",
+				name: "Legal",
+				provider: "plexus",
+				endpointId: "chat",
+				modelId: "gone",
+				modelApi: "openai-completions",
+			})
+			.execute();
+		const removed = gateway(["keep"]);
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl: removed.fetchImpl,
+			onModelsChanged,
+		});
+		// Nothing changes this time, but the preset is still broken.
+		const stable = gateway(["keep"]);
+		await syncProviderModels("plexus", {
+			trigger: "timer",
+			fetchImpl: stable.fetchImpl,
+			onModelsChanged,
+		});
+		expect((await row()).status.staleReferences).toEqual([
+			{ kind: "preset", id: "preset-1", label: "Legal", modelId: "gone" },
+		]);
+	});
+
+	test("flags a personal default whose model is gone", async () => {
+		await seed([{ id: "keep" }]);
+		await memoryDb
+			.insertInto("user_setting")
+			.values({
+				userId: "user-2",
+				defaultProvider: "plexus",
+				defaultEndpointId: "chat",
+				defaultModelId: "gone",
+				defaultApi: "openai-completions",
+			})
+			.execute();
+		const { fetchImpl } = gateway(["keep", "fresh"]);
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		expect((await row()).status.staleReferences).toEqual([
+			{ kind: "user-default", id: "user-2", label: "user-2", modelId: "gone" },
+		]);
+	});
+
+	test("a shared preset on a private model is flagged, an admin's personal preset is not", async () => {
+		await seed([{ id: "private-model", visibility: "private" }]);
+		// Better Auth's `user` table is outside the Kysely schema, so raw SQL.
+		await sql`
+			insert into user (id, email, role) values
+			('admin-1', 'admin@example.com', 'admin'),
+			('user-1', 'user@example.com', 'user')
+		`.execute(memoryDb);
+		const preset = (id: string, userId: string, scope: string) => ({
+			id,
+			userId,
+			name: id,
+			scope,
+			provider: "plexus",
+			endpointId: "chat",
+			modelId: "private-model",
+			modelApi: "openai-completions",
+		});
+		await memoryDb
+			.insertInto("preset")
+			.values([
+				preset("shared-preset", "admin-1", "shared"),
+				preset("admin-preset", "admin-1", "personal"),
+			])
+			.execute();
+		const { fetchImpl } = gateway(["private-model"]);
+		// Nothing changes, so the sync only refreshes the report.
+		await syncProviderModels("plexus", {
+			trigger: "manual",
+			fetchImpl,
+			onModelsChanged,
+		});
+		const stale = (await row()).status.staleReferences.map(
+			(item: { id: string }) => item.id,
+		);
+		expect(stale).toEqual(["shared-preset"]);
+	});
+
+	test("a failing stale-reference query still writes the synced models", async () => {
+		await seed([{ id: "keep" }]);
+		const { fetchImpl } = gateway(["keep", "added"]);
+		await memoryDb.schema.dropTable("preset").execute();
+		try {
+			await syncProviderModels("plexus", {
+				trigger: "manual",
+				fetchImpl,
+				onModelsChanged,
+			});
+			const after = await row();
+			expect(after.models.map((model) => model.id)).toEqual(["keep", "added"]);
+			expect(after.status.staleReferences).toEqual([]);
+		} finally {
+			// Restore the table for the rest of the suite.
+			await memoryDb.schema
+				.createTable("preset")
+				.addColumn("id", "text", (column) => column.primaryKey())
+				.addColumn("userId", "text", (column) => column.notNull())
+				.addColumn("name", "text", (column) => column.notNull())
+				.addColumn("scope", "text", (column) =>
+					column.notNull().defaultTo("personal"),
+				)
+				.addColumn("provider", "text", (column) => column.notNull())
+				.addColumn("endpointId", "text")
+				.addColumn("modelId", "text", (column) => column.notNull())
+				.addColumn("modelApi", "text", (column) => column.notNull())
+				.execute();
+		}
 	});
 
 	test("a gateway error changes no models and records the error", async () => {

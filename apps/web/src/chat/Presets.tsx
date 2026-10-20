@@ -46,6 +46,29 @@ function modelKey(m: {
 	return `${m.provider}/${m.endpointId}/${m.modelId}/${m.api}`;
 }
 
+/** Display name for a preset's model, or its stored id when it is gone. */
+function presetModelName(
+	preset: {
+		provider: string;
+		endpointId: string | null;
+		modelId: string;
+		modelApi: string;
+	},
+	models: ModelDescriptor[],
+): string {
+	const match = models.find(
+		(m) =>
+			modelKey(m) ===
+			modelKey({
+				provider: preset.provider,
+				endpointId: preset.endpointId ?? preset.modelApi,
+				modelId: preset.modelId,
+				api: preset.modelApi,
+			}),
+	);
+	return match?.name ?? preset.modelId;
+}
+
 function emptyForm(models: ModelDescriptor[]): PresetForm {
 	const first = models[0];
 	return {
@@ -77,6 +100,10 @@ function PresetEditor({
 	saving: boolean;
 }) {
 	const model = models.find((m) => modelKey(m) === modelKey(form));
+	// A preset can point at a model a sync has since removed. Keep it visible so
+	// the owner can see what broke and pick a replacement instead of finding the
+	// preset missing with no way to fix it.
+	const modelMissing = !model;
 	// Capability gating: only show fields the selected model/api supports.
 	const showReasoningEffort = model?.reasoning ?? false;
 	const showReasoningSummary =
@@ -110,12 +137,23 @@ function PresetEditor({
 								});
 						}}
 					>
+						{modelMissing && (
+							<option value="" disabled>
+								{form.modelId} — no longer available
+							</option>
+						)}
 						{sortModelsByName(models).map((m) => (
 							<option key={modelKey(m)} value={modelKey(m)}>
 								{m.name}
 							</option>
 						))}
 					</select>
+					{modelMissing && (
+						<p className="text-sm text-warning">
+							This preset's model ({form.modelId}) is no longer offered by the
+							provider. Pick a model above, then save.
+						</p>
+					)}
 				</fieldset>
 				<fieldset className="fieldset gap-2">
 					<legend className="fieldset-legend">System prompt</legend>
@@ -205,7 +243,7 @@ function PresetEditor({
 					<button
 						className="btn btn-primary"
 						onClick={onSave}
-						disabled={saving || !form.name.trim()}
+						disabled={saving || !form.name.trim() || modelMissing}
 					>
 						{saving ? "Saving…" : "Save preset"}
 					</button>
@@ -222,35 +260,49 @@ export function Presets({ onClose }: { onClose: () => void }) {
 	const presets = useQuery(trpc.preset.list.queryOptions());
 	const userDefault = useQuery(trpc.preset.userDefault.queryOptions());
 	const [form, setForm] = useState<PresetForm | null>(null);
+	// Every preset action can be rejected by the server (an unavailable model, a
+	// shared preset pointing at a private model). Silence here is what made the
+	// original New Chat bug look like a dead button, so surface it.
+	const [actionError, setActionError] = useState<string | null>(null);
 
 	const invalidate = () =>
 		qc.invalidateQueries({ queryKey: trpc.preset.list.queryKey() });
 
 	const create = useMutation(
 		trpc.preset.create.mutationOptions({
+			onMutate: () => setActionError(null),
 			onSuccess: () => {
 				invalidate();
 				setForm(null);
 			},
+			onError: (error) => setActionError(error.message),
 		}),
 	);
 	const update = useMutation(
 		trpc.preset.update.mutationOptions({
+			onMutate: () => setActionError(null),
 			onSuccess: () => {
 				invalidate();
 				setForm(null);
 			},
+			onError: (error) => setActionError(error.message),
 		}),
 	);
 	const remove = useMutation(
-		trpc.preset.remove.mutationOptions({ onSuccess: invalidate }),
+		trpc.preset.remove.mutationOptions({
+			onMutate: () => setActionError(null),
+			onSuccess: invalidate,
+			onError: (error) => setActionError(error.message),
+		}),
 	);
 	const setUserDefault = useMutation(
 		trpc.preset.setUserDefault.mutationOptions({
+			onMutate: () => setActionError(null),
 			onSuccess: () => {
 				qc.invalidateQueries({ queryKey: trpc.preset.userDefault.queryKey() });
 				qc.invalidateQueries({ queryKey: trpc.model.userDefault.queryKey() });
 			},
+			onError: (error) => setActionError(error.message),
 		}),
 	);
 
@@ -290,6 +342,18 @@ export function Presets({ onClose }: { onClose: () => void }) {
 					</button>
 				</header>
 				<div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+					{actionError && (
+						<div role="alert" className="alert alert-error alert-soft mb-5">
+							<span className="min-w-0 break-words">{actionError}</span>
+							<button
+								type="button"
+								className="btn btn-ghost btn-xs"
+								onClick={() => setActionError(null)}
+							>
+								Dismiss
+							</button>
+						</div>
+					)}
 					{form ? (
 						<PresetEditor
 							form={form}
@@ -317,26 +381,29 @@ export function Presets({ onClose }: { onClose: () => void }) {
 							<div className="min-w-0 flex-1">
 								<p className="font-medium">{p.name}</p>
 								<p className="text-sm opacity-60">
-									{modelList.find(
-										(m) =>
-											modelKey(m) ===
-											modelKey({
-												provider: p.provider,
-												endpointId: p.endpointId ?? p.modelApi,
-												modelId: p.modelId,
-												api: p.modelApi,
-											}),
-									)?.name ?? p.modelId}{" "}
+									<span
+										className={p.modelAvailable ? undefined : "text-warning"}
+									>
+										{presetModelName(p, modelList)}
+									</span>{" "}
 									· {p.scope}
 									{p.reasoningEffort ? ` · ${p.reasoningEffort}` : ""}
 								</p>
+								{p.modelAvailable ? null : (
+									<p className="text-xs text-warning">
+										Model unavailable — new chats ignore this preset until it is
+										updated.
+									</p>
+								)}
 							</div>
 							<div
 								className="tooltip tooltip-left"
 								data-tip={
 									userDefault.data === p.id
 										? "Remove as your default preset"
-										: "Use as your default preset for new chats"
+										: p.modelAvailable
+											? "Use as your default preset for new chats"
+											: "Give this preset a current model before making it your default"
 								}
 							>
 								<button
@@ -347,7 +414,10 @@ export function Presets({ onClose }: { onClose: () => void }) {
 											id: userDefault.data === p.id ? null : p.id,
 										})
 									}
-									disabled={setUserDefault.isPending}
+									disabled={
+										setUserDefault.isPending ||
+										(!p.modelAvailable && userDefault.data !== p.id)
+									}
 								>
 									<Star
 										size={16}

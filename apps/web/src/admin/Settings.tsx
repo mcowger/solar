@@ -66,6 +66,17 @@ interface ModelSyncStatus {
 	moved: { id: string; from: string; to: string }[];
 	skipped: string[];
 	errors: string[];
+	staleReferences?: StaleModelReference[];
+	/** Stale references before the list is truncated. */
+	staleReferenceTotal?: number;
+}
+
+/** A preset or personal default left pointing at a model after a sync. */
+interface StaleModelReference {
+	kind: "preset" | "user-default";
+	id: string;
+	label: string;
+	modelId: string;
 }
 
 interface ProviderForm {
@@ -82,6 +93,11 @@ interface ProviderForm {
 	modelSync?: ModelSyncStatus | null;
 	syncing?: boolean;
 	syncAvailable?: boolean;
+}
+
+/** Total stale references; the stored list is truncated to a cap. */
+function staleReferenceCount(status: ModelSyncStatus): number {
+	return status.staleReferenceTotal ?? status.staleReferences?.length ?? 0;
 }
 
 function syncedAgo(iso: string, now = Date.now()): string {
@@ -159,6 +175,29 @@ function ModelSyncStatusLine({ status }: { status: ModelSyncStatus | null }) {
 				>
 					<span className="break-words">
 						{status.errors.join(" ")} The previous model list was kept.
+					</span>
+				</div>
+			)}
+			{staleReferenceCount(status) > 0 && (
+				<div
+					role="alert"
+					className="alert alert-warning alert-soft py-2 text-xs"
+				>
+					<span className="break-words">
+						{staleReferenceCount(status)} preset(s) or personal default(s) point
+						at a model this provider no longer offers:{" "}
+						{status.staleReferences
+							?.map(
+								(item) =>
+									`${item.kind === "preset" ? `preset "${item.label}"` : `${item.label}'s default model`} → ${item.modelId}`,
+							)
+							.join(", ")}
+						.
+						{staleReferenceCount(status) > (status.staleReferences?.length ?? 0)
+							? " …"
+							: ""}{" "}
+						Chats that fall back to a default model now say so; presets the user
+						picks explicitly still fail until they are updated.
 					</span>
 				</div>
 			)}

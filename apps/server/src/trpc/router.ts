@@ -41,7 +41,12 @@ import {
 } from "../chat/catalog";
 import { applyUserRole, countActiveAdmins } from "../userRoles";
 import type { TrpcContext } from "./context";
-import { getLogLevel, setLogLevel, type SolarLogLevel } from "../logger";
+import {
+	getLogLevel,
+	logger,
+	setLogLevel,
+	type SolarLogLevel,
+} from "../logger";
 import { testMcpServer } from "../chat/mcp";
 import {
 	contextGlobalSettingsInputSchema,
@@ -76,6 +81,7 @@ import {
 	syncProviderModels as syncModelsWithGateway,
 	withProviderLock,
 } from "../chat/modelSync";
+import { resolveStaleReferenceLabels } from "../chat/modelReferences";
 import {
 	loadPiMessages,
 	piConversationMatchesQuery,
@@ -161,8 +167,10 @@ const conversationRouter = router({
 						.catch(() => {});
 				}
 			}
+			const isAdmin = ctx.user.role === "admin";
+			const explicitPresetId = input.presetId ?? null;
 			const presetId =
-				input.presetId ?? (await getUserDefaultPreset(ctx.user.id));
+				explicitPresetId ?? (await getUserDefaultPreset(ctx.user.id));
 			// Snapshot the preset (model + system prompt + reasoning params) onto the
 			// conversation so later preset edits don't mutate this conversation.
 			let snapshot: {
@@ -182,6 +190,8 @@ const conversationRouter = router({
 				reasoningEffort: null,
 				reasoningSummary: false,
 			};
+			/** The default preset we had to drop because its model is gone. */
+			let skippedPreset: { id: string; name: string } | null = null;
 			if (presetId) {
 				const preset = await db
 					.selectFrom("preset")
@@ -193,24 +203,43 @@ const conversationRouter = router({
 					preset &&
 					(preset.scope === "shared" || preset.userId === ctx.user.id)
 				) {
-					await assertCanUseModel(
-						{
-							provider: preset.provider,
-							endpointId: preset.endpointId ?? preset.modelApi,
-							modelId: preset.modelId,
-							api: preset.modelApi,
-						},
-						ctx.user.role === "admin",
-					);
-					snapshot = {
+					const selection = {
 						provider: preset.provider,
 						endpointId: preset.endpointId ?? preset.modelApi,
 						modelId: preset.modelId,
-						modelApi: preset.modelApi,
-						systemPrompt: preset.systemPrompt,
-						reasoningEffort: preset.reasoningEffort,
-						reasoningSummary: Boolean(preset.reasoningSummary),
+						api: preset.modelApi,
 					};
+					// A default preset whose model a model sync removed must never block
+					// starting a chat; fall back to the plain default model. A preset the
+					// user picked explicitly still has to be valid, and now surfaces as a
+					// real error instead of a dead button.
+					if (await isModelAvailable(selection, isAdmin)) {
+						snapshot = {
+							provider: preset.provider,
+							endpointId: preset.endpointId ?? preset.modelApi,
+							modelId: preset.modelId,
+							modelApi: preset.modelApi,
+							systemPrompt: preset.systemPrompt,
+							reasoningEffort: preset.reasoningEffort,
+							reasoningSummary: Boolean(preset.reasoningSummary),
+						};
+					} else if (explicitPresetId) {
+						throw new TRPCError({
+							code: "BAD_REQUEST",
+							message: `The "${preset.name}" preset uses a model that is no longer available. Give the preset a different model, then try again.`,
+						});
+					} else {
+						logger
+							.withMetadata({
+								userId: ctx.user.id,
+								presetId: preset.id,
+								modelId: preset.modelId,
+							})
+							.warn("default preset model unavailable; starting without it");
+						// Tell the client, so the user is not silently talking to the
+						// default model while believing the preset is active.
+						skippedPreset = { id: preset.id, name: preset.name };
+					}
 				}
 			}
 			const defaultDisplayMode = await getUserDefaultDisplayMode(ctx.user.id);
@@ -223,7 +252,7 @@ const conversationRouter = router({
 					...snapshot,
 				},
 			);
-			return { id: conversation.id };
+			return { id: conversation.id, skippedPreset };
 		}),
 
 	rename: protectedProcedure
@@ -953,7 +982,7 @@ const adminRouter = router({
 				hasApiKey: Boolean(config.apiKey),
 				updatedAt: config.updatedAt,
 				autoSyncModels: config.autoSyncModels,
-				modelSync: parseModelSyncStatus(config.modelSyncStatus),
+				modelSync: await withResolvedStaleLabels(config.modelSyncStatus),
 				syncing: isProviderSyncing(config.provider),
 				syncAvailable,
 				endpoints: config.endpoints,
@@ -1518,6 +1547,18 @@ async function effectiveModelCapabilities(selection: {
 	};
 }
 
+/** Sync status with personal-default owners named, for the admin UI only. */
+async function withResolvedStaleLabels(
+	json: string | null | undefined,
+): Promise<Awaited<ReturnType<typeof parseModelSyncStatus>>> {
+	const status = parseModelSyncStatus(json);
+	if (!status || status.staleReferences.length === 0) return status;
+	return {
+		...status,
+		staleReferences: await resolveStaleReferenceLabels(status.staleReferences),
+	};
+}
+
 const modelSelectionSchema = z.object({
 	provider: z.string(),
 	endpointId: z.string(),
@@ -1525,19 +1566,26 @@ const modelSelectionSchema = z.object({
 	api: z.string(),
 });
 
-async function assertCanUseModel(
+/** Whether a stored selection still matches the user's available catalog. */
+async function isModelAvailable(
 	selection: z.infer<typeof modelSelectionSchema>,
 	isAdmin: boolean,
-) {
+): Promise<boolean> {
 	const available = await listAvailableModels(isAdmin);
-	const selected = available.some(
+	return available.some(
 		(model) =>
 			model.provider === selection.provider &&
 			model.endpointId === selection.endpointId &&
 			model.modelId === selection.modelId &&
 			model.api === selection.api,
 	);
-	if (!selected)
+}
+
+async function assertCanUseModel(
+	selection: z.infer<typeof modelSelectionSchema>,
+	isAdmin: boolean,
+) {
+	if (!(await isModelAvailable(selection, isAdmin)))
 		throw new TRPCError({ code: "BAD_REQUEST", message: "model unavailable" });
 }
 
@@ -1724,21 +1772,21 @@ const presetRouter = router({
 			.orderBy("name", "asc")
 			.execute();
 		const available = await listAvailableModels(ctx.user.role === "admin");
-		return rows
-			.filter((preset) =>
-				available.some(
-					(model) =>
-						model.provider === preset.provider &&
-						model.endpointId === (preset.endpointId ?? preset.modelApi) &&
-						model.modelId === preset.modelId &&
-						model.api === preset.modelApi,
-				),
-			)
-			.map((r) => ({
-				...r,
-				reasoningSummary: Boolean(r.reasoningSummary),
-				owned: r.userId === ctx.user.id,
-			}));
+		// A preset whose model a model sync removed stays listed and editable, so
+		// its owner can see why it stopped working and point it at a new model.
+		// Hiding it left the preset unreachable and blocked new chats silently.
+		return rows.map((r) => ({
+			...r,
+			reasoningSummary: Boolean(r.reasoningSummary),
+			owned: r.userId === ctx.user.id,
+			modelAvailable: available.some(
+				(model) =>
+					model.provider === r.provider &&
+					model.endpointId === (r.endpointId ?? r.modelApi) &&
+					model.modelId === r.modelId &&
+					model.api === r.modelApi,
+			),
+		}));
 	}),
 
 	userDefault: protectedProcedure.query(async ({ ctx }) => {

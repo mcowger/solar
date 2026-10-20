@@ -21,6 +21,10 @@ import {
 	type ProviderEndpoint,
 } from "./catalog";
 import { mergeDiscoveredModels, type ModelSyncSummary } from "./modelSyncMerge";
+import {
+	findStaleModelReferences,
+	type StaleModelReference,
+} from "./modelReferences";
 
 export type ModelSyncTrigger = "manual" | "timer" | "enable";
 
@@ -33,6 +37,10 @@ export interface ModelSyncStatus extends ModelSyncSummary {
 	missing: Record<string, number>;
 	/** Consecutive timer misses, by image model id. */
 	missingImages: Record<string, number>;
+	/** Presets and personal defaults left pointing at a model that is gone. */
+	staleReferences: StaleModelReference[];
+	/** How many references are stale before the LIST_CAP list is truncated. */
+	staleReferenceTotal: number;
 }
 
 export interface ModelSyncOutcome {
@@ -93,6 +101,9 @@ export function parseModelSyncStatus(
 					...parsed,
 					missing: parsed.missing ?? {},
 					missingImages: parsed.missingImages ?? {},
+					staleReferences: parsed.staleReferences ?? [],
+					staleReferenceTotal:
+						parsed.staleReferenceTotal ?? parsed.staleReferences?.length ?? 0,
 				}
 			: null;
 	} catch {
@@ -238,6 +249,8 @@ async function runSync(
 			errors: [],
 			missing: {},
 			missingImages: {},
+			staleReferences: [],
+			staleReferenceTotal: 0,
 		};
 
 		let chatModels = fresh.enabledModels;
@@ -298,6 +311,22 @@ async function runSync(
 		status.updated = status.updated.slice(0, LIST_CAP);
 		status.moved = status.moved.slice(0, LIST_CAP);
 
+		// Report the presets and personal defaults that no longer resolve, so an
+		// admin sees them instead of hearing about a dead New Chat button later.
+		// Computed on every sync (not only when models changed) so a later no-op
+		// sync cannot erase the warning while the references are still broken.
+		try {
+			const stale = await findStaleModelReferences(provider, chatModels);
+			status.staleReferenceTotal = stale.length;
+			status.staleReferences = stale.slice(0, LIST_CAP);
+		} catch (error) {
+			// Reporting must never block the write that keeps models in sync.
+			logger
+				.withError(error)
+				.withMetadata({ provider })
+				.warn("could not check for stale preset model references");
+		}
+
 		await db
 			.updateTable("provider_config")
 			.set({
@@ -321,6 +350,8 @@ async function runSync(
 				added: status.added.length,
 				removed: status.removed.length,
 				updated: status.updated.length,
+				staleReferences: status.staleReferences.length,
+				staleReferenceTotal: status.staleReferenceTotal,
 				errors: status.errors,
 			})
 			.info("provider models synced");
